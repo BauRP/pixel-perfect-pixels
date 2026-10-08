@@ -15,9 +15,6 @@ ext {
     androidxEspressoCoreVersion = '3.6.1'
     cordovaAndroidVersion = '10.1.1'
 
-    // ── Google AdMob ──────────────────────────────────────────────────────────
-    // Google Mobile Ads SDK used by NativeAdsPlugin.java (gallery native ad).
-    playServicesAdsVersion = '24.9.0'
     userMessagingPlatformVersion = '4.0.0'
 
     // Kotlin Gradle plugin version for Capacitor plugin modules.

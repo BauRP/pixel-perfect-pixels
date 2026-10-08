@@ -56,8 +56,6 @@ dependencies {
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
     
-    // Google Mobile Ads SDK — used directly by NativeAdsPlugin.java (native ad).
-    implementation "com.google.android.gms:play-services-ads:$playServicesAdsVersion"
     implementation "com.google.android.ump:user-messaging-platform:$userMessagingPlatformVersion"
 
     // MultiDex runtime

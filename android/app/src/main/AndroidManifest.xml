@@ -6,8 +6,6 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- Google AdMob Advertising ID (Обязательно для Android 13+ / API 33+) -->
-    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
 
     <!-- Media access — Android 13+ scoped media permissions -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
@@ -85,10 +83,6 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- Google AdMob production application ID. Required before SDK init. -->
-        <meta-data
-            android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-9902253594429663~9587409077" />
 
     </application>
 </manifest>

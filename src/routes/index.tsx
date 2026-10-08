@@ -5,7 +5,6 @@ import { deviceScan, useDeviceScan, type ScannedAlbum } from "@/lib/device-scan"
 import { Loader2, Play } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ViewOptionsMenu } from "@/components/ViewOptionsMenu";
-import { NativeAdTile } from "@/components/NativeAdTile";
 import { useViewPrefs, sortRows } from "@/lib/view-prefs";
 
 export const Route = createFileRoute("/")({
@@ -139,7 +138,7 @@ function GalleryIndex() {
       </div>
 
 
-      {/* The native ad is ALWAYS the first grid item; folders follow it. */}
+      {/* Folder grid. */}
       <FolderGrid albums={showEmpty ? [] : sortedAlbums} filter={filter} columns={prefs.columns} />
       {showEmpty ? (
         <div className="pt-16 flex justify-center px-8">
@@ -167,7 +166,6 @@ function FolderGrid({
         gap: columns >= 4 ? "0.5rem" : columns === 3 ? "0.625rem" : "0.75rem",
       }}
     >
-      <NativeAdTile />
       {albums.map((f, i) => {
         const previews = f.items.slice(0, 4);
         return (

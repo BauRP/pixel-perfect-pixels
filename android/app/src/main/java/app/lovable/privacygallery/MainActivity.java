@@ -19,7 +19,7 @@ import androidx.core.view.WindowCompat;
 import com.getcapacitor.BridgeActivity;
 
 /**
- * Nova Gallery — native shell. Ads live only in NativeAdsPlugin.
+ * Nova Gallery — native shell. Ad-free.
  */
 public class MainActivity extends BridgeActivity {
 
@@ -33,7 +33,6 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // Регистрация плагинов Capacitor
         registerPlugin(SecureVaultPlugin.class);
-        registerPlugin(NativeAdsPlugin.class);
         
         super.onCreate(savedInstanceState);
 
