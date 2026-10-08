@@ -4,7 +4,7 @@ import { useApplyTheme } from "@/lib/theme";
 import { applyDocumentDirection, ensureLangResolved, useLang } from "@/lib/i18n";
 import { Capacitor } from "@capacitor/core";
 import { useVault } from "@/lib/vault-store";
-import { cssColorToHex } from "@/lib/native-ads";
+import { cssColorToHex } from "@/lib/css-color";
 
 /**
  * First launch after install: detect the device locale, map it to one of the
