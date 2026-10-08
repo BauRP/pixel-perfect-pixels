@@ -1,0 +1,204 @@
+import { useEffect, useState } from "react";
+import { safePin } from "@/lib/pin-store";
+import { vault } from "@/lib/vault-store";
+import { useT } from "@/lib/i18n";
+import { ShieldCheck, Delete, ArrowLeft } from "lucide-react";
+
+/**
+ * Full-screen premium PIN gate. Two modes:
+ *  - Setup: enter PIN twice to confirm ("Set PIN").
+ *  - Verify: enter existing PIN to unlock.
+ */
+export function SafePinGate({
+  onSuccess, onCancel,
+}: { onSuccess: () => void; onCancel: () => void }) {
+  const t = useT();
+  const [mounted, setMounted] = useState(false);
+  const [isSetup, setIsSetup] = useState(false);
+  useEffect(() => {
+    setIsSetup(!safePin.hasPin());
+    setMounted(true);
+  }, []);
+  const [stage, setStage] = useState<"enter" | "confirm">("enter");
+  const [pin, setPin] = useState("");
+  const [firstPin, setFirstPin] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [shake, setShake] = useState(false);
+
+  const MAX = 4;
+
+  useEffect(() => {
+    if (pin.length !== MAX) return;
+    void submit(pin);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pin]);
+
+  if (!mounted) return null;
+
+  const triggerShake = () => {
+    setShake(true);
+    if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(50);
+    setTimeout(() => setShake(false), 400);
+  };
+
+  const submit = async (value: string) => {
+    setBusy(true);
+    try {
+      if (isSetup) {
+        if (stage === "enter") {
+          setFirstPin(value);
+          setPin("");
+          setStage("confirm");
+          setError("");
+        } else {
+          if (value !== firstPin) {
+            setError(t("pin_mismatch"));
+            triggerShake();
+            setPin("");
+            setFirstPin("");
+            setStage("enter");
+            return;
+          }
+          await safePin.setPin(value);
+          // Bridge the PIN into the encrypted vault so file operations
+          // (addFiles / decryptFile) have an in-memory AES key. Without
+          // this the vault stays locked and any add-to-folder throws.
+          try {
+            if (!vault.hasPassword()) await vault.setInitialPassword(value);
+            else await vault.verifyPassword(value);
+          } catch { /* non-fatal — UI still gates via safePin */ }
+          onSuccess();
+        }
+      } else {
+        const ok = await safePin.verify(value);
+        if (ok) {
+          try {
+            if (!vault.hasPassword()) await vault.setInitialPassword(value);
+            else if (!vault.isUnlocked()) await vault.verifyPassword(value);
+          } catch { /* non-fatal */ }
+          onSuccess();
+        }
+        else {
+          setError(t("pin_wrong"));
+          triggerShake();
+          setPin("");
+        }
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const press = (d: string) => {
+    if (busy) return;
+    setError("");
+    setPin((p) => (p.length >= MAX ? p : p + d));
+  };
+  const backspace = () => { setError(""); setPin((p) => p.slice(0, -1)); };
+
+  const title = isSetup
+    ? stage === "enter" ? t("set_pin") : t("confirm_pin")
+    : t("enter_pin");
+
+  const subtitle = isSetup
+    ? stage === "enter" ? t("pin_setup_hint") : t("pin_confirm_hint")
+    : t("pin_unlock_hint");
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex flex-col"
+      style={{
+        background:
+          "radial-gradient(120% 80% at 50% 0%, color-mix(in oklab, var(--color-accent) 22%, var(--color-background)) 0%, var(--color-background) 60%)",
+      }}
+    >
+      <div className="px-4 pt-[max(var(--app-safe-top),1rem)] pb-2">
+        <button
+          onClick={onCancel}
+          className="tap grid h-10 w-10 place-items-center rounded-full"
+          style={{ background: "var(--color-surface)" }}
+          aria-label={t("back")}
+        >
+          <ArrowLeft size={20} />
+        </button>
+      </div>
+
+      <div className="flex flex-col items-center px-6 pt-4">
+        <span
+          className="grid h-20 w-20 place-items-center rounded-3xl mb-6 shadow-lg"
+          style={{
+            background: "color-mix(in oklab, var(--color-accent) 22%, var(--color-surface))",
+            boxShadow: "0 10px 40px -10px color-mix(in oklab, var(--color-accent) 55%, transparent)",
+          }}
+        >
+          <ShieldCheck size={38} style={{ color: "var(--color-accent)" }} />
+        </span>
+        <h1 className="text-2xl font-bold text-center">{title}</h1>
+        <p className="mt-1 text-sm text-muted-foreground text-center">{subtitle}</p>
+
+        <div
+          className={`mt-6 flex items-center gap-3 transition-transform ${shake ? "animate-[shake_.4s_ease-in-out]" : ""}`}
+          style={{
+            animation: shake ? "shake .4s cubic-bezier(.36,.07,.19,.97) both" : undefined,
+          }}
+        >
+          {Array.from({ length: MAX }).map((_, i) => {
+            const filled = i < pin.length;
+            return (
+              <span
+                key={i}
+                className="h-3.5 w-3.5 rounded-full transition-all"
+                style={{
+                  background: filled ? "var(--color-accent)" : "transparent",
+                  border: `2px solid ${filled ? "var(--color-accent)" : "var(--color-border)"}`,
+                  transform: filled ? "scale(1.15)" : "scale(1)",
+                }}
+              />
+            );
+          })}
+        </div>
+
+        <p className="mt-3 h-4 text-xs text-destructive">{error || "\u00A0"}</p>
+
+        <div className="mt-5 mx-auto w-full max-w-[220px] grid grid-cols-3 gap-2">
+          {["1","2","3","4","5","6","7","8","9"].map((d) => (
+            <KeypadBtn key={d} onClick={() => press(d)}>{d}</KeypadBtn>
+          ))}
+          <span />
+          <KeypadBtn onClick={() => press("0")}>0</KeypadBtn>
+          <KeypadBtn onClick={backspace} aria-label={t("backspace")}>
+            <Delete size={22} />
+          </KeypadBtn>
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes shake {
+          10%, 90% { transform: translateX(-2px); }
+          20%, 80% { transform: translateX(4px); }
+          30%, 50%, 70% { transform: translateX(-8px); }
+          40%, 60% { transform: translateX(8px); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function KeypadBtn({
+  children, onClick, ...rest
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className="h-12 rounded-xl text-lg font-semibold flex items-center justify-center transition-all active:scale-95"
+      style={{
+        background: "var(--color-surface)",
+        border: "1px solid var(--color-border)",
+      }}
+      {...rest}
+    >
+      {children}
+    </button>
+  );
+}
