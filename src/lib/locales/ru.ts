@@ -74,6 +74,7 @@ export const ru: Translation = {
   storage: "Память Сейфа",
   used: "из",
   privacy_policy: "Политика конфиденциальности",
+  privacy_settings: "Настройки конфиденциальности",
   choose_language: "Выберите язык",
   search_language: "Поиск языка…",
 

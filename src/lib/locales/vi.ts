@@ -74,6 +74,7 @@ export const vi: Translation = {
   storage: "Bộ nhớ của két",
   used: "đã dùng trên",
   privacy_policy: "Chính sách bảo mật",
+  privacy_settings: "Cài đặt quyền riêng tư",
   choose_language: "Chọn ngôn ngữ của bạn",
   search_language: "Tìm ngôn ngữ…",
 

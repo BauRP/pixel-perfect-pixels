@@ -74,6 +74,7 @@ export const pl: Translation = {
   storage: "Pamięć sejfu",
   used: "użyto z",
   privacy_policy: "Polityka prywatności",
+  privacy_settings: "Ustawienia prywatności",
   choose_language: "Wybierz język",
   search_language: "Szukaj języka…",
 

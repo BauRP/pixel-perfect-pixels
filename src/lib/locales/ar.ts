@@ -74,6 +74,7 @@ export const ar: Translation = {
   storage: "مساحة الخزنة",
   used: "مستخدمة من",
   privacy_policy: "سياسة الخصوصية",
+  privacy_settings: "إعدادات الخصوصية",
   choose_language: "اختر لغتك",
   search_language: "ابحث عن لغة…",
 

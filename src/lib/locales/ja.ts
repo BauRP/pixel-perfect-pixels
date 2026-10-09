@@ -74,6 +74,7 @@ export const ja: Translation = {
   storage: "金庫のストレージ",
   used: "使用中 /",
   privacy_policy: "プライバシーポリシー",
+  privacy_settings: "プライバシー設定",
   choose_language: "言語を選択してください",
   search_language: "言語を検索…",
 

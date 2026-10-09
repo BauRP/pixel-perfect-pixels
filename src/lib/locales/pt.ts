@@ -74,6 +74,7 @@ export const pt: Translation = {
   storage: "Armazenamento do cofre",
   used: "usados de",
   privacy_policy: "Política de privacidade",
+  privacy_settings: "Configurações de privacidade",
   choose_language: "Escolha seu idioma",
   search_language: "Pesquisar idioma…",
 

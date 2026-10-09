@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { showPrivacyOptions, usePrivacyOptionsRequired } from "@/lib/native-ads";
 import { AppShell, ScreenHeader } from "@/components/AppShell";
 import { useVault, vault, totalBytes, fmtBytes } from "@/lib/vault-store";
 import { useT, useLang, LANGS, type Lang } from "@/lib/i18n";
@@ -12,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Fingerprint, HardDrive, KeyRound, Languages, Palette, FileText, X } from "lucide-react";
+import { Fingerprint, HardDrive, KeyRound, Languages, Palette, FileText, ShieldCheck } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { safePin, useSafePin } from "@/lib/pin-store";
 
@@ -121,6 +122,7 @@ function SettingsScreen() {
           </div>
           <Divider />
           <PrivacyPolicyRow />
+          <PrivacyOptionsRow />
         </Group>
 
         <div className="text-center text-[11px] text-muted-foreground pt-1">
@@ -273,44 +275,32 @@ function PasswordRow() {
 
 function PrivacyPolicyRow() {
   const t = useT();
-  const [open, setOpen] = useState(false);
-  const [navH, setNavH] = useState(0);
-  const openPolicy = () => {
-    const nav = document.querySelector<HTMLElement>("[data-bottom-nav]");
-    setNavH(nav ? Math.round(nav.getBoundingClientRect().height) : 0);
-    setOpen(true);
-  };
+  return (
+    <Link to="/privacy" className="block w-full text-left tap" aria-label={t("privacy_policy")}>
+      <Row
+        icon={<FileText size={18} />}
+        label={t("privacy_policy")}
+        right={<span className="text-xs text-muted-foreground">›</span>}
+      />
+    </Link>
+  );
+}
+
+/** Google UMP privacy options entry — rendered only when the user is in a consent region. */
+function PrivacyOptionsRow() {
+  const t = useT();
+  const required = usePrivacyOptionsRequired();
+  if (!required) return null;
   return (
     <>
-      <button
-        onClick={openPolicy}
-        className="w-full text-left tap"
-        aria-label={t("privacy_policy")}
-      >
+      <Divider />
+      <button onClick={() => void showPrivacyOptions()} className="w-full text-left tap" aria-label={t("privacy_settings")}>
         <Row
-          icon={<FileText size={18} />}
-          label={t("privacy_policy")}
+          icon={<ShieldCheck size={18} />}
+          label={t("privacy_settings")}
           right={<span className="text-xs text-muted-foreground">›</span>}
         />
       </button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent
-          className="!left-0 !top-0 !translate-x-0 !translate-y-0 !max-w-none w-full flex flex-col gap-0 rounded-none border-0 border-b p-0 overflow-hidden data-[state=open]:zoom-in-100 data-[state=closed]:zoom-out-100 [&>button]:hidden"
-          style={{ bottom: navH, paddingTop: "var(--app-safe-top)" }}
-        >
-          <DialogHeader className="flex flex-row items-center justify-between px-5 pt-4 pb-2 space-y-0">
-            <DialogTitle className="text-base font-semibold">{t("privacy_policy")}</DialogTitle>
-            <DialogClose
-              className="tap grid h-9 w-9 place-items-center rounded-full"
-              style={{ background: "var(--color-muted)" }}
-              aria-label={t("close")}
-            >
-              <X size={18} />
-            </DialogClose>
-          </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto" />
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

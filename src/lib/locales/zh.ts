@@ -74,6 +74,7 @@ export const zh: Translation = {
   storage: "保险箱存储空间",
   used: "已使用，共",
   privacy_policy: "隐私政策",
+  privacy_settings: "隐私设置",
   choose_language: "选择你的语言",
   search_language: "搜索语言…",
 
