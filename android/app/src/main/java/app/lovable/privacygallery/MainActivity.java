@@ -33,6 +33,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // Регистрация плагинов Capacitor
         registerPlugin(SecureVaultPlugin.class);
+        registerPlugin(NativeAdsPlugin.class);
         
         super.onCreate(savedInstanceState);
 

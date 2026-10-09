@@ -13,7 +13,7 @@ export interface BackoffOptions {
 
 export const NATIVE_AD_BACKOFF: BackoffOptions = {
   baseMs: 5_000,
-  maxMs: 5 * 60_000,
+  maxMs: 30_000,
   factor: 2,
   jitter: 0.2,
 };

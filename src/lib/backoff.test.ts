@@ -11,8 +11,8 @@ describe("native ad exponential backoff", () => {
   });
 
   it("never waits longer than 5 minutes", () => {
-    expect(backoffDelay(20, NATIVE_AD_BACKOFF, noJitter)).toBe(300_000);
-    expect(backoffDelay(20, NATIVE_AD_BACKOFF, () => 1)).toBe(300_000);
+    expect(backoffDelay(20, NATIVE_AD_BACKOFF, noJitter)).toBe(30_000);
+    expect(backoffDelay(20, NATIVE_AD_BACKOFF, () => 1)).toBe(30_000);
   });
 
   it("spreads delays by at most 20 percent", () => {
