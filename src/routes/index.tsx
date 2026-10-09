@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell, ScreenHeader } from "@/components/AppShell";
+import { NativeAdTile } from "@/components/NativeAdTile";
 import { useT } from "@/lib/i18n";
 import { deviceScan, useDeviceScan, type ScannedAlbum } from "@/lib/device-scan";
 import { Loader2, Play } from "lucide-react";
@@ -166,6 +167,7 @@ function FolderGrid({
         gap: columns >= 4 ? "0.5rem" : columns === 3 ? "0.625rem" : "0.75rem",
       }}
     >
+      <NativeAdTile key="ad-slot" />
       {albums.map((f, i) => {
         const previews = f.items.slice(0, 4);
         return (
