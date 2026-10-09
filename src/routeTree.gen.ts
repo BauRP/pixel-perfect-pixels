@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as GalleryFolderRouteImport } from './routes/gallery.$folder'
 import { Route as SafeIndexRouteImport } from './routes/safe.index'
@@ -18,6 +19,11 @@ import { Route as SafeFolderRouteImport } from './routes/safe.$folder'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -43,6 +49,7 @@ const SafeFolderRoute = SafeFolderRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/privacy': typeof PrivacyRoute
   '/settings': typeof SettingsRoute
   '/gallery/$folder': typeof GalleryFolderRoute
   '/safe/$folder': typeof SafeFolderRoute
@@ -50,6 +57,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/privacy': typeof PrivacyRoute
   '/settings': typeof SettingsRoute
   '/gallery/$folder': typeof GalleryFolderRoute
   '/safe/$folder': typeof SafeFolderRoute
@@ -58,6 +66,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/privacy': typeof PrivacyRoute
   '/settings': typeof SettingsRoute
   '/gallery/$folder': typeof GalleryFolderRoute
   '/safe/$folder': typeof SafeFolderRoute
@@ -65,12 +74,25 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/settings' | '/gallery/$folder' | '/safe/$folder' | '/safe/'
+  fullPaths:
+    | '/'
+    | '/privacy'
+    | '/settings'
+    | '/gallery/$folder'
+    | '/safe/$folder'
+    | '/safe/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/settings' | '/gallery/$folder' | '/safe/$folder' | '/safe'
+  to:
+    | '/'
+    | '/privacy'
+    | '/settings'
+    | '/gallery/$folder'
+    | '/safe/$folder'
+    | '/safe'
   id:
     | '__root__'
     | '/'
+    | '/privacy'
     | '/settings'
     | '/gallery/$folder'
     | '/safe/$folder'
@@ -79,6 +101,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  PrivacyRoute: typeof PrivacyRoute
   SettingsRoute: typeof SettingsRoute
   GalleryFolderRoute: typeof GalleryFolderRoute
   SafeFolderRoute: typeof SafeFolderRoute
@@ -92,6 +115,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -127,6 +157,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  PrivacyRoute: PrivacyRoute,
   SettingsRoute: SettingsRoute,
   GalleryFolderRoute: GalleryFolderRoute,
   SafeFolderRoute: SafeFolderRoute,
