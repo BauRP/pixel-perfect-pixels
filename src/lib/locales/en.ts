@@ -83,6 +83,7 @@ export const en = {
   storage: "Safe storage",
   used: "used of",
   privacy_policy: "Privacy Policy",
+  privacy_settings: "Privacy settings",
   choose_language: "Choose your language",
   search_language: "Search language…",
 

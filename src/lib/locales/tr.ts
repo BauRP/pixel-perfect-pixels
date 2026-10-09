@@ -74,6 +74,7 @@ export const tr: Translation = {
   storage: "Kasa depolaması",
   used: "kullanıldı /",
   privacy_policy: "Gizlilik Politikası",
+  privacy_settings: "Gizlilik ayarları",
   choose_language: "Dilinizi seçin",
   search_language: "Dil ara…",
 

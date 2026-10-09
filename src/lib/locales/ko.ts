@@ -74,6 +74,7 @@ export const ko: Translation = {
   storage: "금고 저장 공간",
   used: "사용 중 / 총",
   privacy_policy: "개인정보 처리방침",
+  privacy_settings: "개인정보 설정",
   choose_language: "언어를 선택하세요",
   search_language: "언어 검색…",
 

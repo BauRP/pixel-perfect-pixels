@@ -64,7 +64,7 @@ const KEY = "vault.store.v3";
 const DEFAULT: State = {
   folders: [],
   crypto: null,
-  biometricsEnabled: true,
+  biometricsEnabled: false,
   theme: "dark",
   unlocked: false,
 };

@@ -74,6 +74,7 @@ export const es: Translation = {
   storage: "Almacenamiento de la caja fuerte",
   used: "usados de",
   privacy_policy: "Política de privacidad",
+  privacy_settings: "Ajustes de privacidad",
   choose_language: "Elige tu idioma",
   search_language: "Buscar idioma…",
 

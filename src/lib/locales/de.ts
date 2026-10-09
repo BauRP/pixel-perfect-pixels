@@ -74,6 +74,7 @@ export const de: Translation = {
   storage: "Safe-Speicher",
   used: "belegt von",
   privacy_policy: "Datenschutzerklärung",
+  privacy_settings: "Datenschutzeinstellungen",
   choose_language: "Wähle deine Sprache",
   search_language: "Sprache suchen…",
 

@@ -74,6 +74,7 @@ export const kk: Translation = {
   storage: "Сейф жады",
   used: "мұнан",
   privacy_policy: "Құпиялылық саясаты",
+  privacy_settings: "Құпиялық баптаулары",
   choose_language: "Тілді таңдаңыз",
   search_language: "Тілді іздеу…",
 

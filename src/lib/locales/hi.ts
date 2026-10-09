@@ -74,6 +74,7 @@ export const hi: Translation = {
   storage: "सेफ़ स्टोरेज",
   used: "में से उपयोग",
   privacy_policy: "गोपनीयता नीति",
+  privacy_settings: "गोपनीयता सेटिंग्स",
   choose_language: "अपनी भाषा चुनें",
   search_language: "भाषा खोजें…",
 

@@ -74,6 +74,7 @@ export const id: Translation = {
   storage: "Penyimpanan peti aman",
   used: "terpakai dari",
   privacy_policy: "Kebijakan Privasi",
+  privacy_settings: "Pengaturan privasi",
   choose_language: "Pilih bahasa Anda",
   search_language: "Cari bahasa…",
 

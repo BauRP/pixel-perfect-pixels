@@ -74,6 +74,7 @@ export const fr: Translation = {
   storage: "Stockage du coffre",
   used: "utilisés sur",
   privacy_policy: "Politique de confidentialité",
+  privacy_settings: "Paramètres de confidentialité",
   choose_language: "Choisissez votre langue",
   search_language: "Rechercher une langue…",
 

@@ -74,6 +74,7 @@ export const it: Translation = {
   storage: "Spazio della cassaforte",
   used: "usati su",
   privacy_policy: "Informativa sulla privacy",
+  privacy_settings: "Impostazioni privacy",
   choose_language: "Scegli la tua lingua",
   search_language: "Cerca lingua…",
 
