@@ -58,6 +58,8 @@ dependencies {
     
     // Google Mobile Ads SDK — used only by NativeAdsPlugin.java (native advanced slot).
     implementation "com.google.android.gms:play-services-ads:$playServicesAdsVersion"
+    // Google UMP SDK — EEA/UK consent gathered before MobileAds.initialize().
+    implementation "com.google.android.ump:user-messaging-platform:$userMessagingPlatformVersion"
 
     // MultiDex runtime
     implementation 'androidx.multidex:multidex:2.0.1'

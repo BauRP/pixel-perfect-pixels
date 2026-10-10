@@ -17,6 +17,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { useSyncExternalStore } from "react";
 import { backoffDelay } from "./backoff";
 
 export { cssColorToHex } from "./css-color";
@@ -264,4 +265,53 @@ export function readThemeColors(): NativeAdColors {
     accent: v("--color-accent", "#0a84ff"),
     accentForeground: v("--color-accent-foreground", "#ffffff"),
   };
+}
+
+// ── Google UMP privacy options (EEA / UK consent) ───────────────────────────
+interface ConsentPlugin {
+  getPrivacyOptionsStatus(): Promise<{ required: boolean }>;
+  showPrivacyOptionsForm(): Promise<{ required: boolean }>;
+}
+const Consent = NativeAds as unknown as ConsentPlugin & {
+  addListener(event: "consentUpdated", cb: (d: { required: boolean }) => void): Promise<unknown>;
+};
+
+let privacyRequired = false;
+let privacyWatch = false;
+const privacyListeners = new Set<() => void>();
+function setPrivacyRequired(v: boolean) {
+  if (v === privacyRequired) return;
+  privacyRequired = v;
+  privacyListeners.forEach((l) => l());
+}
+function watchPrivacy() {
+  if (privacyWatch || !isNativeAdSupported()) return;
+  privacyWatch = true;
+  void Consent.getPrivacyOptionsStatus().then((r) => setPrivacyRequired(!!r.required)).catch(() => {});
+  void Consent.addListener("consentUpdated", (d) => setPrivacyRequired(!!d.required)).catch(() => {});
+}
+
+/** True only for users in a region where Google requires a privacy-options entry point. */
+export function usePrivacyOptionsRequired(): boolean {
+  return useSyncExternalStore(
+    (cb) => {
+      watchPrivacy();
+      privacyListeners.add(cb);
+      return () => {
+        privacyListeners.delete(cb);
+      };
+    },
+    () => privacyRequired,
+    () => false,
+  );
+}
+
+export async function showPrivacyOptions(): Promise<void> {
+  if (!isNativeAdSupported()) return;
+  try {
+    const r = await Consent.showPrivacyOptionsForm();
+    setPrivacyRequired(!!r.required);
+  } catch {
+    /* form unavailable */
+  }
 }

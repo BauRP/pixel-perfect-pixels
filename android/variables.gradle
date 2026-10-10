@@ -16,6 +16,7 @@ ext {
     cordovaAndroidVersion = '10.1.1'
 
     playServicesAdsVersion = '24.9.0'
+    userMessagingPlatformVersion = '3.2.0'
 
     // Kotlin Gradle plugin version for Capacitor plugin modules.
     kotlin_version = '2.2.20'
