@@ -2,7 +2,6 @@ package app.lovable.privacygallery;
 
 import android.app.Activity;
 import android.content.Context;
-import android.content.pm.ApplicationInfo;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -36,6 +35,7 @@ import com.google.android.gms.ads.nativead.MediaView;
 import com.google.android.gms.ads.nativead.NativeAd;
 import com.google.android.gms.ads.nativead.NativeAdOptions;
 import com.google.android.gms.ads.nativead.NativeAdView;
+import com.google.android.ump.ConsentDebugSettings;
 import com.google.android.ump.ConsentInformation;
 import com.google.android.ump.ConsentRequestParameters;
 import com.google.android.ump.UserMessagingPlatform;
@@ -71,6 +71,8 @@ public class NativeAdsPlugin extends Plugin {
     private boolean loading = false;
     private final AtomicBoolean sdkInitStarted = new AtomicBoolean(false);
     private ConsentInformation consentInfo = null;
+    /** True once the consent info request for this session has completed (success or error). */
+    private volatile boolean consentResolved = false;
     private ConnectivityManager.NetworkCallback netCallback = null;
     private String lastNetKey = "";
 
@@ -111,7 +113,19 @@ public class NativeAdsPlugin extends Plugin {
         final Activity activity = getActivity();
         if (activity == null) return;
         consentInfo = UserMessagingPlatform.getConsentInformation(activity);
-        ConsentRequestParameters params = new ConsentRequestParameters.Builder().build();
+        ConsentRequestParameters.Builder pb = new ConsentRequestParameters.Builder();
+        // Debug-only geography override (BuildConfig values are empty in release).
+        if (!BuildConfig.UMP_DEBUG_GEOGRAPHY.isEmpty()) {
+            ConsentDebugSettings.Builder db = new ConsentDebugSettings.Builder(activity);
+            switch (BuildConfig.UMP_DEBUG_GEOGRAPHY) {
+                case "EEA": db.setDebugGeography(ConsentDebugSettings.DebugGeography.DEBUG_GEOGRAPHY_EEA); break;
+                case "OTHER": db.setDebugGeography(ConsentDebugSettings.DebugGeography.DEBUG_GEOGRAPHY_OTHER); break;
+                default: break;
+            }
+            if (!BuildConfig.UMP_TEST_DEVICE_ID.isEmpty()) db.addTestDeviceHashedId(BuildConfig.UMP_TEST_DEVICE_ID);
+            pb.setConsentDebugSettings(db.build());
+        }
+        ConsentRequestParameters params = pb.build();
         activity.runOnUiThread(() -> consentInfo.requestConsentInfoUpdate(activity, params,
                 () -> UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity, formError -> {
                     if (formError != null) Log.w(TAG, "consent form: " + formError.getMessage());
@@ -130,10 +144,22 @@ public class NativeAdsPlugin extends Plugin {
     }
 
     private void onConsentResolved() {
+        consentResolved = true;
         if (consentInfo != null && consentInfo.canRequestAds()) initSdk();
-        JSObject ev = new JSObject();
-        ev.put("required", privacyOptionsRequired());
-        notifyListeners("consentUpdated", ev);
+        notifyListeners("consentUpdated", consentStatus(), true);
+    }
+
+    private JSObject consentStatus() {
+        JSObject o = new JSObject();
+        o.put("required", privacyOptionsRequired());
+        o.put("canRequestAds", canRequestAds());
+        o.put("resolved", consentResolved);
+        return o;
+    }
+
+    @PluginMethod
+    public void getConsentStatus(final PluginCall call) {
+        call.resolve(consentStatus());
     }
 
     private boolean canRequestAds() {
@@ -163,9 +189,6 @@ public class NativeAdsPlugin extends Plugin {
         }));
     }
 
-    private boolean isDebuggable() {
-        return (getContext().getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
-    }
 
     // ── Connectivity (event driven, no polling, no location permission) ──────
     private void registerNetworkCallback() {
@@ -251,12 +274,12 @@ public class NativeAdsPlugin extends Plugin {
         if (!canRequestAds()) {
             // Consent not yet given/resolved: no ad request; JS backoff retries later.
             ret.put("started", false);
-            ret.put("reason", "CONSENT_REQUIRED");
+            ret.put("reason", consentResolved ? "CONSENT_REQUIRED" : "CONSENT_PENDING");
             call.resolve(ret);
             return;
         }
         initSdk();
-        final String adId = isDebuggable() ? TEST_NATIVE_AD_UNIT_ID : prodId;
+        final String adId = BuildConfig.USE_TEST_ADS ? TEST_NATIVE_AD_UNIT_ID : prodId;
         loading = true;
         ret.put("started", true);
         call.resolve(ret);
@@ -324,10 +347,27 @@ public class NativeAdsPlugin extends Plugin {
         final JSObject colors = call.getObject("colors", new JSObject());
 
         activity.runOnUiThread(() -> {
+            JSObject res = new JSObject();
+            if (nativeAd == null) {
+                if (clipFrame != null) clipFrame.setVisibility(View.GONE);
+                res.put("shown", false);
+                res.put("reason", "NO_AD");
+                call.resolve(res);
+                return;
+            }
             ensureViews(activity);
-            if (clipFrame == null || adView == null) return;
-            if (!visible || nativeAd == null || w <= 0 || h <= 0 || clipBottom <= clipTop) {
+            if (clipFrame == null || adView == null) {
+                // WebView hierarchy not ready yet — JS re-sends bounds on the next frame/event.
+                res.put("shown", false);
+                res.put("reason", "VIEW_NOT_READY");
+                call.resolve(res);
+                return;
+            }
+            if (!visible || w <= 0 || h <= 0 || clipBottom <= clipTop) {
                 clipFrame.setVisibility(View.GONE);
+                res.put("shown", false);
+                res.put("reason", "HIDDEN");
+                call.resolve(res);
                 return;
             }
             float d = activity.getResources().getDisplayMetrics().density;
@@ -351,8 +391,10 @@ public class NativeAdsPlugin extends Plugin {
             ap.topMargin = Math.round((float) (y - clipTop) * d);
             adView.setLayoutParams(ap);
             clipFrame.setVisibility(View.VISIBLE);
+            clipFrame.bringToFront();
+            res.put("shown", true);
+            call.resolve(res);
         });
-        call.resolve();
     }
 
     @PluginMethod
@@ -567,7 +609,9 @@ public class NativeAdsPlugin extends Plugin {
         if (nativeAd != null) nativeAd.destroy();
         clipFrame = null;
         adView = null;
+        boolean had = nativeAd != null;
         nativeAd = null;
         loading = false;
+        if (had) notifyListeners("adGone", new JSObject());
     }
 }

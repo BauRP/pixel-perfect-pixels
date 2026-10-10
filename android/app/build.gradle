@@ -20,10 +20,48 @@ android {
         }
     }
     
+    buildFeatures {
+        buildConfig true
+    }
+
+    // Optional release signing from CI secrets / local gradle properties.
+    def ksPath = System.getenv("ANDROID_KEYSTORE_PATH") ?: (project.findProperty("releaseStoreFile") ?: "")
+    signingConfigs {
+        if (ksPath && file(ksPath).exists()) {
+            release {
+                storeFile file(ksPath)
+                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: project.findProperty("releaseStorePassword")
+                keyAlias System.getenv("ANDROID_KEY_ALIAS") ?: project.findProperty("releaseKeyAlias")
+                keyPassword System.getenv("ANDROID_KEY_PASSWORD") ?: project.findProperty("releaseKeyPassword")
+            }
+        }
+    }
+
+    // Test-only consent debugging, never present in release:
+    //   ./gradlew assembleDebug -PumpDebugGeography=EEA -PumpTestDeviceId=<hashed id from logcat>
+    def umpGeo = (project.findProperty("umpDebugGeography") ?: "").toString()
+    def umpDevice = (project.findProperty("umpTestDeviceId") ?: "").toString()
+    // Google's native ad validator popup: off unless explicitly requested (-PadsNativeValidator=true).
+    def nativeValidator = (project.findProperty("adsNativeValidator") ?: "false").toString()
+
     buildTypes {
+        debug {
+            buildConfigField "boolean", "USE_TEST_ADS", "true"
+            buildConfigField "String", "UMP_DEBUG_GEOGRAPHY", "\"${umpGeo}\""
+            buildConfigField "String", "UMP_TEST_DEVICE_ID", "\"${umpDevice}\""
+            manifestPlaceholders = [nativeAdDebuggerEnabled: nativeValidator]
+        }
         release {
+            debuggable false
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            buildConfigField "boolean", "USE_TEST_ADS", "false"
+            buildConfigField "String", "UMP_DEBUG_GEOGRAPHY", "\"\""
+            buildConfigField "String", "UMP_TEST_DEVICE_ID", "\"\""
+            manifestPlaceholders = [nativeAdDebuggerEnabled: "false"]
+            if (signingConfigs.findByName("release") != null) {
+                signingConfig signingConfigs.release
+            }
         }
     }
     

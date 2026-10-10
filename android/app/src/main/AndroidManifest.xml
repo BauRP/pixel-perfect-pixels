@@ -89,6 +89,11 @@
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-9902253594429663~9587409077" />
+        <!-- Native ad validator (debug diagnostics popup). Disabled in release;
+             in debug only when built with -PadsNativeValidator=true. -->
+        <meta-data
+            android:name="com.google.android.gms.ads.flag.NATIVE_AD_DEBUGGER_ENABLED"
+            android:value="${nativeAdDebuggerEnabled}" />
 
 
     </application>
