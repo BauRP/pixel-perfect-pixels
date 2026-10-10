@@ -36,6 +36,10 @@ import com.google.android.gms.ads.nativead.MediaView;
 import com.google.android.gms.ads.nativead.NativeAd;
 import com.google.android.gms.ads.nativead.NativeAdOptions;
 import com.google.android.gms.ads.nativead.NativeAdView;
+import com.google.android.ump.ConsentInformation;
+import com.google.android.ump.ConsentRequestParameters;
+import com.google.android.ump.UserMessagingPlatform;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Google Mobile Ads "Native Advanced" bridge for the first gallery slot.
@@ -65,7 +69,8 @@ public class NativeAdsPlugin extends Plugin {
 
     private NativeAd nativeAd = null;
     private boolean loading = false;
-    private boolean sdkInitStarted = false;
+    private final AtomicBoolean sdkInitStarted = new AtomicBoolean(false);
+    private ConsentInformation consentInfo = null;
     private ConnectivityManager.NetworkCallback netCallback = null;
     private String lastNetKey = "";
 
@@ -79,14 +84,13 @@ public class NativeAdsPlugin extends Plugin {
     @Override
     public void load() {
         super.load();
-        initSdk();
         registerNetworkCallback();
+        gatherConsent();
     }
 
     /** The only Google Mobile Ads SDK initialization in the app (off the UI thread). */
     private void initSdk() {
-        if (sdkInitStarted) return;
-        sdkInitStarted = true;
+        if (!sdkInitStarted.compareAndSet(false, true)) return;
         final Context appCtx = getContext().getApplicationContext();
         new Thread(() -> {
             try {
@@ -95,6 +99,68 @@ public class NativeAdsPlugin extends Plugin {
                 Log.w(TAG, "Mobile Ads SDK init failed", t);
             }
         }, "mobile-ads-init").start();
+    }
+
+    // ── Google UMP consent (EEA / UK) ───────────────────────────────────────
+    /**
+     * Requests the latest consent info on every launch and shows the consent
+     * form when required. MobileAds.initialize() runs only once ads may be
+     * requested; a previous session's consent lets ads start immediately.
+     */
+    private void gatherConsent() {
+        final Activity activity = getActivity();
+        if (activity == null) return;
+        consentInfo = UserMessagingPlatform.getConsentInformation(activity);
+        ConsentRequestParameters params = new ConsentRequestParameters.Builder().build();
+        activity.runOnUiThread(() -> consentInfo.requestConsentInfoUpdate(activity, params,
+                () -> UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity, formError -> {
+                    if (formError != null) Log.w(TAG, "consent form: " + formError.getMessage());
+                    onConsentResolved();
+                }),
+                requestError -> {
+                    Log.w(TAG, "consent info update failed: " + requestError.getMessage());
+                    onConsentResolved();
+                }));
+        if (consentInfo.canRequestAds()) initSdk();
+    }
+
+    private boolean privacyOptionsRequired() {
+        return consentInfo != null && consentInfo.getPrivacyOptionsRequirementStatus()
+                == ConsentInformation.PrivacyOptionsRequirementStatus.REQUIRED;
+    }
+
+    private void onConsentResolved() {
+        if (consentInfo != null && consentInfo.canRequestAds()) initSdk();
+        JSObject ev = new JSObject();
+        ev.put("required", privacyOptionsRequired());
+        notifyListeners("consentUpdated", ev);
+    }
+
+    private boolean canRequestAds() {
+        return consentInfo != null && consentInfo.canRequestAds();
+    }
+
+    @PluginMethod
+    public void getPrivacyOptionsStatus(final PluginCall call) {
+        JSObject r = new JSObject();
+        r.put("required", privacyOptionsRequired());
+        call.resolve(r);
+    }
+
+    @PluginMethod
+    public void showPrivacyOptionsForm(final PluginCall call) {
+        final Activity activity = getActivity();
+        if (activity == null) {
+            call.reject("NO_ACTIVITY");
+            return;
+        }
+        activity.runOnUiThread(() -> UserMessagingPlatform.showPrivacyOptionsForm(activity, formError -> {
+            if (formError != null) Log.w(TAG, "privacy options form: " + formError.getMessage());
+            onConsentResolved();
+            JSObject r = new JSObject();
+            r.put("required", privacyOptionsRequired());
+            call.resolve(r);
+        }));
     }
 
     private boolean isDebuggable() {
@@ -182,6 +248,14 @@ public class NativeAdsPlugin extends Plugin {
             call.resolve(ret);
             return;
         }
+        if (!canRequestAds()) {
+            // Consent not yet given/resolved: no ad request; JS backoff retries later.
+            ret.put("started", false);
+            ret.put("reason", "CONSENT_REQUIRED");
+            call.resolve(ret);
+            return;
+        }
+        initSdk();
         final String adId = isDebuggable() ? TEST_NATIVE_AD_UNIT_ID : prodId;
         loading = true;
         ret.put("started", true);
