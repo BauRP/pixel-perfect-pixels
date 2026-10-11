@@ -2,7 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useT } from "@/lib/i18n";
 import {
   activateNativeAdSlot, getNativeAdState, getServerNativeAdState, hideNativeAd,
-  isNativeAdSupported, readThemeColors, setNativeAdBounds, subscribeNativeAd,
+  isNativeAdSupported, onAppResume, readThemeColors, setNativeAdBounds, subscribeNativeAd,
 } from "@/lib/native-ads";
 
 /** Height of the ad slot in CSS px (spans the full grid row; constant across states). */
@@ -77,6 +77,7 @@ export function NativeAdTile() {
     resize.observe(el);
     scroller?.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", schedule);
+    const offResume = onAppResume(schedule);
     schedule();
 
     return () => {
@@ -86,6 +87,7 @@ export function NativeAdTile() {
       resize.disconnect();
       scroller?.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
+      offResume();
       hideNativeAd();
     };
   }, [loaded, label]);
@@ -105,7 +107,7 @@ export function NativeAdTile() {
         border: "1px solid var(--color-border)",
       }}
     >
-      {!loaded && (
+      {(
         <div className="flex h-full items-center gap-3 p-3" aria-hidden="true">
           <div
             className={`h-full aspect-square rounded-2xl ${pulsing ? "animate-pulse" : ""}`}
