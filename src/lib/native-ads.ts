@@ -35,7 +35,9 @@ export type AdState =
   | "LOADED"
   | "NO_FILL"
   | "FAILED"
-  | "TIMED_OUT";
+  | "TIMED_OUT"
+  | "CONSENT_PENDING"
+  | "CONSENT_REQUIRED";
 
 type NetStatus = "none" | "unvalidated" | "online";
 
@@ -61,15 +63,18 @@ export interface NativeAdBounds {
 }
 
 interface NetInfo { status: NetStatus; transport: string }
+interface ConsentStatus { required: boolean; canRequestAds: boolean; resolved: boolean }
 
 interface NativeAdsPlugin {
   getNetworkState(): Promise<NetInfo>;
   loadAd(options: { adId: string }): Promise<{ started: boolean; reason?: string }>;
-  setBounds(options: NativeAdBounds): Promise<void>;
+  setBounds(options: NativeAdBounds): Promise<{ shown: boolean; reason?: string }>;
+  getConsentStatus(): Promise<ConsentStatus>;
   hide(): Promise<void>;
   destroy(): Promise<void>;
   addListener(event: "networkChanged", cb: (d: NetInfo) => void): Promise<{ remove: () => Promise<void> }>;
-  addListener(event: "adLoaded", cb: () => void): Promise<{ remove: () => Promise<void> }>;
+  addListener(event: "adLoaded" | "adGone", cb: () => void): Promise<{ remove: () => Promise<void> }>;
+  addListener(event: "consentUpdated", cb: (d: ConsentStatus) => void): Promise<{ remove: () => Promise<void> }>;
   addListener(
     event: "adFailed",
     cb: (d: { code: number; message: string; noFill: boolean }) => void,
@@ -106,6 +111,7 @@ let deadlineTimer: ReturnType<typeof setTimeout> | null = null;
 let foreground = true;
 let screenActive = 0; // number of mounted ad slots (0 or 1)
 let started = false;
+let canRequestAds = false;
 
 function clearRetry() {
   if (retryTimer !== null) clearTimeout(retryTimer);
@@ -158,6 +164,30 @@ function onAdLoaded() {
   setState("LOADED");
 }
 
+function onConsent(c: ConsentStatus) {
+  setPrivacyRequired(!!c.required);
+  const was = canRequestAds;
+  canRequestAds = !!c.canRequestAds;
+  if (!canRequestAds) {
+    clearRetry();
+    if (state !== "LOADED" && !requestInFlight) setState(c.resolved ? "CONSENT_REQUIRED" : "CONSENT_PENDING");
+    return;
+  }
+  if (!was && state !== "LOADED") {
+    attempt = 0;
+    setState("IDLE");
+    void requestAd();
+  }
+}
+
+/** Native side no longer holds an ad (destroyed / torn down): resync and reload. */
+function onAdGone() {
+  if (state !== "LOADED") return;
+  setState("IDLE");
+  attempt = 0;
+  void requestAd();
+}
+
 function onAdFailed(noFill: boolean) {
   requestInFlight = false;
   clearDeadline();
@@ -170,6 +200,11 @@ function onAdFailed(noFill: boolean) {
 
 async function requestAd(): Promise<void> {
   if (!isNativeAdSupported() || requestInFlight || !eligible()) return;
+  if (!canRequestAds) {
+    // Never request (or retry) while consent forbids it; consentUpdated resumes us.
+    clearRetry();
+    return;
+  }
   if (net !== "online") {
     setState(net === "none" ? "NO_INTERNET" : "WAITING_FOR_NETWORK");
     return;
@@ -186,6 +221,14 @@ async function requestAd(): Promise<void> {
   }, AD_SOFT_DEADLINE_MS);
   try {
     const res = await NativeAds.loadAd({ adId: NATIVE_AD_UNIT_ID });
+    if (res.reason === "CONSENT_PENDING" || res.reason === "CONSENT_REQUIRED") {
+      // Consent state, not an ad failure: no backoff loop.
+      requestInFlight = false;
+      clearDeadline();
+      canRequestAds = false;
+      setState(res.reason);
+      return;
+    }
     if (!res.started && res.reason !== "LOAD_IN_PROGRESS" && res.reason !== "ALREADY_LOADED") {
       onAdFailed(false);
     }
@@ -201,6 +244,9 @@ async function start() {
     await NativeAds.addListener("networkChanged", (d) => onNetwork(d.status));
     await NativeAds.addListener("adLoaded", onAdLoaded);
     await NativeAds.addListener("adFailed", (d) => onAdFailed(!!d.noFill));
+    await NativeAds.addListener("adGone", onAdGone);
+    // retainUntilConsumed on native side delivers a resolution that preceded this listener.
+    await NativeAds.addListener("consentUpdated", onConsent);
   } catch {
     /* plugin missing — slot stays as fallback */
   }
@@ -212,7 +258,7 @@ async function start() {
         clearRetry();
         return;
       }
-      listeners.forEach((l) => l()); // re-place overlay after resume
+      resumeListeners.forEach((l) => l()); // re-place overlay after resume
       if (state !== "LOADED" && !requestInFlight) {
         attempt = 0;
         void requestAd();
@@ -220,6 +266,11 @@ async function start() {
     });
   } catch {
     /* lifecycle listener unavailable */
+  }
+  try {
+    onConsent(await NativeAds.getConsentStatus());
+  } catch {
+    canRequestAds = false;
   }
   try {
     net = (await NativeAds.getNetworkState()).status;
@@ -233,7 +284,7 @@ export function activateNativeAdSlot(): () => void {
   screenActive += 1;
   if (isNativeAdSupported()) {
     void start().then(() => {
-      if (state === "LOADED") return;
+      if (state === "LOADED" || !canRequestAds) return;
       if (net !== "online") onNetwork(net);
       else if (!requestInFlight && retryTimer === null) void requestAd();
     });
@@ -244,9 +295,23 @@ export function activateNativeAdSlot(): () => void {
   };
 }
 
+/** Places the overlay; if the native side reports it no longer has an ad, JS state is resynced. */
 export function setNativeAdBounds(bounds: NativeAdBounds) {
   if (!isNativeAdSupported()) return;
-  void NativeAds.setBounds(bounds).catch(() => {});
+  void NativeAds.setBounds(bounds)
+    .then((r) => {
+      if (r && r.reason === "NO_AD") onAdGone();
+    })
+    .catch(() => {});
+}
+
+/** Subscribe to foreground resumes so the slot can re-place the overlay. */
+const resumeListeners = new Set<() => void>();
+export function onAppResume(cb: () => void) {
+  resumeListeners.add(cb);
+  return () => {
+    resumeListeners.delete(cb);
+  };
 }
 
 export function hideNativeAd() {
@@ -272,9 +337,7 @@ interface ConsentPlugin {
   getPrivacyOptionsStatus(): Promise<{ required: boolean }>;
   showPrivacyOptionsForm(): Promise<{ required: boolean }>;
 }
-const Consent = NativeAds as unknown as ConsentPlugin & {
-  addListener(event: "consentUpdated", cb: (d: { required: boolean }) => void): Promise<unknown>;
-};
+const Consent = NativeAds as unknown as ConsentPlugin;
 
 let privacyRequired = false;
 let privacyWatch = false;
@@ -288,7 +351,6 @@ function watchPrivacy() {
   if (privacyWatch || !isNativeAdSupported()) return;
   privacyWatch = true;
   void Consent.getPrivacyOptionsStatus().then((r) => setPrivacyRequired(!!r.required)).catch(() => {});
-  void Consent.addListener("consentUpdated", (d) => setPrivacyRequired(!!d.required)).catch(() => {});
 }
 
 /** True only for users in a region where Google requires a privacy-options entry point. */
@@ -311,6 +373,8 @@ export async function showPrivacyOptions(): Promise<void> {
   try {
     const r = await Consent.showPrivacyOptionsForm();
     setPrivacyRequired(!!r.required);
+    // Native also emits consentUpdated; refresh explicitly in case of a race.
+    onConsent(await NativeAds.getConsentStatus());
   } catch {
     /* form unavailable */
   }

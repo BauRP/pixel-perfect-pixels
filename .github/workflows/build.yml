@@ -91,17 +91,30 @@ jobs:
 
       - name: Build Android APK
         working-directory: ./android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:assembleDebug --stacktrace --warning-mode all
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            # Production: signed, non-debuggable release -> real ad unit, no validator.
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/release.jks"
+            ./gradlew :app:assembleRelease --stacktrace --warning-mode all
+          else
+            # No signing key configured: debug build -> Google test ads only.
+            ./gradlew :app:assembleDebug --stacktrace --warning-mode all
+          fi
 
       - name: Save APK as GitHub Artifact
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
           name: app-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: android/app/build/outputs/apk/**/*.apk
           retention-days: 1
 
       - name: Create Release & Upload APK (Official GitHub Link)

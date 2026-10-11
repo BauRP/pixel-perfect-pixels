@@ -11,3 +11,6 @@
 
 - Keep document and component layout LTR for all languages; apply Arabic RTL direction only to text-bearing leaves and text inputs so controls never mirror.
 - Native ad retries use backoffDelay() in src/lib/backoff.ts; the only ad module is src/lib/native-ads.ts (no banner) — one place for ad timing and IDs.
+
+- Ad unit selection is driven by BuildConfig.USE_TEST_ADS (debug=test unit, release=production); never by runtime debuggable checks — keeps release builds from ever serving test ads.
+- Native ad requests are gated on UMP canRequestAds(); consent states are not ad failures and never enter the retry backoff.
