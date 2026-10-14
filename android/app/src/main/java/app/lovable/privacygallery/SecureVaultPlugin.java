@@ -19,7 +19,12 @@ import android.provider.MediaStore;
 import android.provider.Settings;
 import android.util.Base64;
 
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.util.Log;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -57,6 +62,89 @@ import java.util.List;
  */
 @CapacitorPlugin(name = "SecureVault")
 public class SecureVaultPlugin extends Plugin {
+
+    // ── Runtime media permission (READ_MEDIA_* / READ_EXTERNAL_STORAGE) ─────
+    public static final int MEDIA_PERM_REQUEST_CODE = 4917;
+    private static PluginCall pendingMediaCall = null;
+    private static SecureVaultPlugin instance = null;
+
+    @Override
+    public void load() {
+        super.load();
+        instance = this;
+    }
+
+    private static String[] mediaPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            return new String[] { Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO };
+        }
+        return new String[] { Manifest.permission.READ_EXTERNAL_STORAGE };
+    }
+
+    /** "granted" | "partial" (Android 14 selected photos) | "denied" | "prompt". */
+    private String mediaPermissionState() {
+        Activity a = getActivity();
+        boolean all = true;
+        for (String p : mediaPermissions()) {
+            if (ContextCompat.checkSelfPermission(getContext(), p) != PackageManager.PERMISSION_GRANTED) { all = false; break; }
+        }
+        if (all) return "granted";
+        if (Build.VERSION.SDK_INT >= 34 && ContextCompat.checkSelfPermission(getContext(),
+                "android.permission.READ_MEDIA_VISUAL_USER_SELECTED") == PackageManager.PERMISSION_GRANTED) {
+            return "partial";
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) return "granted";
+        boolean asked = getContext().getSharedPreferences("nova_perm", 0).getBoolean("media_asked", false);
+        if (!asked) return "prompt";
+        if (a != null) {
+            for (String p : mediaPermissions()) {
+                if (ActivityCompat.shouldShowRequestPermissionRationale(a, p)) return "prompt";
+            }
+        }
+        return "denied";
+    }
+
+    @PluginMethod
+    public void checkMediaPermission(PluginCall call) {
+        JSObject r = new JSObject();
+        r.put("state", mediaPermissionState());
+        call.resolve(r);
+    }
+
+    @PluginMethod
+    public void requestMediaPermission(PluginCall call) {
+        String st = mediaPermissionState();
+        Activity a = getActivity();
+        if ("granted".equals(st) || a == null) {
+            JSObject r = new JSObject();
+            r.put("state", st);
+            call.resolve(r);
+            return;
+        }
+        if (pendingMediaCall != null) {
+            // Coalesce: a dialog is already up; resolve the older call with the current state.
+            JSObject r = new JSObject();
+            r.put("state", st);
+            pendingMediaCall.resolve(r);
+        }
+        pendingMediaCall = call;
+        getContext().getSharedPreferences("nova_perm", 0).edit().putBoolean("media_asked", true).apply();
+        Log.i("GalleryScan", "requesting media permission");
+        ActivityCompat.requestPermissions(a, mediaPermissions(), MEDIA_PERM_REQUEST_CODE);
+    }
+
+    /** Called from MainActivity.onRequestPermissionsResult. */
+    public static void onMediaPermissionResult() {
+        PluginCall c = pendingMediaCall;
+        pendingMediaCall = null;
+        if (c == null || instance == null) return;
+        JSObject r = new JSObject();
+        String st = instance.mediaPermissionState();
+        Log.i("GalleryScan", "media permission result: " + st);
+        r.put("state", st);
+        c.resolve(r);
+    }
+
 
     public static final int DELETE_REQUEST_CODE = 7311;
     private static final String VAULT_DIR = "nova_vault";

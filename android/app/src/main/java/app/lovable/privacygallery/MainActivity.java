@@ -23,11 +23,8 @@ import com.getcapacitor.BridgeActivity;
  */
 public class MainActivity extends BridgeActivity {
 
-    private static final long PERMISSION_DELAY_MS = 500L;
-    private static final int MEDIA_PERM_REQUEST_CODE = 4917;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private boolean mediaPermissionsRequested = false;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -39,7 +36,8 @@ public class MainActivity extends BridgeActivity {
 
         applyTransparentStatusBar();
 
-        mainHandler.postDelayed(this::requestMediaPermissions, PERMISSION_DELAY_MS);
+        // Media permission is requested by the web layer (SecureVault.requestMediaPermission)
+        // right before the first scan, so scanning can never race the dialog.
     }
 
     // ── Прозрачный статус-бар ──────────────────────────────────────────────
@@ -51,39 +49,20 @@ public class MainActivity extends BridgeActivity {
         w.setStatusBarColor(Color.TRANSPARENT);
     }
 
-    // ── Разрешения на медиа ───────────────────────────────────────────────
-    private void requestMediaPermissions() {
-        if (mediaPermissionsRequested) return;
-        mediaPermissionsRequested = true;
-
-        String[] perms;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            perms = new String[] {
-                    Manifest.permission.READ_MEDIA_IMAGES,
-                    Manifest.permission.READ_MEDIA_VIDEO
-            };
-        } else {
-            perms = new String[] { Manifest.permission.READ_EXTERNAL_STORAGE };
-        }
-
-        boolean allGranted = true;
-        for (String p : perms) {
-            if (ContextCompat.checkSelfPermission(this, p)
-                    != PackageManager.PERMISSION_GRANTED) {
-                allGranted = false;
-                break;
-            }
-        }
-        if (allGranted) return;
-        ActivityCompat.requestPermissions(this, perms, MEDIA_PERM_REQUEST_CODE);
-    }
-
     // ── Жизненный цикл ────────────────────────────────────────────────────
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == SecureVaultPlugin.DELETE_REQUEST_CODE) {
             SecureVaultPlugin.onDeleteRequestResult(resultCode);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == SecureVaultPlugin.MEDIA_PERM_REQUEST_CODE) {
+            SecureVaultPlugin.onMediaPermissionResult();
         }
     }
 
