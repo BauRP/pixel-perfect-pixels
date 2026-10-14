@@ -73,6 +73,9 @@ public class NativeAdsPlugin extends Plugin {
     private ConsentInformation consentInfo = null;
     /** True once the consent info request for this session has completed (success or error). */
     private volatile boolean consentResolved = false;
+    /** Debug builds only: set when the consent flow did not finish within DEBUG_CONSENT_FALLBACK_MS. */
+    private volatile boolean debugConsentFallback = false;
+    private final android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private ConnectivityManager.NetworkCallback netCallback = null;
     private String lastNetKey = "";
 
@@ -136,6 +139,19 @@ public class NativeAdsPlugin extends Plugin {
                     onConsentResolved();
                 }));
         if (consentInfo.canRequestAds()) initSdk();
+        // Debug/test builds only: if UMP never resolves (emulator, no message configured),
+        // allow TEST ad requests so development is not blocked. Release value is 0 → disabled.
+        if (BuildConfig.USE_TEST_ADS && BuildConfig.DEBUG_CONSENT_FALLBACK_MS > 0) {
+            mainHandler.postDelayed(() -> {
+                if (consentResolved && canRequestAds()) return;
+                Log.w(TAG, "consent unresolved after " + BuildConfig.DEBUG_CONSENT_FALLBACK_MS
+                        + " ms — DEBUG fallback: allowing test ad requests");
+                debugConsentFallback = true;
+                consentResolved = true;
+                initSdk();
+                notifyListeners("consentUpdated", consentStatus(), true);
+            }, BuildConfig.DEBUG_CONSENT_FALLBACK_MS);
+        }
     }
 
     private boolean privacyOptionsRequired() {
@@ -154,7 +170,27 @@ public class NativeAdsPlugin extends Plugin {
         o.put("required", privacyOptionsRequired());
         o.put("canRequestAds", canRequestAds());
         o.put("resolved", consentResolved);
+        o.put("debugFallback", debugConsentFallback);
         return o;
+    }
+
+    /** Forwards JS ad-state diagnostics to logcat (tag NativeAds). No personal data is logged. */
+    @PluginMethod
+    public void log(final PluginCall call) {
+        String level = call.getString("level", "info");
+        String msg = call.getString("message", "");
+        if ("error".equals(level)) Log.e(TAG, "[js] " + msg);
+        else if ("warn".equals(level)) Log.w(TAG, "[js] " + msg);
+        else Log.i(TAG, "[js] " + msg);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void getBuildInfo(final PluginCall call) {
+        JSObject o = new JSObject();
+        o.put("testAds", BuildConfig.USE_TEST_ADS);
+        o.put("allowUnvalidatedNetwork", BuildConfig.ALLOW_UNVALIDATED_NETWORK);
+        call.resolve(o);
     }
 
     @PluginMethod
@@ -163,6 +199,7 @@ public class NativeAdsPlugin extends Plugin {
     }
 
     private boolean canRequestAds() {
+        if (BuildConfig.USE_TEST_ADS && debugConsentFallback) return true;
         return consentInfo != null && consentInfo.canRequestAds();
     }
 
@@ -220,7 +257,9 @@ public class NativeAdsPlugin extends Plugin {
                 else transport = "other";
                 boolean internet = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
                 boolean validated = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
-                status = internet && validated ? "online" : "unvalidated";
+                if (internet && validated) status = "online";
+                else if (internet && BuildConfig.ALLOW_UNVALIDATED_NETWORK) status = "online"; // SDK decides; failures back off
+                else status = "unvalidated";
             }
         }
         JSObject o = new JSObject();
@@ -417,6 +456,7 @@ public class NativeAdsPlugin extends Plugin {
 
     @Override
     protected void handleOnDestroy() {
+        mainHandler.removeCallbacksAndMessages(null);
         if (netCallback != null) {
             ConnectivityManager cm = (ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
             try { if (cm != null) cm.unregisterNetworkCallback(netCallback); } catch (Exception ignored) {}

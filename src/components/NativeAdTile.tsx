@@ -2,7 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useT } from "@/lib/i18n";
 import {
   activateNativeAdSlot, getNativeAdState, getServerNativeAdState, hideNativeAd,
-  isNativeAdSupported, onAppResume, readThemeColors, setNativeAdBounds, subscribeNativeAd,
+  isNativeAdSupported, isTestAdsBuild, onAppResume, readThemeColors, setNativeAdBounds, subscribeNativeAd,
 } from "@/lib/native-ads";
 
 /** Height of the ad slot in CSS px (spans the full grid row; constant across states). */
@@ -93,6 +93,8 @@ export function NativeAdTile() {
   }, [loaded, label]);
 
   const pulsing = state === "LOADING" || state === "IDLE";
+  // Debug-only state label (test-ad builds or the web dev server); never in release.
+  const showDebug = !loaded && (isTestAdsBuild() || import.meta.env.DEV);
 
   return (
     <div
@@ -128,6 +130,11 @@ export function NativeAdTile() {
               className={`h-2.5 w-1/2 rounded ${pulsing ? "animate-pulse" : ""}`}
               style={{ background: "var(--color-muted)" }}
             />
+            {showDebug && (
+              <p className="font-mono text-[9px] text-muted-foreground" data-ad-debug>
+                ad: {state.toLowerCase().replace(/_/g, " ")}
+              </p>
+            )}
           </div>
         </div>
       )}

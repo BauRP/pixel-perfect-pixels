@@ -42,11 +42,16 @@ android {
     def umpGeo = (project.findProperty("umpDebugGeography") ?: "").toString()
     def umpDevice = (project.findProperty("umpTestDeviceId") ?: "").toString()
     // Google's native ad validator popup: off unless explicitly requested (-PadsNativeValidator=true).
+    // Tolerate networks Android marks as not validated (emulators, some Wi-Fi). Release default: true;
+    // pass -PadsAllowUnvalidated=false to require a validated network in release.
+    def allowUnvalidated = (project.findProperty("adsAllowUnvalidated") ?: "true").toString()
     def nativeValidator = (project.findProperty("adsNativeValidator") ?: "false").toString()
 
     buildTypes {
         debug {
             buildConfigField "boolean", "USE_TEST_ADS", "true"
+            buildConfigField "boolean", "ALLOW_UNVALIDATED_NETWORK", "true"
+            buildConfigField "long", "DEBUG_CONSENT_FALLBACK_MS", "10000L"
             buildConfigField "String", "UMP_DEBUG_GEOGRAPHY", "\"${umpGeo}\""
             buildConfigField "String", "UMP_TEST_DEVICE_ID", "\"${umpDevice}\""
             manifestPlaceholders = [nativeAdDebuggerEnabled: nativeValidator]
@@ -56,6 +61,9 @@ android {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             buildConfigField "boolean", "USE_TEST_ADS", "false"
+            buildConfigField "boolean", "ALLOW_UNVALIDATED_NETWORK", "${allowUnvalidated}"
+            // Release never bypasses consent.
+            buildConfigField "long", "DEBUG_CONSENT_FALLBACK_MS", "0L"
             buildConfigField "String", "UMP_DEBUG_GEOGRAPHY", "\"\""
             buildConfigField "String", "UMP_TEST_DEVICE_ID", "\"\""
             manifestPlaceholders = [nativeAdDebuggerEnabled: "false"]
