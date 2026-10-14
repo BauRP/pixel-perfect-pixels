@@ -63,13 +63,15 @@ export interface NativeAdBounds {
 }
 
 interface NetInfo { status: NetStatus; transport: string }
-interface ConsentStatus { required: boolean; canRequestAds: boolean; resolved: boolean }
+interface ConsentStatus { required: boolean; canRequestAds: boolean; resolved: boolean; debugFallback?: boolean }
 
 interface NativeAdsPlugin {
   getNetworkState(): Promise<NetInfo>;
   loadAd(options: { adId: string }): Promise<{ started: boolean; reason?: string }>;
   setBounds(options: NativeAdBounds): Promise<{ shown: boolean; reason?: string }>;
   getConsentStatus(): Promise<ConsentStatus>;
+  log(options: { level: "info" | "warn" | "error"; message: string }): Promise<void>;
+  getBuildInfo(): Promise<{ testAds: boolean; allowUnvalidatedNetwork: boolean }>;
   hide(): Promise<void>;
   destroy(): Promise<void>;
   addListener(event: "networkChanged", cb: (d: NetInfo) => void): Promise<{ remove: () => Promise<void> }>;
@@ -88,11 +90,32 @@ export const isNativeAdSupported = () => Capacitor.isNativePlatform();
 // ── Store (useSyncExternalStore) ────────────────────────────────────────────
 let state: AdState = "IDLE";
 const listeners = new Set<() => void>();
-function setState(next: AdState) {
-  if (next === state) return;
+const ERROR_STATES: AdState[] = ["FAILED"];
+const WARN_STATES: AdState[] = [
+  "NO_FILL", "TIMED_OUT", "NO_INTERNET", "WAITING_FOR_NETWORK", "CONSENT_PENDING", "CONSENT_REQUIRED",
+];
+let lastDetail = "";
+/** Logs to the WebView console and forwards to Android logcat (tag NativeAds). */
+function adLog(level: "info" | "warn" | "error", message: string) {
+  const line = `[ads] ${message}`;
+  if (level === "error") console.error(line);
+  else if (level === "warn") console.warn(line);
+  else console.info(line);
+  if (isNativeAdSupported()) void NativeAds.log({ level, message }).catch(() => {});
+}
+function setState(next: AdState, detail = "") {
+  if (next === state && detail === lastDetail) return;
+  const prev = state;
   state = next;
+  lastDetail = detail;
+  const level = ERROR_STATES.includes(next) ? "error" : WARN_STATES.includes(next) ? "warn" : "info";
+  adLog(level, `${prev} → ${next}${detail ? ` (${detail})` : ""}`);
   listeners.forEach((l) => l());
 }
+
+/** True only for builds that use Google's test ad unit (debug); enables the on-tile state label. */
+let testAdsBuild = false;
+export const isTestAdsBuild = () => testAdsBuild;
 export function subscribeNativeAd(cb: () => void) {
   listeners.add(cb);
   return () => {
@@ -168,9 +191,13 @@ function onConsent(c: ConsentStatus) {
   setPrivacyRequired(!!c.required);
   const was = canRequestAds;
   canRequestAds = !!c.canRequestAds;
+  if (c.debugFallback) adLog("warn", "consent unresolved — DEBUG fallback allows test ads only");
   if (!canRequestAds) {
     clearRetry();
-    if (state !== "LOADED" && !requestInFlight) setState(c.resolved ? "CONSENT_REQUIRED" : "CONSENT_PENDING");
+    if (state !== "LOADED" && !requestInFlight) {
+      setState(c.resolved ? "CONSENT_REQUIRED" : "CONSENT_PENDING",
+        c.resolved ? "consent does not permit ad requests" : "waiting for consent info");
+    }
     return;
   }
   if (!was && state !== "LOADED") {
@@ -188,13 +215,13 @@ function onAdGone() {
   void requestAd();
 }
 
-function onAdFailed(noFill: boolean) {
+function onAdFailed(noFill: boolean, detail = "") {
   requestInFlight = false;
   clearDeadline();
   if (state === "LOADED") return;
-  if (net === "none") setState("NO_INTERNET");
-  else if (net === "unvalidated") setState("WAITING_FOR_NETWORK");
-  else setState(noFill ? "NO_FILL" : "FAILED");
+  if (net === "none") setState("NO_INTERNET", detail);
+  else if (net === "unvalidated") setState("WAITING_FOR_NETWORK", detail);
+  else setState(noFill ? "NO_FILL" : "FAILED", detail);
   scheduleRetry();
 }
 
@@ -230,10 +257,10 @@ async function requestAd(): Promise<void> {
       return;
     }
     if (!res.started && res.reason !== "LOAD_IN_PROGRESS" && res.reason !== "ALREADY_LOADED") {
-      onAdFailed(false);
+      onAdFailed(false, res.reason ?? "not started");
     }
-  } catch {
-    onAdFailed(false);
+  } catch (e) {
+    onAdFailed(false, e instanceof Error ? e.message : String(e));
   }
 }
 
@@ -243,12 +270,12 @@ async function start() {
   try {
     await NativeAds.addListener("networkChanged", (d) => onNetwork(d.status));
     await NativeAds.addListener("adLoaded", onAdLoaded);
-    await NativeAds.addListener("adFailed", (d) => onAdFailed(!!d.noFill));
+    await NativeAds.addListener("adFailed", (d) => onAdFailed(!!d.noFill, `code ${d.code}: ${d.message}`));
     await NativeAds.addListener("adGone", onAdGone);
     // retainUntilConsumed on native side delivers a resolution that preceded this listener.
     await NativeAds.addListener("consentUpdated", onConsent);
-  } catch {
-    /* plugin missing — slot stays as fallback */
+  } catch (e) {
+    adLog("error", `NativeAds plugin unavailable: ${e instanceof Error ? e.message : String(e)}`);
   }
   try {
     const { App } = await import("@capacitor/app");
@@ -268,9 +295,16 @@ async function start() {
     /* lifecycle listener unavailable */
   }
   try {
-    onConsent(await NativeAds.getConsentStatus());
+    testAdsBuild = !!(await NativeAds.getBuildInfo()).testAds;
+    listeners.forEach((l) => l());
   } catch {
+    testAdsBuild = false;
+  }
+  try {
+    onConsent(await NativeAds.getConsentStatus());
+  } catch (e) {
     canRequestAds = false;
+    adLog("error", `consent status unavailable: ${e instanceof Error ? e.message : String(e)}`);
   }
   try {
     net = (await NativeAds.getNetworkState()).status;

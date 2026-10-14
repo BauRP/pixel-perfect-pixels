@@ -1,68 +1,50 @@
-# Project Phoenix
+# Nova Gallery
 
-SYSTEM OVERRIDE & PROJECT RECONSTRUCTION DIRECTIVE
+Offline, local-first Android gallery with an encrypted private Safe. React 19 + TanStack Start,
+wrapped in Capacitor 8, with custom native plugins (`SecureVaultPlugin`, `NativeAdsPlugin`).
+See `ARCHITECTURE.md` for the full design.
 
-PHASE 1: CONTEXT INGESTION & ARCHITECTURE ANALYSIS (CRITICAL FIRST STEP) Before you modify, unpack, or generate any code, you MUST locate and thoroughly read the ARCHITECTURE.md file included in the root of the provided ZIP archive. Your first task is to process this file to fully understand the application's logic, tech stack, state management, database structure, and custom solutions. Do not write any new code yet. You must adapt your internal context to match the exact architectural rules, environmental constraints, and structural logic defined in ARCHITECTURE.md. You are strictly forbidden from deviating from the architecture described in this file.
+## Advertising (Google AdMob — active)
 
-PHASE 2: CORE OBJECTIVE & FULL PROJECT RECONSTRUCTION Act as a Senior Lead Software Architect and System Restoration Specialist. Now that you have ingested the architecture, you are required to fully reconstruct the provided project files from the ZIP archive with 100% functional and visual fidelity, down to the smallest micro-interaction.
+The app ships **one Google AdMob Native Advanced ad** as the first tile of the gallery grid.
+There are no banners, interstitials or app-open ads.
 
-You must execute exactly ONE strict modification during unpacking:
+| Item | Value / location |
+|---|---|
+| AdMob app ID | `ca-app-pub-9902253594429663~9587409077` (`AndroidManifest.xml`) |
+| Native ad unit (release) | `ca-app-pub-9902253594429663/3903747602` (`src/lib/native-ads.ts`) |
+| Test unit (debug) | Google's `ca-app-pub-3940256099942544/2247696110`, chosen by `BuildConfig.USE_TEST_ADS` |
+| JS scheduler / state machine | `src/lib/native-ads.ts` (retries via `src/lib/backoff.ts`) |
+| Slot UI | `src/components/NativeAdTile.tsx` |
+| Native rendering, UMP consent, connectivity | `android/.../NativeAdsPlugin.java` |
 
-PURGE ALL GOOGLE ADS: You must actively detect, strip out, and completely remove any Google Ads (AdMob, AdSense, etc.) initialization, SDK dependencies, UI ad banners, and related state logic. The final application must be completely ad-free while maintaining all other native functionalities.
+### Consent (Google UMP)
+- Consent info is refreshed on every launch; the form shows only where Google requires it (EEA/UK/CH),
+  according to the message published in AdMob → Privacy & messaging.
+- Ads are requested only when `canRequestAds()` is true. `CONSENT_PENDING` / `CONSENT_REQUIRED` are
+  consent states, not ad failures, and never trigger retries.
+- Settings shows "Privacy settings" only when Google reports the entry point is required.
+- **Debug builds only:** if consent has not resolved after 10 s, test ads are allowed so development
+  isn't blocked. Release builds never bypass consent.
+- Test regions in debug: `./gradlew assembleDebug -PumpDebugGeography=EEA -PumpTestDeviceId=<hashed id>`.
 
-PHASE 3: CRITICAL SYSTEM RECOVERY (RESTORE FROM ZIP) Perform a DEEP COMPREHENSIVE COMPARISON between your generated workspace and the ORIGINAL uploaded ZIP archive. You must scan, extract, and restore the following precisely as they were:
+### Build flags
+| Gradle property | Default | Effect |
+|---|---|---|
+| `adsNativeValidator` | `false` | `true` shows Google's native ad validator popup (debug only) |
+| `adsAllowUnvalidated` | `true` | Release: request ads on networks Android hasn't validated (debug always tolerant) |
+| `umpDebugGeography` / `umpTestDeviceId` | empty | Debug-only consent geography override |
 
-A. RESTORE UI SCALING, VIEWPORT & TAILWIND CONFIGURATION
+### Diagnostics
+Every ad state change is logged to the WebView console and to logcat:
+`adb logcat -s NativeAds`. Debug builds also print the current state inside the placeholder tile.
 
-Restore the original index.html. Ensure the viewport meta tag is explicitly defined EXACTLY as: <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+### Builds
+- `bun run build:capacitor` → web bundle + `cap sync android`.
+- CI (`.github/workflows/build.yml`) builds a **signed release** when the `ANDROID_KEYSTORE_BASE64`,
+  `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` secrets exist; otherwise a
+  debug build (test ads only).
 
-Inspect tailwind.config.ts (or .js) and src/index.css. Restore all root font-size scales, custom rem/px mappings, container limits, and layout breakpoints from the original ZIP.
-
-Ensure touch-action: manipulation, user-select: none, and safe-area inset paddings are fully restored to eliminate layout explosion on mobile devices.
-
-B. RESTORE ANDROID NATIVE PERMISSIONS & MANIFEST (android/app/src/main/AndroidManifest.xml)
-
-Re-insert all explicit media storage permissions required for Android 10 through 14+ directly from the ZIP (e.g., READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE, ACCESS_MEDIA_LOCATION).
-
-Re-add android:requestLegacyExternalStorage="true" in the <application> tag.
-
-Restore all <queries> declarations enabling system intents.
-
-Ensure android:configChanges parameters are fully preserved on the main activity.
-
-C. RESTORE CAPACITOR NATIVE SCHEME & PLUGIN BRIDGES (capacitor.config.ts)
-
-Verify and restore settings from the ZIP file, including webDir: "dist", app identifiers, and server configuration: server: { androidScheme: 'https', cleartext: true }.
-
-Ensure proper file scheme conversion for local device media paths (Capacitor.convertFileSrc(path)) so local media loads correctly inside webviews.
-
-D. RESTORE MEDIA SCANNING & RUNTIME PERMISSION HANDLERS
-
-Check all hooks and utility files handling media indexing.
-
-Ensure runtime permission checks are executed BEFORE querying device storage directories.
-
-Ensure the app scans device directories recursively to fetch thumbnails, metadata, resolution, file size, and creation dates exactly as originally written in the ZIP.
-
-E. RESTORE LAUNCHER ASSETS & BUILD CONFIGURATIONS
-
-Check android/app/src/main/res/mipmap-*. Ensure all original PNG launcher icons from the ZIP are present and referenced.
-
-Check android/app/build.gradle to ensure compileSdk, targetSdk, multiDexEnabled, and dependencies match the original architecture.
-
-PHASE 4: STRICT "ZERO-LAZINESS" & NO-CHEATING PROTOCOL (MANDATORY)
-
-Exhaustive Unpacking: Recreate every single feature, utility function, UI component, state slice, and routing config exactly as they are in the source files (minus the Ads).
-
-Zero Placeholders: You are STRICTLY FORBIDDEN from using shortcuts, stubs, or comments to skip work (e.g., // existing code here, /* logic remains the same */, // ...rest of the component).
-
-No Mocking or Imitations: Do not create fake, simplified, or "dummy" implementations. Restore the genuine, original code.
-
-Full File Output: Whenever you generate, restore, or modify a file, you MUST output the entire, unabbreviated file from line 1 to the final closing bracket.
-
-No Invented Code: Do not invent new template code when the exact original logic exists inside the uploaded ZIP archive.
-
-EXECUTION STRATEGY: Do not refuse this prompt or cite context window limits. Step 1: Output a brief confirmation that you have read ARCHITECTURE.md and list the core stack/logic you absorbed. Step 2: Begin the deep extraction, code removal (Ads), and full unabbreviated code generation immediately following the Zero-Laziness protocol.
 
 This project was built with [Lovable](https://lovable.dev).
 
