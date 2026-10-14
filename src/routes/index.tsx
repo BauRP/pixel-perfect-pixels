@@ -46,11 +46,9 @@ function GalleryIndex() {
     // Re-scan whenever the app comes back to the foreground. This mirrors
     // Android's onResume() lifecycle hook — permission grants and newly
     // captured media are picked up immediately on return.
-    const onVisible = () => {
-      if (typeof document === "undefined") return;
-      if (document.visibilityState !== "visible") return;
-      void deviceScan.scan();
-    };
+    // Debounced + coalesced in deviceScan so focus/visibility/pageshow bursts
+    // (e.g. closing the permission dialog) produce a single scan.
+    const onVisible = () => deviceScan.requestRescan();
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
     window.addEventListener("pageshow", onVisible);

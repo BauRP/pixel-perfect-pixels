@@ -14,10 +14,13 @@
 
 import { registerPlugin, Capacitor } from "@capacitor/core";
 
+export type MediaPermissionState = "granted" | "partial" | "denied" | "prompt";
 export type DeleteResult = { deleted: string[]; failed: string[] };
 
 export interface SecureVaultPlugin {
   ensurePrivateDir(): Promise<{ path: string; nomedia: boolean }>;
+  checkMediaPermission(): Promise<{ state: MediaPermissionState }>;
+  requestMediaPermission(): Promise<{ state: MediaPermissionState }>;
   hasAllFilesAccess(): Promise<{ granted: boolean }>;
   requestAllFilesAccess(): Promise<{ granted: boolean }>;
   deleteOriginals(options: { paths: string[] }): Promise<DeleteResult>;
@@ -35,6 +38,8 @@ export interface SecureVaultPlugin {
 
 const noop: SecureVaultPlugin = {
   async ensurePrivateDir() { return { path: "", nomedia: false }; },
+  async checkMediaPermission() { return { state: "granted" as const }; },
+  async requestMediaPermission() { return { state: "granted" as const }; },
   async hasAllFilesAccess() { return { granted: false }; },
   async requestAllFilesAccess() { return { granted: false }; },
   async deleteOriginals() { return { deleted: [], failed: [] }; },

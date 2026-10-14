@@ -277,26 +277,42 @@ function scanWithInput(): Promise<void> {
 
 type NativeFileEntry = { name: string; type: string; size?: number; mtime?: number; uri?: string };
 
-async function walkNative(
-  path: string,
-  out: { item: ScannedItem; path: string }[],
-): Promise<void> {
+const SCAN_TAG = "[GalleryScan]";
+
+type RootReport = { root: string; ok: boolean; items: number; error?: string };
+type WalkCtx = { out: { item: ScannedItem; path: string }[]; errors: string[] };
+
+export type ScanStatus = "success" | "empty" | "permission_denied" | "unavailable";
+export type ScanResult = {
+  status: ScanStatus;
+  albums: ScannedAlbum[];
+  errors: string[];
+  roots: RootReport[];
+};
+
+function errText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+/** Recursively lists one directory. Throws only for the root (so the caller can classify it). */
+async function walkNative(path: string, ctx: WalkCtx, isRoot: boolean): Promise<void> {
   let entries: NativeFileEntry[] = [];
   try {
-    const res = await Filesystem.readdir({
-      path,
-      directory: Directory.ExternalStorage,
-    });
+    const res = await Filesystem.readdir({ path, directory: Directory.ExternalStorage });
     entries = res.files as unknown as NativeFileEntry[];
-  } catch {
-    return; // permission denied or folder missing — skip silently
+  } catch (e) {
+    if (isRoot) throw e;
+    const msg = `${path}: ${errText(e)}`;
+    ctx.errors.push(msg);
+    console.debug(SCAN_TAG, "skip subfolder", msg);
+    return;
   }
   for (const entry of entries) {
     const childPath = `${path}/${entry.name}`;
     if (entry.type === "directory") {
       // Skip Android system junk folders that never contain user media.
       if (entry.name.startsWith(".")) continue;
-      await walkNative(childPath, out);
+      await walkNative(childPath, ctx, false);
       continue;
     }
     const isImg = IMG.test(entry.name);
@@ -305,12 +321,10 @@ async function walkNative(
     let uri = entry.uri;
     if (!uri) {
       try {
-        const g = await Filesystem.getUri({
-          path: childPath,
-          directory: Directory.ExternalStorage,
-        });
+        const g = await Filesystem.getUri({ path: childPath, directory: Directory.ExternalStorage });
         uri = g.uri;
-      } catch {
+      } catch (e) {
+        ctx.errors.push(`${childPath}: ${errText(e)}`);
         continue;
       }
     }
@@ -326,28 +340,125 @@ async function walkNative(
       path: childPath,
       nativeUri: uri,
     };
-    out.push({ item, path: childPath });
+    ctx.out.push({ item, path: childPath });
   }
 }
+
+const isPermissionError = (m: string) => /permission|denied|EACCES|not allowed|security/i.test(m);
+const isMissingError = (m: string) => /does not exist|not found|ENOENT|no such/i.test(m);
+
+/** Resolves the media permission, asking at most once per scan; never reads storage without it. */
+async function ensureMediaPermission(): Promise<boolean> {
+  const { SecureVault } = await import("./native-vault");
+  try {
+    let { state: st } = await SecureVault.checkMediaPermission();
+    if (st === "prompt") st = (await SecureVault.requestMediaPermission()).state;
+    console.info(SCAN_TAG, "media permission:", st);
+    return st === "granted" || st === "partial";
+  } catch (e) {
+    // Older native shell without the method: let readdir decide (errors are classified below).
+    console.warn(SCAN_TAG, "permission check unavailable:", errText(e));
+    return true;
+  }
+}
+
+async function runNativeScan(): Promise<ScanResult> {
+  if (!(await ensureMediaPermission())) {
+    return { status: "permission_denied", albums: [], errors: ["media permission not granted"], roots: [] };
+  }
+  const roots = ["DCIM", "Pictures", "Movies", "Download", "Documents"];
+  const ctx: WalkCtx = { out: [], errors: [] };
+  const reports: RootReport[] = [];
+  for (const root of roots) {
+    const before = ctx.out.length;
+    try {
+      await walkNative(root, ctx, true);
+      reports.push({ root, ok: true, items: ctx.out.length - before });
+    } catch (e) {
+      const msg = errText(e);
+      ctx.errors.push(`${root}: ${msg}`);
+      reports.push({ root, ok: false, items: 0, error: msg });
+    }
+  }
+  for (const r of reports) {
+    if (r.ok) console.info(SCAN_TAG, `${r.root}: ${r.items} item(s)`);
+    else console.warn(SCAN_TAG, `${r.root}: failed — ${r.error}`);
+  }
+  const albums = group(ctx.out);
+  const okRoots = reports.filter((r) => r.ok);
+  let status: ScanStatus;
+  if (ctx.out.length > 0) status = "success";
+  else if (okRoots.length > 0) status = "empty";
+  else if (reports.some((r) => r.error && isPermissionError(r.error))) status = "permission_denied";
+  else if (reports.every((r) => r.error && isMissingError(r.error))) status = "empty";
+  else status = "unavailable";
+  return { status, albums, errors: ctx.errors, roots: reports };
+}
+
+let lastScanResult: ScanResult | null = null;
+export const getLastScanResult = () => lastScanResult;
 
 async function scanNative(): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return false;
   if (state.scanning) return true;
   set({ scanning: true });
-  const roots = ["DCIM", "Pictures", "Movies", "Download", "Documents"];
-  const collected: { item: ScannedItem; path: string }[] = [];
-  for (const root of roots) {
-    await walkNative(root, collected);
+  let res: ScanResult;
+  try {
+    res = await runNativeScan();
+  } catch (e) {
+    res = { status: "unavailable", albums: [], errors: [errText(e)], roots: [] };
   }
-  set({ albums: group(collected), scanning: false, scanned: true });
+  lastScanResult = res;
+  console.info(SCAN_TAG, `scan ${res.status}: ${res.albums.length} album(s), ${res.errors.length} error(s)`);
+  if (res.status === "success" || (res.status === "empty" && state.albums.length === 0)) {
+    set({ albums: res.albums, scanning: false, scanned: true });
+  } else if (res.status === "empty") {
+    // Every readable root is genuinely empty: accept it (media was deleted elsewhere).
+    set({ albums: [], scanning: false, scanned: true });
+  } else {
+    // permission_denied / unavailable: never wipe what the user already sees.
+    console.warn(SCAN_TAG, `keeping ${state.albums.length} existing album(s) — ${res.status}`);
+    set({ scanning: false, scanned: true });
+  }
   return true;
 }
 
+// ── Coalesced automatic rescans (focus / visibilitychange / pageshow) ──
+const RESCAN_DEBOUNCE_MS = 600;
+let rescanTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingAfterScan = false;
+
 export const deviceScan = {
+  /**
+   * Debounced, coalesced rescan for lifecycle events. Bursts of focus /
+   * visibilitychange / pageshow (e.g. right after a permission dialog closes)
+   * collapse into one scan; a request during a running scan runs once after it.
+   */
+  requestRescan() {
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+    if (rescanTimer !== null) clearTimeout(rescanTimer);
+    rescanTimer = setTimeout(() => {
+      rescanTimer = null;
+      if (state.scanning) {
+        pendingAfterScan = true;
+        return;
+      }
+      void deviceScan.scan();
+    }, RESCAN_DEBOUNCE_MS);
+  },
   async scan() {
-    if (state.scanning) return;
+    if (state.scanning) {
+      pendingAfterScan = true;
+      return;
+    }
     // Native Android — read MediaStore-visible folders directly.
-    if (await scanNative()) return;
+    if (await scanNative()) {
+      if (pendingAfterScan) {
+        pendingAfterScan = false;
+        deviceScan.requestRescan();
+      }
+      return;
+    }
     const handled = await scanWithPicker();
     if (!handled) await scanWithInput();
   },
