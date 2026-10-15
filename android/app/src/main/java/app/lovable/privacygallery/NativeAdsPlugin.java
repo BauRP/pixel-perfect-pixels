@@ -483,19 +483,20 @@ public class NativeAdsPlugin extends Plugin {
         clipFrame.setVisibility(View.GONE);
 
         adView = new NativeAdView(activity);
+        // Square single-cell card (matches a folder tile): media on top, text below.
         LinearLayout row = new LinearLayout(activity);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setPadding(dp(activity, 10), dp(activity, 10), dp(activity, 10), dp(activity, 10));
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setPadding(dp(activity, 8), dp(activity, 8), dp(activity, 8), dp(activity, 8));
 
         mediaView = new MediaView(activity);
         mediaView.setImageScaleType(ImageView.ScaleType.CENTER_CROP);
-        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(dp(activity, 120), ViewGroup.LayoutParams.MATCH_PARENT);
-        mp.rightMargin = dp(activity, 10);
+        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+        mp.bottomMargin = dp(activity, 6);
         row.addView(mediaView, mp);
 
         LinearLayout col = new LinearLayout(activity);
         col.setOrientation(LinearLayout.VERTICAL);
-        row.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+        row.addView(col, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         LinearLayout top = new LinearLayout(activity);
         top.setOrientation(LinearLayout.HORIZONTAL);
