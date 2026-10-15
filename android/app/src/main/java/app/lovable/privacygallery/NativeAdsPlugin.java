@@ -483,19 +483,20 @@ public class NativeAdsPlugin extends Plugin {
         clipFrame.setVisibility(View.GONE);
 
         adView = new NativeAdView(activity);
+        // Square single-cell card (matches a folder tile): media on top, text below.
         LinearLayout row = new LinearLayout(activity);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setPadding(dp(activity, 10), dp(activity, 10), dp(activity, 10), dp(activity, 10));
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setPadding(dp(activity, 8), dp(activity, 8), dp(activity, 8), dp(activity, 8));
 
         mediaView = new MediaView(activity);
         mediaView.setImageScaleType(ImageView.ScaleType.CENTER_CROP);
-        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(dp(activity, 120), ViewGroup.LayoutParams.MATCH_PARENT);
-        mp.rightMargin = dp(activity, 10);
+        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+        mp.bottomMargin = dp(activity, 6);
         row.addView(mediaView, mp);
 
         LinearLayout col = new LinearLayout(activity);
         col.setOrientation(LinearLayout.VERTICAL);
-        row.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+        row.addView(col, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         LinearLayout top = new LinearLayout(activity);
         top.setOrientation(LinearLayout.HORIZONTAL);
@@ -524,28 +525,31 @@ public class NativeAdsPlugin extends Plugin {
         top.addView(advertiserView, avp);
 
         headlineView = new TextView(activity);
-        headlineView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        headlineView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         headlineView.setTypeface(Typeface.DEFAULT_BOLD);
-        headlineView.setMaxLines(2);
+        headlineView.setMaxLines(1);
         headlineView.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hp.topMargin = dp(activity, 4);
+        hp.topMargin = dp(activity, 2);
         col.addView(headlineView, hp);
 
         bodyView = new TextView(activity);
-        bodyView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        bodyView.setMaxLines(2);
+        bodyView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+        bodyView.setMaxLines(1);
         bodyView.setEllipsize(TextUtils.TruncateAt.END);
-        col.addView(bodyView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        col.addView(bodyView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         ctaView = new Button(activity);
         ctaView.setAllCaps(false);
-        ctaView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        ctaView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         ctaView.setMinHeight(0);
         ctaView.setMinimumHeight(0);
-        ctaView.setPadding(dp(activity, 12), dp(activity, 4), dp(activity, 12), dp(activity, 4));
-        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(activity, 30));
-        cp.gravity = Gravity.END;
+        ctaView.setMinWidth(0);
+        ctaView.setMinimumWidth(0);
+        ctaView.setMaxLines(1);
+        ctaView.setPadding(dp(activity, 8), dp(activity, 2), dp(activity, 8), dp(activity, 2));
+        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 26));
+        cp.topMargin = dp(activity, 4);
         col.addView(ctaView, cp);
 
         adView.addView(row, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));

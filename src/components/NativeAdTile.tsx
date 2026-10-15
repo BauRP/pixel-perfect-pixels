@@ -2,11 +2,8 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useT } from "@/lib/i18n";
 import {
   activateNativeAdSlot, getNativeAdState, getServerNativeAdState, hideNativeAd,
-  isNativeAdSupported, isTestAdsBuild, onAppResume, readThemeColors, setNativeAdBounds, subscribeNativeAd,
+  isNativeAdSupported, onAppResume, readThemeColors, setNativeAdBounds, subscribeNativeAd,
 } from "@/lib/native-ads";
-
-/** Height of the ad slot in CSS px (spans the full grid row; constant across states). */
-export const NATIVE_AD_TILE_HEIGHT = 140;
 
 /** Anything drawn ABOVE the grid that the native overlay must not cover. */
 const OVERLAY_SELECTOR =
@@ -23,17 +20,18 @@ function findScrollParent(el: HTMLElement | null): HTMLElement | null {
 }
 
 /**
- * First item of the gallery grid — a dedicated ad slot, never a real folder.
- * The container is always rendered (any network / ad state). When the SDK
- * delivers an ad, the Android shell paints a real NativeAdView on top of it;
- * otherwise a neutral, non-clickable placeholder is shown.
+ * First cell of the folder grid — a square, single-column ad card sized
+ * exactly like a folder tile for the active column count. Renders nothing
+ * until the SDK reports LOADED; then the Android shell paints a real
+ * NativeAdView over this rect.
  */
-export function NativeAdTile() {
+export function NativeAdTile({ columns }: { columns: number }) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const state = useSyncExternalStore(subscribeNativeAd, getNativeAdState, getServerNativeAdState);
   const loaded = state === "LOADED";
   const label = t("ad_label");
+  const dense = columns >= 4;
 
   useEffect(() => activateNativeAdSlot(), []);
 
@@ -90,54 +88,23 @@ export function NativeAdTile() {
       offResume();
       hideNativeAd();
     };
-  }, [loaded, label]);
+  }, [loaded, label, columns]);
 
-  const pulsing = state === "LOADING" || state === "IDLE";
-  // Debug-only state label (test-ad builds or the web dev server); never in release.
-  const showDebug = !loaded && (isTestAdsBuild() || import.meta.env.DEV);
+  // Not genuinely loaded → occupy zero space (no placeholder, no phantom gap).
+  if (!loaded) return null;
 
+  // Single grid cell, same box as a folder card: rounded-3xl (2xl when dense)
+  // and aspect-square. The native NativeAdView is painted over this rect.
   return (
     <div
       ref={ref}
       aria-label={t("ad_sponsored")}
       data-ad-state={state}
-      className="relative overflow-hidden rounded-3xl select-none"
+      className={`relative aspect-square w-full overflow-hidden select-none animate-fade-up ${dense ? "rounded-2xl" : "rounded-3xl"}`}
       style={{
-        gridColumn: "1 / -1",
-        height: NATIVE_AD_TILE_HEIGHT,
         background: "var(--color-surface)",
         border: "1px solid var(--color-border)",
       }}
-    >
-      {(
-        <div className="flex h-full items-center gap-3 p-3" aria-hidden="true">
-          <div
-            className={`h-full aspect-square rounded-2xl ${pulsing ? "animate-pulse" : ""}`}
-            style={{ background: "var(--color-muted)" }}
-          />
-          <div className="min-w-0 flex-1 space-y-2">
-            <span
-              className="inline-block rounded px-1.5 text-[9px] font-bold"
-              style={{ background: "var(--color-muted)", color: "var(--color-muted-foreground)" }}
-            >
-              {label}
-            </span>
-            <div
-              className={`h-2.5 w-3/4 rounded ${pulsing ? "animate-pulse" : ""}`}
-              style={{ background: "var(--color-muted)" }}
-            />
-            <div
-              className={`h-2.5 w-1/2 rounded ${pulsing ? "animate-pulse" : ""}`}
-              style={{ background: "var(--color-muted)" }}
-            />
-            {showDebug && (
-              <p className="font-mono text-[9px] text-muted-foreground" data-ad-debug>
-                ad: {state.toLowerCase().replace(/_/g, " ")}
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+    />
   );
 }
