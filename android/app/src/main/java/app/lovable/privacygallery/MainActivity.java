@@ -1,10 +1,7 @@
 package app.lovable.privacygallery;
 
-import android.Manifest;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.graphics.Color;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -12,8 +9,6 @@ import android.view.Window;
 import android.view.WindowManager;
 
 import androidx.annotation.Nullable;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 import androidx.core.view.WindowCompat;
 
 import com.getcapacitor.BridgeActivity;
@@ -23,16 +18,15 @@ import com.getcapacitor.BridgeActivity;
  */
 public class MainActivity extends BridgeActivity {
 
-
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        // Регистрация плагинов Capacitor
+        super.onCreate(savedInstanceState);
+
+        // Регистрация плагинов Capacitor (обязательно ПОСЛЕ super.onCreate)
         registerPlugin(SecureVaultPlugin.class);
         registerPlugin(NativeAdsPlugin.class);
-        
-        super.onCreate(savedInstanceState);
 
         applyTransparentStatusBar();
 
