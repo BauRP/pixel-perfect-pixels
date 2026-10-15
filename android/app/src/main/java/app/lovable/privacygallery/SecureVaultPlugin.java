@@ -66,12 +66,19 @@ public class SecureVaultPlugin extends Plugin {
     // ── Runtime media permission (READ_MEDIA_* / READ_EXTERNAL_STORAGE) ─────
     public static final int MEDIA_PERM_REQUEST_CODE = 4917;
     private static PluginCall pendingMediaCall = null;
+
+    public static final int DELETE_REQUEST_CODE = 7311;
+    private static final String VAULT_DIR = "nova_vault";
+
     private static SecureVaultPlugin instance = null;
+    private PluginCall pendingDeleteCall;
+    private List<String> pendingDeletePaths;
 
     @Override
     public void load() {
         super.load();
         instance = this;
+        ensureVaultDir();
     }
 
     private static String[] mediaPermissions() {
@@ -143,20 +150,6 @@ public class SecureVaultPlugin extends Plugin {
         Log.i("GalleryScan", "media permission result: " + st);
         r.put("state", st);
         c.resolve(r);
-    }
-
-
-    public static final int DELETE_REQUEST_CODE = 7311;
-    private static final String VAULT_DIR = "nova_vault";
-
-    private static SecureVaultPlugin instance;
-    private PluginCall pendingDeleteCall;
-    private List<String> pendingDeletePaths;
-
-    @Override
-    public void load() {
-        instance = this;
-        ensureVaultDir();
     }
 
     // ── private directory enforcement ────────────────────────────────────
