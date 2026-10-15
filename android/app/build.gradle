@@ -1,7 +1,7 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "app.lovable.privacygallery"
+    namespace = "app.lovable.privacygallery"
     compileSdk rootProject.ext.compileSdkVersion
     
     defaultConfig {
@@ -16,7 +16,7 @@ android {
         multiDexEnabled true
         
         aaptOptions {
-             ignoreAssetsPattern '!.svn:!.git:!.DS_Store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+            ignoreAssetsPattern '!.svn:!.git:!.DS_Store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
     
