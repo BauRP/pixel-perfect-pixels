@@ -2,7 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useT } from "@/lib/i18n";
 import {
   activateNativeAdSlot, getNativeAdState, getServerNativeAdState, hideNativeAd,
-  isNativeAdSupported, isTestAdsBuild, onAppResume, readThemeColors, setNativeAdBounds, subscribeNativeAd,
+  isNativeAdSupported, onAppResume, readThemeColors, setNativeAdBounds, subscribeNativeAd,
 } from "@/lib/native-ads";
 
 /** Anything drawn ABOVE the grid that the native overlay must not cover. */
@@ -88,7 +88,7 @@ export function NativeAdTile({ columns }: { columns: number }) {
       offResume();
       hideNativeAd();
     };
-  }, [loaded, label]);
+  }, [loaded, label, columns]);
 
   // Not genuinely loaded → occupy zero space (no placeholder, no phantom gap).
   if (!loaded) return null;
