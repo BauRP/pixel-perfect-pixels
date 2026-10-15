@@ -136,7 +136,6 @@ function GalleryIndex() {
         </div>
       </div>
 
-
       {/* Folder grid. */}
       <FolderGrid albums={showEmpty ? [] : sortedAlbums} filter={filter} columns={prefs.columns} />
       {showEmpty ? (
