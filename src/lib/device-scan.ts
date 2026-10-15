@@ -426,11 +426,13 @@ async function scanNative(): Promise<boolean> {
     console.info(SCAN_TAG, `scan ${res.status}: ${res.albums.length} album(s), ${res.errors.length} error(s)`);
     
     const genuineEmpty = res.status === "empty" && res.roots.length > 0 && res.roots.every((r) => r.ok && r.items === 0);
-    if (res.status === "success" || genuineEmpty) {
+    const hadAlbums = state.albums.length > 0;
+
+    // SAFEGUARD: Never wipe existing albums on a subsequent empty or partial scan result
+    if (res.status === "success" || (genuineEmpty && !hadAlbums)) {
       set({ albums: res.albums, scanning: false, scanned: true });
     } else {
-      // permission_denied / unavailable / mixed partial failure: never wipe existing albums
-      console.warn(SCAN_TAG, `keeping ${state.albums.length} existing album(s) — status: ${res.status}`);
+      console.warn(SCAN_TAG, `keeping ${state.albums.length} existing album(s) — status: ${res.status}, genuineEmpty: ${genuineEmpty}`);
       set({ scanning: false, scanned: true });
     }
     return true;
