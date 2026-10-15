@@ -386,41 +386,61 @@ async function runNativeScan(): Promise<ScanResult> {
   }
   const albums = group(ctx.out);
   const okRoots = reports.filter((r) => r.ok);
+  
+  // P0 FIX: Check permission errors and missing errors before declaring empty or okRoots
+  const hasPermissionError = reports.some((r) => r.error && isPermissionError(r.error));
   let status: ScanStatus;
-  if (ctx.out.length > 0) status = "success";
-  else if (okRoots.length > 0) status = "empty";
-  else if (reports.some((r) => r.error && isPermissionError(r.error))) status = "permission_denied";
-  else if (reports.every((r) => r.error && isMissingError(r.error))) status = "empty";
-  else status = "unavailable";
+  if (ctx.out.length > 0) {
+    status = "success";
+  } else if (hasPermissionError) {
+    status = "permission_denied";
+  } else if (okRoots.length > 0 && reports.every((r) => r.ok)) {
+    status = "empty";
+  } else if (reports.every((r) => r.error && isMissingError(r.error))) {
+    status = "empty";
+  } else {
+    status = "unavailable";
+  }
   return { status, albums, errors: ctx.errors, roots: reports };
 }
 
 let lastScanResult: ScanResult | null = null;
 export const getLastScanResult = () => lastScanResult;
 
+let activeScanPromise: Promise<boolean> | null = null;
+
 async function scanNative(): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return false;
-  if (state.scanning) return true;
-  set({ scanning: true });
-  let res: ScanResult;
+  if (activeScanPromise) return activeScanPromise;
+
+  activeScanPromise = (async () => {
+    if (state.scanning) return true;
+    set({ scanning: true });
+    let res: ScanResult;
+    try {
+      res = await runNativeScan();
+    } catch (e) {
+      res = { status: "unavailable", albums: [], errors: [errText(e)], roots: [] };
+    }
+    lastScanResult = res;
+    console.info(SCAN_TAG, `scan ${res.status}: ${res.albums.length} album(s), ${res.errors.length} error(s)`);
+    
+    const genuineEmpty = res.status === "empty" && res.roots.length > 0 && res.roots.every((r) => r.ok && r.items === 0);
+    if (res.status === "success" || genuineEmpty) {
+      set({ albums: res.albums, scanning: false, scanned: true });
+    } else {
+      // permission_denied / unavailable / mixed partial failure: never wipe existing albums
+      console.warn(SCAN_TAG, `keeping ${state.albums.length} existing album(s) — status: ${res.status}`);
+      set({ scanning: false, scanned: true });
+    }
+    return true;
+  })();
+
   try {
-    res = await runNativeScan();
-  } catch (e) {
-    res = { status: "unavailable", albums: [], errors: [errText(e)], roots: [] };
+    return await activeScanPromise;
+  } finally {
+    activeScanPromise = null;
   }
-  lastScanResult = res;
-  console.info(SCAN_TAG, `scan ${res.status}: ${res.albums.length} album(s), ${res.errors.length} error(s)`);
-  if (res.status === "success" || (res.status === "empty" && state.albums.length === 0)) {
-    set({ albums: res.albums, scanning: false, scanned: true });
-  } else if (res.status === "empty") {
-    // Every readable root is genuinely empty: accept it (media was deleted elsewhere).
-    set({ albums: [], scanning: false, scanned: true });
-  } else {
-    // permission_denied / unavailable: never wipe what the user already sees.
-    console.warn(SCAN_TAG, `keeping ${state.albums.length} existing album(s) — ${res.status}`);
-    set({ scanning: false, scanned: true });
-  }
-  return true;
 }
 
 // ── Coalesced automatic rescans (focus / visibilitychange / pageshow) ──
