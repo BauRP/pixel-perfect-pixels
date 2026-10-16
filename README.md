@@ -11,8 +11,8 @@ There are no banners, interstitials or app-open ads.
 
 | Item | Value / location |
 |---|---|
-| AdMob app ID | `ca-app-pub-9902253594429663~9587409077` (`AndroidManifest.xml`) |
-| Native ad unit (release) | `ca-app-pub-9902253594429663/3903747602` (`src/lib/native-ads.ts`) |
+| AdMob app ID | `ca-app-pub-9902253594429663~4405601673` (`AndroidManifest.xml`) |
+| Native ad unit (release) | `ca-app-pub-9902253594429663/1072650268` (`src/lib/native-ads.ts`) |
 | Test unit (debug) | Google's `ca-app-pub-3940256099942544/2247696110`, chosen by `BuildConfig.USE_TEST_ADS` |
 | JS scheduler / state machine | `src/lib/native-ads.ts` (retries via `src/lib/backoff.ts`) |
 | Slot UI | `src/components/NativeAdTile.tsx` |

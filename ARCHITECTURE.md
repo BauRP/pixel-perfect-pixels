@@ -353,8 +353,8 @@ All ad code is gated by `Capacitor.isNativePlatform()`; the web preview renders 
 
 | Format | Unit ID | Owner |
 |---|---|---|
-| App ID | `ca-app-pub-9902253594429663~9587409077` | `AndroidManifest.xml` meta-data `com.google.android.gms.ads.APPLICATION_ID`; `ADMOB_APP_ID` in `src/lib/native-ads.ts` |
-| Native Advanced | `ca-app-pub-9902253594429663/3903747602` | `NATIVE_AD_UNIT_ID` in `src/lib/native-ads.ts` → `NativeAdsPlugin.java` |
+| App ID | `ca-app-pub-9902253594429663~4405601673` | `AndroidManifest.xml` meta-data `com.google.android.gms.ads.APPLICATION_ID`; `ADMOB_APP_ID` in `src/lib/native-ads.ts` |
+| Native Advanced | `ca-app-pub-9902253594429663/1072650268` | `NATIVE_AD_UNIT_ID` in `src/lib/native-ads.ts` → `NativeAdsPlugin.java` |
 | Top banner | **removed** | — |
 | App Open | **removed** | — |
 
