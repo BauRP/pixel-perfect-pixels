@@ -21,8 +21,8 @@ function findScrollParent(el: HTMLElement | null): HTMLElement | null {
 
 /**
  * First cell of the folder grid — a square, single-column ad card sized
- * exactly like a folder tile for the active column count. Renders nothing
- * until the SDK reports LOADED; then the Android shell paints a real
+ * exactly like a folder tile for the active column count. Always rendered as a placeholder;
+ * once the SDK reports LOADED the Android shell paints a real
  * NativeAdView over this rect.
  */
 export function NativeAdTile({ columns }: { columns: number }) {
@@ -90,21 +90,28 @@ export function NativeAdTile({ columns }: { columns: number }) {
     };
   }, [loaded, label, columns]);
 
-  // Not genuinely loaded → occupy zero space (no placeholder, no phantom gap).
-  if (!loaded) return null;
-
-  // Single grid cell, same box as a folder card: rounded-3xl (2xl when dense)
-  // and aspect-square. The native NativeAdView is painted over this rect.
+  // Always rendered: a permanent first-cell placeholder with the exact box of
+  // a folder card (same padding, radius, square preview, two text lines).
+  // When LOADED, the native NativeAdView is painted over this rect; otherwise
+  // the overlay is hidden (effect cleanup) and the placeholder stays.
   return (
     <div
       ref={ref}
       aria-label={t("ad_sponsored")}
       data-ad-state={state}
-      className={`relative aspect-square w-full overflow-hidden select-none animate-fade-up ${dense ? "rounded-2xl" : "rounded-3xl"}`}
-      style={{
-        background: "var(--color-surface)",
-        border: "1px solid var(--color-border)",
-      }}
-    />
+      className={`relative overflow-hidden select-none ${dense ? "rounded-2xl p-1.5" : "rounded-3xl p-3"}`}
+      style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
+    >
+      <div
+        className={`aspect-square w-full ${dense ? "rounded-xl" : "rounded-2xl"}`}
+        style={{ background: "var(--color-muted)" }}
+      />
+      <div className={dense ? "mt-1.5" : "mt-3"}>
+        <div className={`truncate font-semibold ${dense ? "text-[11px]" : "text-sm"}`}>{label}</div>
+        <div className={`truncate text-muted-foreground ${dense ? "text-[9px]" : "text-[11px]"}`}>
+          {t("ad_sponsored")}
+        </div>
+      </div>
+    </div>
   );
 }
