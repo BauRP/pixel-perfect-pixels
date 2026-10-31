@@ -11,4 +11,8 @@ chmod +x android/gradlew
   cd android
   ./gradlew :app:connectedDebugAndroidTest --stacktrace --no-daemon
 )
+# The instrumented test runner may uninstall the target package when it
+# finishes. Reinstall the real app before exercising activity and navigation.
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb shell pm path app.lovable.privacygallery | grep '^package:' >/dev/null
 bash scripts/emulator_navigation_smoke.sh

@@ -5,8 +5,13 @@ set -euo pipefail
 PACKAGE=app.lovable.privacygallery
 ACTIVITY="$PACKAGE/.MainActivity"
 echo "Testing $(adb shell getprop ro.build.version.release | tr -d '\r') / API $(adb shell getprop ro.build.version.sdk | tr -d '\r')"
+echo "WebView provider:"
+adb shell dumpsys webviewupdate | head -25 || true
 adb shell wm size
 adb shell wm density
+adb shell pm path "$PACKAGE" | grep '^package:' >/dev/null || {
+  echo "APK missing: the test cannot proceed without installing the application"; exit 1;
+}
 adb shell am start -W -n "$ACTIVITY"
 sleep 4
 adb shell pidof "$PACKAGE" >/dev/null || { echo "App process crashed"; exit 1; }

@@ -107,6 +107,23 @@ public class AndroidCompatibilitySmokeTest {
             if (!"\"NOT_READY\"".equals(state)) break;
             Thread.sleep(400);
         }
+        if (!"\"OK\"".equals(state)) {
+            CountDownLatch done = new CountDownLatch(1);
+            AtomicReference<String> diagnostic = new AtomicReference<>("");
+            scenario.getScenario().onActivity(activity -> web.get().evaluateJavascript(
+                "(function(){return JSON.stringify({" +
+                "url:location.href,ready:document.readyState," +
+                "userAgent:navigator.userAgent," +
+                "title:document.title," +
+                "bodyText:(document.body&&document.body.innerText||'').slice(0,250)," +
+                "scriptCount:document.scripts.length," +
+                "hasNav:!!document.querySelector('[data-bottom-nav]')" +
+                "})})()",
+                result -> { diagnostic.set(result); done.countDown(); }));
+            done.await(5, TimeUnit.SECONDS);
+            android.util.Log.e("AndroidCompatTest",
+                    "Missing gallery UI diagnostic: " + diagnostic.get());
+        }
         assertEquals("Web app and safe-area navigation must render", "\"OK\"", state);
     }
 

@@ -70,3 +70,9 @@ The hosted GitHub Actions environment did not offer Android 17 Preview SDK 37 ev
 - Успешная компиляция APK **не** считается успешным прохождением эмуляторов. Состояние смотри по отдельному workflow.
 
 Манифест теперь не содержит ограничений `android.max_aspect` и `android.min_aspect`: адаптация под любые пропорции регулируется фактическим размером окна.
+
+## Android 7 и Android 16: результаты первой диагностики
+- 31.10: обе APK-сборки / instrumented Android test binaries компилируются.
+- Android 16: instrumented tests passed, then UI shell smoke tried to launch the app after the instrumentation runner had removed its package, so the launcher failed. APK now explicitly reinstalled before shell smoke.
+- Android 7: 3 of 4 instrumented tests passed. Gallery WebView did not render its navigation (`NOT_READY`) on the emulator's bundled browser engine. We now print WebView version and loaded document diagnostics. **Android 7 runtime compatibility is not yet passed.**
+- GitHub Bun installer received an intermittent HTTP 403; workflows now use a pinned Bun version instead of unstable `latest`.
