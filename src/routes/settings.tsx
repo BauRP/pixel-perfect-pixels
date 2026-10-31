@@ -189,9 +189,19 @@ function PasswordRow() {
         const ok = await safePin.verify(current);
         if (!ok) { setErr(t("pin_wrong")); return; }
       }
+      // First re-wrap the encryption key: changing only the UI PIN destroys access.
+      if (vault.hasPassword()) {
+        if (!hasPin) { setErr(t("pin_wrong")); return; }
+        const changed = await vault.changePassword(current, next);
+        if (!changed) { setErr(t("pin_wrong")); return; }
+      } else {
+        await vault.setInitialPassword(next);
+      }
       await safePin.setPin(next);
       setOpen(false);
       reset();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : t("pin_wrong"));
     } finally {
       setBusy(false);
     }

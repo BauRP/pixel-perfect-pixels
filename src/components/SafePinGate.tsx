@@ -60,24 +60,39 @@ export function SafePinGate({
             setStage("enter");
             return;
           }
-          await safePin.setPin(value);
-          // Bridge the PIN into the encrypted vault so file operations
-          // (addFiles / decryptFile) have an in-memory AES key. Without
-          // this the vault stays locked and any add-to-folder throws.
+          // The PIN must NEVER open a Safe without its matching AES file key.
+          // Existing keys cannot be reinitialized by creating a new UI PIN.
           try {
-            if (!vault.hasPassword()) await vault.setInitialPassword(value);
-            else await vault.verifyPassword(value);
-          } catch { /* non-fatal — UI still gates via safePin */ }
-          onSuccess();
+            if (vault.hasPassword()) {
+              setError(t("pin_wrong"));
+              return;
+            }
+            await vault.setInitialPassword(value);
+            await safePin.setPin(value);
+            onSuccess();
+          } catch (e) {
+            setError(e instanceof Error ? e.message : t("pin_wrong"));
+          }
         }
       } else {
         const ok = await safePin.verify(value);
         if (ok) {
           try {
-            if (!vault.hasPassword()) await vault.setInitialPassword(value);
-            else if (!vault.isUnlocked()) await vault.verifyPassword(value);
-          } catch { /* non-fatal */ }
-          onSuccess();
+            const keyReady = vault.hasPassword()
+              ? (vault.isUnlocked() || await vault.verifyPassword(value))
+              : (await vault.setInitialPassword(value), true);
+            if (!keyReady) {
+              safePin.lock();
+              setError(t("pin_wrong"));
+              setPin("");
+              return;
+            }
+            onSuccess();
+          } catch (e) {
+            safePin.lock();
+            setError(e instanceof Error ? e.message : t("pin_wrong"));
+            setPin("");
+          }
         }
         else {
           setError(t("pin_wrong"));

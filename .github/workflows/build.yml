@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, 'chatgpt/nova-gallery-*' ]
   workflow_dispatch:
 
 permissions:
@@ -39,6 +39,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install
+
+      - name: Run automated unit tests
+        run: bunx vitest run
 
       - name: Build Web App for Android
         run: bun run build:capacitor
@@ -99,7 +102,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ] && [[ "${GITHUB_REF_NAME}" == "main" || "${GITHUB_REF_NAME}" == "master" ]]; then
             # Production: signed, non-debuggable release -> real ad unit, no validator.
             echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
             export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/release.jks"
@@ -118,6 +121,7 @@ jobs:
           retention-days: 1
 
       - name: Create Release & Upload APK (Official GitHub Link)
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -152,7 +156,7 @@ jobs:
               "tag_name": tag_name,
               "target_commitish": ref_name,
               "name": f"APK Build #{run_number}",
-              "body": "Автоматическая сборка APK для заметок.",
+              "body": "Автоматическая сборка APK Nova Gallery.",
               "draft": False,
               "prerelease": True
           }).encode("utf-8")
@@ -185,7 +189,7 @@ jobs:
 
           summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
           with open(summary_path, "a", encoding="utf-8") as f:
-              f.write("## 📱 Готовый файл APK для Заметок:\n\n")
+              f.write("## 📱 Готовый файл APK Nova Gallery:\n\n")
               f.write(f"[🚀 НАЖМИ СЮДА, ЧТОБЫ СКАЧАТЬ APK]({download_url})\n")
           print(f"Ссылка успешно создана: {download_url}")
           PY

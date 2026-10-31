@@ -24,7 +24,7 @@ export { cssColorToHex } from "./css-color";
 import { cssColorToHex } from "./css-color";
 
 /** Production native ad unit (debuggable builds swap in Google's test unit natively). */
-export const NATIVE_AD_UNIT_ID = "ca-app-pub-9902253594429663/1072650268";
+export const NATIVE_AD_UNIT_ID = "ca-app-pub-9902253594429663/3903747602";
 export const AD_SOFT_DEADLINE_MS = 8_000;
 
 export type AdState =

@@ -88,7 +88,7 @@
         <!-- Google Mobile Ads APPLICATION ID (not an ad unit ID). -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-9902253594429663~4405601673" />
+            android:value="ca-app-pub-9902253594429663~9587409077" />
         <!-- Native ad validator (debug diagnostics popup). Disabled in release;
              in debug only when built with -PadsNativeValidator=true. -->
         <meta-data
