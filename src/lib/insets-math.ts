@@ -29,3 +29,9 @@ export function navReserveHeight(measuredHeight: number, imeVisible: boolean): n
   if (!Number.isFinite(measuredHeight)) return 0;
   return Math.max(0, Math.ceil(measuredHeight));
 }
+
+// The bottom navigation height already includes Android's system navigation
+// inset. Adding safe-bottom again would create a second empty strip.
+export function scrollContentBottomReserve(navHeight: number, imeOpen: boolean): number {
+  return navReserveHeight(navHeight, imeOpen);
+}

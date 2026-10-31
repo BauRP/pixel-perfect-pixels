@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeSystemInsets, navReserveHeight } from "./insets-math";
+import { normalizeSystemInsets, navReserveHeight, scrollContentBottomReserve } from "./insets-math";
 
 describe("Android 7–17 system area calculations", () => {
   it("keeps all three-button nav and status bar regions", () => {
@@ -41,6 +41,12 @@ describe("Android 7–17 system area calculations", () => {
   it("handles split-screen caption bars and landscape cutouts together", () => {
     expect(normalizeSystemInsets({ top: 38, bottom: 0, left: 27, right: 0 }))
       .toMatchObject({ top: 38, bottom: 0, left: 27 });
+  });
+  it("does not double-count OS safe area below bottom navigation", () => {
+    // 68 px includes a 16 px gesture region; the scroll region reserves 68, not 84.
+    expect(scrollContentBottomReserve(68, false)).toBe(68);
+    expect(scrollContentBottomReserve(92, false)).toBe(92);
+    expect(scrollContentBottomReserve(92, true)).toBe(0);
   });
   it("handles absent snapshot during an early cold launch", () => {
     expect(normalizeSystemInsets(undefined)).toEqual({

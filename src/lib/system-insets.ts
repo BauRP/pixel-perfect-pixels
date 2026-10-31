@@ -35,6 +35,9 @@ export function initSystemInsets(): void {
     ["top", "bottom", "left", "right"].forEach((name, n) =>
       root.style.setProperty(`--native-safe-${name}`, `${values[n]}px`));
     root.dataset.imeOpen = String(keyboard);
+    // Expose a passive boot marker for emulator integration testing; no
+    // private data or user photo metadata is involved.
+    root.dataset.novaInsetsReady = "true";
   };
   const refresh = () => {
     const versionAtRequest = pushedVersion;

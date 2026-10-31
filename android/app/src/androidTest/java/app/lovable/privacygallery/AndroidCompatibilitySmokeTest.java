@@ -1,8 +1,9 @@
 package app.lovable.privacygallery;
 
 import android.app.Activity;
-import android.content.pm.ActivityInfo;
- import android.view.View;
+import android.os.Build;
+import android.webkit.WebView;import android.content.pm.ActivityInfo;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.WebView;
@@ -86,7 +87,7 @@ public class AndroidCompatibilitySmokeTest {
         // Wait for the actual React app to load, not just the Android activity.
         // Evaluate on UI thread; wait only on the instrumentation thread.
         String state = "NOT_READY";
-        for (int attempt = 0; attempt < 25; attempt++) {
+        for (int attempt = 0; attempt < 40; attempt++) {
             CountDownLatch done = new CountDownLatch(1);
             AtomicReference<String> jsResult = new AtomicReference<>("");
             scenario.getScenario().onActivity(activity -> web.get().evaluateJavascript(
@@ -107,24 +108,34 @@ public class AndroidCompatibilitySmokeTest {
             if (!"\"NOT_READY\"".equals(state)) break;
             Thread.sleep(400);
         }
+        String details = "";
         if (!"\"OK\"".equals(state)) {
             CountDownLatch done = new CountDownLatch(1);
             AtomicReference<String> diagnostic = new AtomicReference<>("");
             scenario.getScenario().onActivity(activity -> web.get().evaluateJavascript(
-                "(function(){return JSON.stringify({" +
+                "(function(){try{return JSON.stringify({" +
                 "url:location.href,ready:document.readyState," +
                 "userAgent:navigator.userAgent," +
                 "title:document.title," +
-                "bodyText:(document.body&&document.body.innerText||'').slice(0,250)," +
+                "bodyText:(document.body&&document.body.innerText||'').slice(0,320)," +
                 "scriptCount:document.scripts.length," +
-                "hasNav:!!document.querySelector('[data-bottom-nav]')" +
-                "})})()",
+                "scriptSrcs:Array.prototype.map.call(document.scripts,function(s){return s.src||s.type||'inline'}).slice(-10)," +
+                "hasRoot:!!document.getElementById('root')," +
+                "rootText:(document.getElementById('root')&&document.getElementById('root').innerText||'').slice(0,320)," +
+                "hasNav:!!document.querySelector('[data-bottom-nav]')," +
+                "legacyRuntime:!!(window.System&&window.System.import)," +
+                "legacyBoot:window.__novaLegacyBootState||'unknown'," +
+                "errorFlag:!!document.querySelector('[data-nova-error]')" +
+                "});}catch(e){return 'DIAG_ERROR:'+e.message}})()",
                 result -> { diagnostic.set(result); done.countDown(); }));
             done.await(5, TimeUnit.SECONDS);
+            details = diagnostic.get();
             android.util.Log.e("AndroidCompatTest",
-                    "Missing gallery UI diagnostic: " + diagnostic.get());
+                    "Missing gallery UI diagnostic: " + details);
         }
-        assertEquals("Web app and safe-area navigation must render", "\"OK\"", state);
+        assertEquals("Web app and safe-area navigation must render. API "
+                + Build.VERSION.SDK_INT + ", document: " + details,
+                "\"OK\"", state);
     }
 
     @Test

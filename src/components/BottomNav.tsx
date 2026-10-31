@@ -16,8 +16,8 @@ export function BottomNav() {
     const setHeight = () => {
       const root = document.documentElement;
       // Full rendered bar already includes the OS gesture/button inset.
-      const total = el.getBoundingClientRect().height;
-      const nextHeight = Math.max(0, total) + "px";
+      const measured = el.getBoundingClientRect().height;
+      const nextHeight = Math.max(0, measured) + "px";
       // Avoid a style mutation feedback loop with our own MutationObserver.
       if (root.style.getPropertyValue("--app-measured-nav-height") !== nextHeight) {
         root.style.setProperty("--app-measured-nav-height", nextHeight);
@@ -51,10 +51,14 @@ export function BottomNav() {
   return (
     <nav
       ref={navRef}
-      className="glass-strong fixed inset-x-0 bottom-0 z-50 pb-[max(var(--app-safe-bottom),0.25rem)] pt-1"
+      className="glass-strong fixed inset-x-0 bottom-0 z-50 pt-1"
       aria-label={t("primary_nav")}
       data-bottom-nav
-      style={{ paddingLeft: "var(--app-safe-left)", paddingRight: "var(--app-safe-right)" }}
+      style={{
+        paddingLeft: "var(--app-safe-left)",
+        paddingRight: "var(--app-safe-right)",
+        paddingBottom: "calc(var(--app-safe-bottom) + 0.25rem)",
+      }}
     >
       <ul className="mx-auto flex max-w-5xl items-stretch justify-around px-3">
         {items.map(({ to, label, Icon, match }) => {
