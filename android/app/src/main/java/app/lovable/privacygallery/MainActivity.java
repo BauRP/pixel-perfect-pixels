@@ -69,8 +69,13 @@ public class MainActivity extends BridgeActivity {
     // OEMs can change 3-button/gesture mode without dispatching an insets event
     // until the next activity resume or rotation. Request an insets pass.
     private void refreshSystemAreas() {
-        getWindow().getDecorView().post(() ->
-                ViewCompat.requestApplyInsets(getWindow().getDecorView()));
+        getWindow().getDecorView().post(() -> {
+            if (getBridge() != null && getBridge().getWebView() != null) {
+                ViewCompat.requestApplyInsets(getBridge().getWebView());
+            } else {
+                ViewCompat.requestApplyInsets(getWindow().getDecorView());
+            }
+        });
     }
 
     @Override

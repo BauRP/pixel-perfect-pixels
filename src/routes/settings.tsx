@@ -37,7 +37,8 @@ function SettingsScreen() {
   const t = useT();
   const [lang, setLang] = useLang();
   const theme = useVault((s) => s.theme);
-  const biometrics = useVault((s) => s.biometricsEnabled);
+  // Native biometric authentication has not yet been wired to the AES vault.
+  // Never offer an unlock toggle that the OS cannot enforce.
   const folders = useVault((s) => s.folders);
   const used = totalBytes(folders);
   const pct = Math.min(100, (used / CAPACITY) * 100);
@@ -98,7 +99,7 @@ function SettingsScreen() {
             icon={<Fingerprint size={18} />}
             label={t("biometrics")}
             description={t("biometrics_desc")}
-            right={<Switch checked={biometrics} onCheckedChange={vault.setBiometrics} />}
+            right={<Switch checked={false} disabled aria-label="Biometric authentication unavailable until native verification is implemented" />}
           />
           <Divider />
           <PasswordRow />

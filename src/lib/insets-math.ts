@@ -21,3 +21,11 @@ export function normalizeSystemInsets(input: RawSystemInsets | null | undefined)
     keyboardVisible: input?.keyboardVisible === true,
   };
 }
+
+/** Actual UI height without system navigation (pin/gesture mode neutral).
+ * While the IME is visible the bottom tab bar is hidden entirely. */
+export function navReserveHeight(measuredHeight: number, imeVisible: boolean): number {
+  if (imeVisible) return 0;
+  if (!Number.isFinite(measuredHeight)) return 0;
+  return Math.max(0, Math.ceil(measuredHeight));
+}

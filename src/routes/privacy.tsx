@@ -57,12 +57,12 @@ function PrivacyScreen() {
         >
           <ChevronLeft size={20} />
         </button>
-        <h1 className="text-base font-semibold">Политика конфиденциальности</h1>
+        <h1 className="min-w-0 truncate text-base font-semibold">Политика конфиденциальности</h1>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain select-text">
         <article
-          className="mx-auto max-w-md space-y-6 px-5 pt-4"
+          className="mx-auto max-w-3xl space-y-6 px-5 pt-4"
           style={{ paddingBottom: "calc(2rem + var(--app-safe-bottom))" }}
         >
           <p className="text-[13px] leading-relaxed text-muted-foreground">

@@ -12,6 +12,7 @@ interface SystemInsetsPlugin {
 
 const nativeInsets = registerPlugin<SystemInsetsPlugin>("SystemInsets");
 let initialized = false;
+let latestInsets: Insets | null = null;
 
 /**
  * Native Android 7+ WindowInsets are the source of truth for status/navigation
@@ -24,6 +25,7 @@ export function initSystemInsets(): void {
   let last = "";
   const apply = (i: Insets) => {
     if (!i || typeof i.top !== "number" || typeof i.bottom !== "number") return;
+    latestInsets = i;
     const safe = normalizeSystemInsets(i);
     const values = [safe.top, safe.bottom, safe.left, safe.right];
     const keyboard = safe.keyboardVisible;
@@ -35,7 +37,12 @@ export function initSystemInsets(): void {
       root.style.setProperty(`--native-safe-${name}`, `${values[n]}px`));
     root.dataset.imeOpen = String(keyboard);
   };
-  const refresh = () => { void nativeInsets.getInsets().then(apply).catch(() => {}); };
+  const refresh = () => {
+    void nativeInsets.getInsets().then((snapshot) => {
+      // Newer pushed events take priority over an older in-flight snapshot.
+      if (latestInsets !== snapshot) apply(snapshot);
+    }).catch(() => {});
+  };
   // Subscribe before the snapshot so a fast system transition cannot be missed.
   void nativeInsets.addListener("insetsChanged", apply)
     .then(() => { refresh(); })
@@ -44,6 +51,8 @@ export function initSystemInsets(): void {
       console.warn("[insets] native listener unavailable", error);
     });
   window.addEventListener("focus", refresh);
+  window.addEventListener("orientationchange", refresh);
+  window.visualViewport?.addEventListener("resize", refresh);
   window.addEventListener("resize", refresh);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") refresh();

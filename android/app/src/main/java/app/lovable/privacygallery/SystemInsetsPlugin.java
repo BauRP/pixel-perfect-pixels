@@ -34,7 +34,8 @@ public class SystemInsetsPlugin extends Plugin {
                 Insets bars = windowInsets.getInsets(
                         WindowInsetsCompat.Type.statusBars()
                         | WindowInsetsCompat.Type.navigationBars()
-                        | WindowInsetsCompat.Type.displayCutout());
+                        | WindowInsetsCompat.Type.displayCutout()
+                        | WindowInsetsCompat.Type.captionBar());
                 // Include the gesture touch region even when the gesture bar is translucent.
                 // Side-swipe gestures should NOT create blank left/right columns.
                 // Reserve only the actual bar/cutout, plus mandatory bottom gestures.
@@ -49,6 +50,9 @@ public class SystemInsetsPlugin extends Plugin {
                 next.put("left", Math.ceil(bars.left / density));
                 next.put("right", Math.ceil(bars.right / density));
                 next.put("keyboardVisible", keyboardVisible);
+                next.put("navigationMode", bars.bottom >= (28f * density) ? "buttons" : "gestures");
+                // Navigation mode is diagnostic only. Actual safe padding always
+                // comes from insets: it also works with OEM/custom navigation bars.
                 String before = latest.toString();
                 latest = next;
                 if (!before.equals(next.toString())) {

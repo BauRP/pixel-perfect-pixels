@@ -308,19 +308,19 @@ export function AuthPrompt({
   open, onCancel, onSuccess,
 }: { open: boolean; onCancel: () => void; onSuccess: () => void }) {
   const t = useT();
-  const biometrics = useVault((s) => s.biometricsEnabled);
+  // PIN verification is the only supported unlock route at present.
   const [mode, setMode] = useState<"bio" | "pwd">("bio");
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
   const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
-    if (!open) { setMode(biometrics ? "bio" : "pwd"); setValue(""); setError(""); setScanning(false); return; }
-    if (!biometrics) { setMode("pwd"); return; }
-    setScanning(true);
-    const id = setTimeout(() => { setScanning(false); onSuccess(); }, 900);
-    return () => clearTimeout(id);
-  }, [open, biometrics, onSuccess]);
+    // Until a real Android BiometricPrompt is connected to the key store,
+    // never call onSuccess() on a timer or simulated fingerprint scan.
+    setMode("pwd");
+    setScanning(false);
+    if (!open) { setValue(""); setError(""); }
+  }, [open]);
 
   const submit = async () => {
     const ok = await vault.verifyPassword(value);

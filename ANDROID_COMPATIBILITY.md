@@ -21,9 +21,9 @@
 | 16 | 36 | Поддерживать | Не выполнена |
 | 17 | 37 | Поддерживать | Не выполнена |
 
-**Настройки:** `minSdk=24`, `compileSdk=37`, `targetSdk=37`. Java 21 для сборки не означает Android 21 или требование API 37 на устройстве.
+**Текущие проверенные настройки:** `minSdk=24`, `compileSdk=36`, `targetSdk=36`. Android 17 (API 37) входит в цель, но сборка и испытания API 37 пока не завершены. Java 21 для сборки не означает Android 21 или минимальный API 37 на устройстве.
 
-**Сборка:** Android Gradle Plugin 9.2.0, Gradle 9.4.1, Kotlin Gradle Plugin 2.4.20, SDK platform 37 (Android 17 Cinnamon Bun Preview, SDK manager channel 3), Build Tools 36.0.0. При недоступности SDK 37 сборка должна завершиться с понятной ошибкой, а не выпускать APK под другим target SDK. Версии должны быть подтверждены успешной CI-сборкой.
+**Текущая рабочая сборка:** Android Gradle Plugin 8.13.0, Gradle 8.13, Kotlin Gradle Plugin 2.2.20, SDK platform 36, Build Tools 36.0.0. Попытки установки SDK 37 в GitHub Actions завершались ошибкой; не утверждаем, что API 37 поддерживается без фактической проверки.
 
 ## 2. Независимые направления — критерии
 
@@ -46,10 +46,16 @@
 ## 4. Что уже проверено, а что нет
 
 - Скрипт `scripts/check_android_compat.py` проверяет **конфигурацию** SDK, но не работоспособность на всех устройствах.
-- GitHub Actions может подтвердить **компиляцию** APK с SDK 37, но не 14 тестов в эмуляторах.
+- GitHub Actions подтверждает текущую **компиляцию** APK с SDK 36, но не 14 тестов в эмуляторах. API 37 не считается проверенным.
 - Совместимость Android 7–17 будет подтверждена только по результатам испытаний на версиях и разрешениях, а не по одним цифрам Gradle.
 
 Документация: https://developer.android.com/about/versions/17/setup-sdk и https://developer.android.com/build/releases/agp-9-2-0-release-notes
 
 ## Compatibility build correction — 2026-10-31
 The hosted GitHub Actions environment did not offer Android 17 Preview SDK 37 even from channel 3. Stable SDK 36 is kept for working APK compilation with minSdk 24 (Android 7). Android 17 is still a required target but **NOT yet verified**. Future API 37 upgrades must pass CI and emulator/device tests.
+
+## 2026-10-31 — Системная навигация и размеры
+- Запрошено точное измерение высоты нижней панели; при открытии клавиатуры запас места обнуляется.
+- Добавлена повторная проверка системных отступов при смене ориентации и изменении WebView.
+- Добавлено резервирование области window caption bar для режима окон.
+- Нормализация отступов, три кнопки, жесты, боковые вырезы, IME и изменение масштаба панели проверяются unit-тестами. Эти тесты не доказывают работу OEM-интерфейса: нужны эмуляторы и телефоны.

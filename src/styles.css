@@ -10,7 +10,8 @@
  * values as --safe-area-inset-* custom properties, so take the larger one.
  */
 :root {
-  --app-nav-reserve: 4rem;
+  --app-measured-nav-height: 4rem;
+  --app-nav-reserve: var(--app-measured-nav-height);
   --native-safe-top: 0px;
   --native-safe-bottom: 0px;
   --native-safe-left: 0px;
@@ -37,6 +38,8 @@
    drawing a fixed bar over the keyboard or creating a giant blank region. */
 :root[data-ime-open="true"] {
   --app-nav-reserve: 0px;
+  /* During IME resize the system's bottom gesture zone is behind the keyboard. */
+  --app-safe-bottom: 0px;
 }
 :root[data-ime-open="true"] [data-bottom-nav] {
   display: none;

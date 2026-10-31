@@ -16,9 +16,10 @@ export function BottomNav() {
     const setHeight = () => {
       const root = document.documentElement;
       const css = getComputedStyle(root);
-      const safeBottom = Number.parseFloat(css.getPropertyValue("--native-safe-bottom")) || 0;
+      const safeBottom = Number.parseFloat(css.getPropertyValue("--app-safe-bottom")) || 0;
       const total = el.getBoundingClientRect().height;
-      root.style.setProperty("--app-nav-reserve", Math.max(0, total - safeBottom) + "px");
+      root.style.setProperty("--app-measured-nav-height",
+        Math.max(0, total - safeBottom) + "px");
     };
     setHeight();
     let observer: ResizeObserver | undefined;
@@ -27,10 +28,15 @@ export function BottomNav() {
       observer.observe(el);
     }
     window.addEventListener("resize", setHeight);
+    const insetObserver = new MutationObserver(setHeight);
+    insetObserver.observe(document.documentElement, {
+      attributes: true, attributeFilter: ["style", "data-ime-open"],
+    });
     return () => {
       observer?.disconnect();
+      insetObserver.disconnect();
       window.removeEventListener("resize", setHeight);
-      document.documentElement.style.removeProperty("--app-nav-reserve");
+      document.documentElement.style.removeProperty("--app-measured-nav-height");
     };
   }, []);
 

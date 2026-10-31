@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeSystemInsets } from "./insets-math";
+import { normalizeSystemInsets, navReserveHeight } from "./insets-math";
 
 describe("Android 7–17 system area calculations", () => {
   it("keeps all three-button nav and status bar regions", () => {
@@ -19,6 +19,16 @@ describe("Android 7–17 system area calculations", () => {
       right: 25.25, keyboardVisible: true})).toEqual({
       top: 0, bottom: 0, left: 0, right: 26, keyboardVisible: true,
     });
+  });
+  it("never leaves extra navigation gap while the keyboard is open", () => {
+    expect(navReserveHeight(58, true)).toBe(0);
+    expect(navReserveHeight(58, false)).toBe(58);
+  });
+  it("recalculates navigation reserve when font scaling changes the tab bar", () => {
+    expect(navReserveHeight(58, false)).toBe(58);
+    expect(navReserveHeight(76, false)).toBe(76);
+    expect(navReserveHeight(-10, false)).toBe(0);
+    expect(navReserveHeight(NaN, false)).toBe(0);
   });
   it("handles absent snapshot during an early cold launch", () => {
     expect(normalizeSystemInsets(undefined)).toEqual({
