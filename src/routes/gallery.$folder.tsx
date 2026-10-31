@@ -128,7 +128,7 @@ function FolderView() {
       deviceScan.removeItems(folder.id, confirmed);
       toast.success(t("deleted_count", { n: confirmed.size }));
     }
-    if (confirmed.size < targets.length) toast.error(t("delete_failed"));
+    if (confirmed.size < targets.length) toast.error("Android could not confirm deletion. Files remain in the gallery.");
     cancelSelect();
     setConfirmDelete(false);
   };
@@ -162,7 +162,7 @@ function FolderView() {
       deviceScan.removeItems(folder.id, new Set([item.id]));
       toast.success(t("deleted"));
     } else {
-      toast.error(t("delete_failed"));
+      toast.error("Android could not confirm deletion. Files remain in the gallery.");
     }
   };
 
