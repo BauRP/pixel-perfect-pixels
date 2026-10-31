@@ -35,7 +35,10 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          packages: 'platform-tools platforms;android-37 build-tools;36.0.0'
+
+      - name: Check Android 7-17 SDK compatibility contract
+        run: python3 scripts/check_android_compat.py
 
       - name: Install dependencies
         run: bun install

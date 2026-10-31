@@ -1,7 +1,8 @@
 ext {
+    // Android 7.0 (API 24) through Android 17 (API 37).
     minSdkVersion = 24
-    compileSdkVersion = 36
-    targetSdkVersion = 36
+    compileSdkVersion = 37
+    targetSdkVersion = 37
     androidxActivityVersion = '1.9.2'
     androidxAppCompatVersion = '1.7.0'
     androidxCoordinatorLayoutVersion = '1.2.0'
@@ -19,5 +20,5 @@ ext {
     userMessagingPlatformVersion = '3.2.0'
 
     // Kotlin Gradle plugin version for Capacitor plugin modules.
-    kotlin_version = '2.2.20'
+    kotlin_version = '2.4.20'
 }

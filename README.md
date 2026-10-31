@@ -4,6 +4,17 @@ Offline, local-first Android gallery with an encrypted private Safe. React 19 + 
 wrapped in Capacitor 8, with custom native plugins (`SecureVaultPlugin`, `NativeAdsPlugin`).
 See `ARCHITECTURE.md` for the full design.
 
+## Android 7–17 compatibility — dedicated workstream
+
+- `minSdkVersion = 24` (Android 7.0), `compileSdkVersion = 37` (Android 17),
+  `targetSdkVersion = 37` (Android 17 runtime behavior).
+- AGP 9.2.0 + Gradle 9.4.1 + Kotlin plugin 2.4.20; CI installs Android SDK 37.
+- Actual system status, gesture navigation, three-button navigation and cutout
+  clearance is handled by the native `SystemInsetsPlugin` using `WindowInsetsCompat`.
+- Full 14-version Android and display/nav-mode test matrix: [ANDROID_COMPATIBILITY.md](ANDROID_COMPATIBILITY.md).
+- **Only SDK configuration and compilation are validated in CI. Runtime/device compatibility is not yet certified.**
+
+
 ## Advertising (Google AdMob — active)
 
 The app ships **one Google AdMob Native Advanced ad** as the first tile of the gallery grid.
