@@ -19,7 +19,7 @@ for label,pattern in (
     check(label,pattern,"android/variables.gradle")
 check("Android Gradle plugin 9.2",r"com\.android\.tools\.build:gradle:9\.2\.0","android/build.gradle")
 check("Gradle wrapper 9.4.1",r"gradle-9\.4\.1-bin\.zip","android/gradle/wrapper/gradle-wrapper.properties")
-check("CI Android SDK 37",r"platforms;android-37",".github/workflows/build.yml")
+check("CI Android SDK 37 preview",r"sdkmanager --channel=3 'platforms;android-37'",".github/workflows/build.yml")
 check("CI runs SDK guard",r"python3 scripts/check_android_compat\.py",".github/workflows/build.yml")
 check("Native insets registered",r"registerPlugin\(SystemInsetsPlugin\.class\)","android/app/src/main/java/app/lovable/privacygallery/MainActivity.java")
 for permission in ("READ_MEDIA_IMAGES","READ_MEDIA_VIDEO","READ_MEDIA_VISUAL_USER_SELECTED","READ_EXTERNAL_STORAGE"):

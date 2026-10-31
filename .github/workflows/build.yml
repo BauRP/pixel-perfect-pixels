@@ -35,7 +35,22 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools platforms;android-37 build-tools;36.0.0'
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - name: Install Android 17 Preview SDK (API 37)
+        run: |
+          set -euo pipefail
+          # Android 17 Cinnamon Bun is currently a preview SDK and is not
+          # offered on sdkmanager's default stable channel.
+          if ! sdkmanager --channel=3 'platforms;android-37'; then
+            sdkmanager --channel=3 'platforms;android-CinnamonBun'
+          fi
+          echo 'Installed Android platform packages:'
+          find "${ANDROID_HOME}/platforms" -maxdepth 2 -name source.properties -print
+          test -f "${ANDROID_HOME}/platforms/android-37/android.jar" || {
+            echo 'Android 17 SDK is unavailable as android-37; cannot certify targetSdk 37.'
+            exit 1
+          }
 
       - name: Check Android 7-17 SDK compatibility contract
         run: python3 scripts/check_android_compat.py

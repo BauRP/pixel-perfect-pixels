@@ -23,7 +23,7 @@
 
 **Настройки:** `minSdk=24`, `compileSdk=37`, `targetSdk=37`. Java 21 для сборки не означает Android 21 или требование API 37 на устройстве.
 
-**Сборка:** Android Gradle Plugin 9.2.0, Gradle 9.4.1, Kotlin Gradle Plugin 2.4.20, SDK platform 37, Build Tools 36.0.0. Версии должны быть подтверждены успешной CI-сборкой.
+**Сборка:** Android Gradle Plugin 9.2.0, Gradle 9.4.1, Kotlin Gradle Plugin 2.4.20, SDK platform 37 (Android 17 Cinnamon Bun Preview, SDK manager channel 3), Build Tools 36.0.0. При недоступности SDK 37 сборка должна завершиться с понятной ошибкой, а не выпускать APK под другим target SDK. Версии должны быть подтверждены успешной CI-сборкой.
 
 ## 2. Независимые направления — критерии
 
