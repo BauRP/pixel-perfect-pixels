@@ -88,7 +88,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { name: "theme-color", content: "#000000" },
       { title: "Vault — Private Gallery" },
-      { name: "description", content: "A premium mobile gallery with a biometric-locked private Safe." },
+      { name: "description", content: "A mobile gallery with a PIN-protected encrypted Safe." },
       { property: "og:title", content: "Vault — Private Gallery" },
       { property: "og:description", content: "A premium mobile gallery with a PIN-protected encrypted Safe." },
       { property: "og:type", content: "website" },
