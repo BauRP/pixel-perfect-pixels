@@ -5,6 +5,7 @@ interface Insets {
   bottom: number;
   left: number;
   right: number;
+  keyboardVisible?: boolean;
 }
 
 interface SystemInsetsPlugin {
@@ -17,25 +18,38 @@ const nativeInsets = registerPlugin<SystemInsetsPlugin>("SystemInsets");
 let initialized = false;
 
 /**
- * Native Android reads WindowInsetsCompat on every actual system UI change.
- * No assumption about the user's navigation style or Android version.
- * Values are in CSS px, so the same layout works for gestures/3 buttons.
+ * Native Android 7+ WindowInsets are the source of truth for status/navigation
+ * bars, not manufacturer heuristics. Gesture edge regions do not add side gaps.
+ * Updates also happen when the keyboard, window or navigation mode changes.
  */
 export function initSystemInsets(): void {
   if (initialized || !Capacitor.isNativePlatform() || typeof document === "undefined") return;
   initialized = true;
   let last = "";
   const apply = (i: Insets) => {
-    const values = [i.top, i.bottom, i.left, i.right]
+    if (!i || typeof i.top !== "number" || typeof i.bottom !== "number") return;
+    const values = [i.top, i.bottom, i.left ?? 0, i.right ?? 0]
       .map((n) => Math.max(0, Math.min(256, Number.isFinite(n) ? n : 0)));
-    const key = values.join(":");
-    if (last === key) return;
+    const keyboard = !!i.keyboardVisible;
+    const key = values.join(":") + ":" + keyboard;
+    if (key === last) return;
     last = key;
     const root = document.documentElement;
-    const names = ["top", "bottom", "left", "right"];
-    names.forEach((name, n) => root.style.setProperty(`--native-safe-${name}`, `${values[n]}px`));
+    ["top", "bottom", "left", "right"].forEach((name, n) =>
+      root.style.setProperty(`--native-safe-${name}`, `${values[n]}px`));
+    root.dataset.imeOpen = String(keyboard);
   };
+  const refresh = () => { void nativeInsets.getInsets().then(apply).catch(() => {}); };
+  // Subscribe before the snapshot so a fast system transition cannot be missed.
   void nativeInsets.addListener("insetsChanged", apply)
-    .then(() => nativeInsets.getInsets().then(apply))
-    .catch((error) => console.warn("[insets] native listener unavailable", error));
+    .then(() => { refresh(); })
+    .catch((error) => {
+      initialized = false;
+      console.warn("[insets] native listener unavailable", error);
+    });
+  window.addEventListener("focus", refresh);
+  window.addEventListener("resize", refresh);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refresh();
+  });
 }

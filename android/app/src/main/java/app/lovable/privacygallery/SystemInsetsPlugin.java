@@ -1,6 +1,5 @@
 package app.lovable.privacygallery;
 
-import android.view.View;
 import android.webkit.WebView;
 
 import androidx.core.graphics.Insets;
@@ -20,7 +19,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  */
 @CapacitorPlugin(name = "SystemInsets")
 public class SystemInsetsPlugin extends Plugin {
-    private JSObject latest = new JSObject();
+    private volatile JSObject latest = new JSObject();
 
     @Override
     public void load() {
@@ -34,14 +33,19 @@ public class SystemInsetsPlugin extends Plugin {
                         | WindowInsetsCompat.Type.navigationBars()
                         | WindowInsetsCompat.Type.displayCutout());
                 // Include the gesture touch region even when the gesture bar is translucent.
-                Insets gestures = windowInsets.getInsets(WindowInsetsCompat.Type.systemGestures());
+                // Side-swipe gestures should NOT create blank left/right columns.
+                // Reserve only the actual bar/cutout, plus mandatory bottom gestures.
+                Insets mandatory = windowInsets.getInsets(
+                        WindowInsetsCompat.Type.mandatorySystemGestures());
+                boolean keyboardVisible = windowInsets.isVisible(WindowInsetsCompat.Type.ime());
                 float density = view.getResources().getDisplayMetrics().density;
                 if (density <= 0) density = 1f;
                 JSObject next = new JSObject();
                 next.put("top", Math.ceil(bars.top / density));
-                next.put("bottom", Math.ceil(Math.max(bars.bottom, gestures.bottom) / density));
-                next.put("left", Math.ceil(Math.max(bars.left, gestures.left) / density));
-                next.put("right", Math.ceil(Math.max(bars.right, gestures.right) / density));
+                next.put("bottom", Math.ceil(Math.max(bars.bottom, mandatory.bottom) / density));
+                next.put("left", Math.ceil(bars.left / density));
+                next.put("right", Math.ceil(bars.right / density));
+                next.put("keyboardVisible", keyboardVisible);
                 String before = latest.toString();
                 latest = next;
                 if (!before.equals(next.toString())) {
@@ -49,7 +53,8 @@ public class SystemInsetsPlugin extends Plugin {
                 }
                 return windowInsets; // Never consume the OS insets.
             });
-            ViewCompat.requestApplyInsets(webView);
+            // The native WebView may attach after the plugin has loaded.
+            webView.post(() -> ViewCompat.requestApplyInsets(webView));
         });
     }
 
