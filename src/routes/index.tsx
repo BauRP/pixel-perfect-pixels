@@ -3,7 +3,9 @@ import { AppShell, ScreenHeader } from "@/components/AppShell";
 import { NativeAdTile } from "@/components/NativeAdTile";
 import { useT } from "@/lib/i18n";
 import { deviceScan, useDeviceScan, type ScannedAlbum } from "@/lib/device-scan";
-import { Loader2, Play } from "lucide-react";
+import { Loader2, Play, ImagePlus } from "lucide-react";
+import { useLang } from "@/lib/i18n";
+import { mediaAccessCopy } from "@/lib/media-access-copy";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ViewOptionsMenu } from "@/components/ViewOptionsMenu";
 import { useViewPrefs, sortRows } from "@/lib/view-prefs";
@@ -29,6 +31,9 @@ function GalleryIndex() {
   const albums = useDeviceScan((s) => s.albums);
   const scanning = useDeviceScan((s) => s.scanning);
   const scanned = useDeviceScan((s) => s.scanned);
+  const mediaPermission = useDeviceScan((s) => s.mediaPermission);
+  const [lang] = useLang();
+  const mediaText = mediaAccessCopy[lang];
   const bootstrapped = useRef(false);
   const [filter, setFilter] = useState<Filter>("all");
 
@@ -136,6 +141,19 @@ function GalleryIndex() {
         </div>
       </div>
 
+      {(mediaPermission === "partial" || mediaPermission === "denied") && (
+        <div className="mx-4 mt-3 flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-2xl border border-border bg-surface p-3">
+          <span className="min-w-0 flex-1 text-xs text-muted-foreground">
+            {mediaPermission === "partial" ? mediaText.partial : mediaText.denied}
+          </span>
+          <button type="button" disabled={scanning}
+            onClick={() => void deviceScan.changeMediaAccess()}
+            className="tap inline-flex min-h-11 items-center gap-2 rounded-xl bg-accent px-3 py-2 text-xs font-semibold text-accent-foreground disabled:opacity-50">
+            <ImagePlus size={16} />
+            {mediaText.change}
+          </button>
+        </div>
+      )}
       {/* Folder grid. */}
       <FolderGrid albums={showEmpty ? [] : sortedAlbums} filter={filter} columns={prefs.columns} />
       {showEmpty ? (

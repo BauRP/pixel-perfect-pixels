@@ -12,7 +12,7 @@ interface SystemInsetsPlugin {
 
 const nativeInsets = registerPlugin<SystemInsetsPlugin>("SystemInsets");
 let initialized = false;
-let latestInsets: Insets | null = null;
+let pushedVersion = 0;
 
 /**
  * Native Android 7+ WindowInsets are the source of truth for status/navigation
@@ -25,7 +25,6 @@ export function initSystemInsets(): void {
   let last = "";
   const apply = (i: Insets) => {
     if (!i || typeof i.top !== "number" || typeof i.bottom !== "number") return;
-    latestInsets = i;
     const safe = normalizeSystemInsets(i);
     const values = [safe.top, safe.bottom, safe.left, safe.right];
     const keyboard = safe.keyboardVisible;
@@ -38,17 +37,19 @@ export function initSystemInsets(): void {
     root.dataset.imeOpen = String(keyboard);
   };
   const refresh = () => {
+    const versionAtRequest = pushedVersion;
     void nativeInsets.getInsets().then((snapshot) => {
-      // Newer pushed events take priority over an older in-flight snapshot.
-      if (latestInsets !== snapshot) apply(snapshot);
+      if (versionAtRequest === pushedVersion) apply(snapshot);
     }).catch(() => {});
   };
   // Subscribe before the snapshot so a fast system transition cannot be missed.
-  void nativeInsets.addListener("insetsChanged", apply)
-    .then(() => { refresh(); })
+  void nativeInsets.addListener("insetsChanged", (event) => {
+    pushedVersion++;
+    apply(event);
+  }).then(() => { refresh(); })
     .catch((error) => {
-      initialized = false;
-      console.warn("[insets] native listener unavailable", error);
+      console.warn("[insets] native listener unavailable; refreshing on resume", error);
+      refresh();
     });
   window.addEventListener("focus", refresh);
   window.addEventListener("orientationchange", refresh);

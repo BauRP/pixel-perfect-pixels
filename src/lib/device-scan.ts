@@ -38,9 +38,11 @@ type State = {
   albums: ScannedAlbum[];
   scanning: boolean;
   scanned: boolean;
+  mediaPermission: "unknown" | "prompt" | "granted" | "partial" | "denied";
 };
 
-let state: State = { albums: [], scanning: false, scanned: false };
+let state: State = { albums: [], scanning: false, scanned: false, mediaPermission: "unknown" };
+let mediaRequestedAutomatically = false;
 let listeners: (() => void)[] = [];
 const emit = () => listeners.forEach((l) => l());
 const set = (s: Partial<State>) => { state = { ...state, ...s }; emit(); };
@@ -353,13 +355,17 @@ async function ensureMediaPermission(): Promise<boolean> {
   const { SecureVault } = await import("./native-vault");
   try {
     let { state: st } = await SecureVault.checkMediaPermission();
-    if (st === "prompt") st = (await SecureVault.requestMediaPermission()).state;
+    if (st === "prompt" && !mediaRequestedAutomatically) {
+      mediaRequestedAutomatically = true;
+      st = (await SecureVault.requestMediaPermission()).state;
+    }
+    set({ mediaPermission: st });
     console.info(SCAN_TAG, "media permission:", st);
     return st === "granted" || st === "partial";
   } catch (e) {
-    // Older native shell without the method: let readdir decide (errors are classified below).
     console.warn(SCAN_TAG, "permission check unavailable:", errText(e));
-    return true;
+    set({ mediaPermission: "denied" });
+    return false;
   }
 }
 
@@ -414,6 +420,8 @@ async function scanNative(): Promise<boolean> {
     // SAFEGUARD: Never wipe existing albums on a subsequent empty or partial scan result
     if (res.status === "success" || res.status === "empty") {
       set({ albums: res.albums, scanning: false, scanned: true });
+    } else if (res.status === "permission_denied") {
+      set({ albums: [], scanning: false, scanned: true });
     } else {
       console.warn(SCAN_TAG, `keeping ${state.albums.length} existing album(s) — status: ${res.status}, genuineEmpty: ${genuineEmpty}`);
       set({ scanning: false, scanned: true });
@@ -434,6 +442,19 @@ let rescanTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingAfterScan = false;
 
 export const deviceScan = {
+  /** Explicit permission change, initiated by the user's tap. */
+  async changeMediaAccess() {
+    if (!Capacitor.isNativePlatform()) return;
+    mediaRequestedAutomatically = true;
+    const { SecureVault } = await import("./native-vault");
+    try {
+      const { state: status } = await SecureVault.requestMediaPermission({ reselect: true });
+      set({ mediaPermission: status });
+      await deviceScan.scan();
+    } catch (error) {
+      console.warn(SCAN_TAG, "media access update failed:", errText(error));
+    }
+  },
   /**
    * Debounced, coalesced rescan for lifecycle events. Bursts of focus /
    * visibilitychange / pageshow (e.g. right after a permission dialog closes)

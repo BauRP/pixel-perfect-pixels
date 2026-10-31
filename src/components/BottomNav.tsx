@@ -15,10 +15,9 @@ export function BottomNav() {
     if (!el) return;
     const setHeight = () => {
       const root = document.documentElement;
-      const css = getComputedStyle(root);
-      const safeBottom = Number.parseFloat(css.getPropertyValue("--app-safe-bottom")) || 0;
+      // Full rendered bar already includes the OS gesture/button inset.
       const total = el.getBoundingClientRect().height;
-      const nextHeight = Math.max(0, total - safeBottom) + "px";
+      const nextHeight = Math.max(0, total) + "px";
       // Avoid a style mutation feedback loop with our own MutationObserver.
       if (root.style.getPropertyValue("--app-measured-nav-height") !== nextHeight) {
         root.style.setProperty("--app-measured-nav-height", nextHeight);

@@ -20,7 +20,7 @@ export type DeleteResult = { deleted: string[]; failed: string[] };
 export interface SecureVaultPlugin {
   ensurePrivateDir(): Promise<{ path: string; nomedia: boolean }>;
   checkMediaPermission(): Promise<{ state: MediaPermissionState }>;
-  requestMediaPermission(): Promise<{ state: MediaPermissionState }>;
+  requestMediaPermission(options?: { reselect?: boolean }): Promise<{ state: MediaPermissionState }>;
   getMediaItems(): Promise<{ items: { uri: string; name: string; mime: string;
     size: number; mtime: number; relativePath: string }[] }>;
   hasAllFilesAccess(): Promise<{ granted: boolean }>;

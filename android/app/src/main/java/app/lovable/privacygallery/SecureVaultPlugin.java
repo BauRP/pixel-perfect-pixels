@@ -109,6 +109,7 @@ public class SecureVaultPlugin extends Plugin {
             ContextCompat.checkSelfPermission(getContext(), Manifest.permission.READ_MEDIA_VIDEO)
                 == PackageManager.PERMISSION_GRANTED;
         if (Build.VERSION.SDK_INT >= 33 && images && videos) return "granted";
+        if (Build.VERSION.SDK_INT >= 33 && (images || videos)) return "partial";
         if (Build.VERSION.SDK_INT < 33 &&
             ContextCompat.checkSelfPermission(getContext(), Manifest.permission.READ_EXTERNAL_STORAGE)
                 == PackageManager.PERMISSION_GRANTED) return "granted";
@@ -138,7 +139,8 @@ public class SecureVaultPlugin extends Plugin {
     public void requestMediaPermission(PluginCall call) {
         String st = mediaPermissionState();
         Activity a = getActivity();
-        if ("granted".equals(st) || "partial".equals(st) || a == null) {
+        boolean reselect = call.getBoolean("reselect", false);
+        if ("granted".equals(st) || ("partial".equals(st) && !reselect) || a == null) {
             JSObject r = new JSObject();
             r.put("state", st);
             call.resolve(r);

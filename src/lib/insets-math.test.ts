@@ -20,6 +20,10 @@ describe("Android 7–17 system area calculations", () => {
       top: 0, bottom: 0, left: 0, right: 26, keyboardVisible: true,
     });
   });
+  it("recalculates gesture/button safe zones after switching navigation modes", () => {
+    expect(normalizeSystemInsets({top: 24, bottom: 54}).bottom).toBe(54);
+    expect(normalizeSystemInsets({top: 24, bottom: 18}).bottom).toBe(18);
+  });
   it("never leaves extra navigation gap while the keyboard is open", () => {
     expect(navReserveHeight(58, true)).toBe(0);
     expect(navReserveHeight(58, false)).toBe(58);

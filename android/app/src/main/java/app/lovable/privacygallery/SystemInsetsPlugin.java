@@ -50,9 +50,8 @@ public class SystemInsetsPlugin extends Plugin {
                 next.put("left", Math.ceil(bars.left / density));
                 next.put("right", Math.ceil(bars.right / density));
                 next.put("keyboardVisible", keyboardVisible);
-                next.put("navigationMode", bars.bottom >= (28f * density) ? "buttons" : "gestures");
-                // Navigation mode is diagnostic only. Actual safe padding always
-                // comes from insets: it also works with OEM/custom navigation bars.
+                // Don't guess button/gesture mode: OEMs can use custom bars.
+                // Always use the measured insets.
                 String before = latest.toString();
                 latest = next;
                 if (!before.equals(next.toString())) {
