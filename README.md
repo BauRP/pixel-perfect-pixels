@@ -77,3 +77,5 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+**2026-10-31 compatibility note:** Android 17 preview SDK 37 was unavailable in GitHub Actions. Stable compile/target SDK remain 36, minimum SDK remains 24. Android 17 compatibility needs actual API 37 build and runtime verification before it can be marked complete.

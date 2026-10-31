@@ -50,3 +50,6 @@
 - Совместимость Android 7–17 будет подтверждена только по результатам испытаний на версиях и разрешениях, а не по одним цифрам Gradle.
 
 Документация: https://developer.android.com/about/versions/17/setup-sdk и https://developer.android.com/build/releases/agp-9-2-0-release-notes
+
+## Compatibility build correction — 2026-10-31
+The hosted GitHub Actions environment did not offer Android 17 Preview SDK 37 even from channel 3. Stable SDK 36 is kept for working APK compilation with minSdk 24 (Android 7). Android 17 is still a required target but **NOT yet verified**. Future API 37 upgrades must pass CI and emulator/device tests.
