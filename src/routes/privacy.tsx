@@ -63,7 +63,7 @@ function PrivacyScreen() {
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain select-text">
         <article
           className="mx-auto max-w-md space-y-6 px-5 pt-4"
-          style={{ paddingBottom: "calc(2rem + env(safe-area-inset-bottom))" }}
+          style={{ paddingBottom: "calc(2rem + var(--app-safe-bottom))" }}
         >
           <p className="text-[13px] leading-relaxed text-muted-foreground">
             Nova Gallery — офлайн-галерея с личным зашифрованным Сейфом. У приложения нет серверов,

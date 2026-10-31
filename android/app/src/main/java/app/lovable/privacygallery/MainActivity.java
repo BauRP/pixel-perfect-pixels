@@ -2,6 +2,8 @@ package app.lovable.privacygallery;
 
 import android.content.Intent;
 import android.graphics.Color;
+import android.content.res.Configuration;
+import androidx.core.view.ViewCompat;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -62,6 +64,25 @@ public class MainActivity extends BridgeActivity {
         if (requestCode == SecureVaultPlugin.MEDIA_PERM_REQUEST_CODE) {
             SecureVaultPlugin.onMediaPermissionResult();
         }
+    }
+
+    // OEMs can change 3-button/gesture mode without dispatching an insets event
+    // until the next activity resume or rotation. Request an insets pass.
+    private void refreshSystemAreas() {
+        getWindow().getDecorView().post(() ->
+                ViewCompat.requestApplyInsets(getWindow().getDecorView()));
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshSystemAreas();
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        refreshSystemAreas();
     }
 
     @Override

@@ -446,7 +446,15 @@ function MediaViewer({
 
   return (
     <div className="fixed inset-0 z-[60] bg-black text-white" onClick={() => setChromeVisible((v) => !v)}>
-      <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
+      <div
+        className="absolute inset-0 flex items-center justify-center overflow-hidden"
+        style={{
+          paddingTop: "var(--app-safe-top)",
+          paddingBottom: "var(--app-safe-bottom)",
+          paddingLeft: "var(--app-safe-left)",
+          paddingRight: "var(--app-safe-right)",
+        }}
+      >
         {item.kind === "image" ? (
           <div className="relative inline-block max-h-full max-w-full">
             <img

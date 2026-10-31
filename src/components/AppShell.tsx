@@ -24,11 +24,10 @@ function useResolvedLanguage() {
 }
 
 /**
- * System status bar: the WebView is laid out BELOW the status bar
- * (`setOverlaysWebView(false)`), its background follows the app theme and
- * the icon colour contrasts with it. On Android 15+ (forced edge-to-edge)
- * the WebView may still extend under the bar; the frame below then pads its
- * top by `--app-safe-top`, so content never hides under the status icons.
+ * System status bar: the native WebView draws edge-to-edge. The app frame
+ * uses live Android WindowInsetsCompat (plus CSS env on newer WebViews)
+ * to keep all interactive content outside the actual system bars and cutouts.
+ * The icon colour contrasts with the currently selected theme.
  * The plugin is loaded lazily so the web build never touches it.
  */
 function useSystemStatusBar() {

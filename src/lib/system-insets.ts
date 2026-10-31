@@ -1,12 +1,7 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { normalizeSystemInsets, type RawSystemInsets } from "./insets-math";
 
-interface Insets {
-  top: number;
-  bottom: number;
-  left: number;
-  right: number;
-  keyboardVisible?: boolean;
-}
+type Insets = RawSystemInsets;
 
 interface SystemInsetsPlugin {
   getInsets(): Promise<Insets>;
@@ -29,9 +24,9 @@ export function initSystemInsets(): void {
   let last = "";
   const apply = (i: Insets) => {
     if (!i || typeof i.top !== "number" || typeof i.bottom !== "number") return;
-    const values = [i.top, i.bottom, i.left ?? 0, i.right ?? 0]
-      .map((n) => Math.max(0, Math.min(256, Number.isFinite(n) ? n : 0)));
-    const keyboard = !!i.keyboardVisible;
+    const safe = normalizeSystemInsets(i);
+    const values = [safe.top, safe.bottom, safe.left, safe.right];
+    const keyboard = safe.keyboardVisible;
     const key = values.join(":") + ":" + keyboard;
     if (key === last) return;
     last = key;

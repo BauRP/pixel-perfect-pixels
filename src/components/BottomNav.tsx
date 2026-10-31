@@ -1,10 +1,38 @@
 import { Link, useRouterState } from "@tanstack/react-router";
+import { useEffect, useRef } from "react";
 import { Images, Lock, Settings as SettingsIcon } from "lucide-react";
 import { useT } from "@/lib/i18n";
 
 export function BottomNav() {
   const t = useT();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const navRef = useRef<HTMLElement>(null);
+
+  // Reserve precisely the nav's actual content height, not a fixed guess.
+  // Handles font scaling, rotation, narrow/wide screens and different labels.
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const setHeight = () => {
+      const root = document.documentElement;
+      const css = getComputedStyle(root);
+      const safeBottom = Number.parseFloat(css.getPropertyValue("--native-safe-bottom")) || 0;
+      const total = el.getBoundingClientRect().height;
+      root.style.setProperty("--app-nav-reserve", Math.max(0, total - safeBottom) + "px");
+    };
+    setHeight();
+    let observer: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(setHeight);
+      observer.observe(el);
+    }
+    window.addEventListener("resize", setHeight);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", setHeight);
+      document.documentElement.style.removeProperty("--app-nav-reserve");
+    };
+  }, []);
 
   const items = [
     { to: "/", label: t("gallery"), Icon: Images, match: (p: string) => p === "/" || p.startsWith("/gallery") },
@@ -14,6 +42,7 @@ export function BottomNav() {
 
   return (
     <nav
+      ref={navRef}
       className="glass-strong fixed inset-x-0 bottom-0 z-50 pb-[max(var(--app-safe-bottom),0.25rem)] pt-1"
       aria-label={t("primary_nav")}
       data-bottom-nav

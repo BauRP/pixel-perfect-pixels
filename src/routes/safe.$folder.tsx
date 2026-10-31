@@ -385,7 +385,10 @@ function SafeFolderView() {
         buttons into the title row so Close overlapped Delete.
       */}
       {viewer && (
-        <div className="fixed inset-0 z-[80] flex flex-col bg-black text-white">
+        <div
+          className="fixed inset-0 z-[80] flex flex-col bg-black text-white"
+          style={{ paddingLeft: "var(--app-safe-left)", paddingRight: "var(--app-safe-right)" }}
+        >
           <div
             className="flex items-center gap-3 px-4 pt-[max(var(--app-safe-top),0.75rem)] pb-3"
             style={{ background: "linear-gradient(180deg, rgba(0,0,0,.85), transparent)" }}
