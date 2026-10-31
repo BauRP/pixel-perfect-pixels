@@ -289,6 +289,21 @@
   .glass-strong { background: var(--color-surface); }
 }
 
+/* Chrome 49-56 also predates CSS Grid. The gallery remains usable as
+   multi-column flex cards instead of a blank/overlapping grid. */
+@supports not (display: grid) {
+  .adaptive-folder-grid {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-content: flex-start;
+  }
+  .adaptive-folder-grid > * {
+    flex: 1 1 calc(50% - 0.75rem);
+    min-width: 125px;
+    max-width: 100%;
+  }
+}
+
 /* For older WebViews that don't understand Tailwind's max() utility. */
 [data-bottom-nav] {
   padding-bottom: calc(var(--app-safe-bottom) + 0.25rem);

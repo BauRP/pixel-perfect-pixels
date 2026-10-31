@@ -76,3 +76,7 @@ The hosted GitHub Actions environment did not offer Android 17 Preview SDK 37 ev
 - Android 16: instrumented tests passed, then UI shell smoke tried to launch the app after the instrumentation runner had removed its package, so the launcher failed. APK now explicitly reinstalled before shell smoke.
 - Android 7: 3 of 4 instrumented tests passed. Gallery WebView did not render its navigation (`NOT_READY`) on the emulator's bundled browser engine. We now print WebView version and loaded document diagnostics. **Android 7 runtime compatibility is not yet passed.**
 - GitHub Bun installer received an intermittent HTTP 403; workflows now use a pinned Bun version instead of unstable `latest`.
+
+## 2026-11-01 — Исправление WebView Android 7
+
+WebView эмулятора Android 7 не поддерживает нативные ES-модули Vite. Обычное понижение синтаксиса до ES2019 недостаточно: `<script type="module">` вообще не выполнится на старом движке. Для Android APK подключён `@vitejs/plugin-legacy` 8.2.3 с локальными SystemJS-чанками и полифилами (`renderModernChunks=false`), сохраняя веб-версию сайта без изменений. JS и полифилы включены в APK и не требуют интернета. CI отдельно проверяет наличие legacy-чанков и скриптов загрузки в `dist/client/index.html`. Результат подлежит подтверждению эмуляторными испытаниями Android 7.

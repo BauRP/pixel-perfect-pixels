@@ -43,6 +43,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - run: bun install
       - run: bun run build:capacitor
+      - run: python3 scripts/check_legacy_webview.py
       - name: Build app and Android device tests
         working-directory: android
         run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace

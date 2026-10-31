@@ -4,6 +4,7 @@
 //      VITE_* env injection, @ path alias, React/TanStack dedupe, error logger plugins, sandbox detection.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 import type { Plugin } from "vite";
+import legacy from "@vitejs/plugin-legacy";
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 
@@ -116,8 +117,10 @@ export default defineConfig({
     ...(isCapacitorBuild
       ? {
           build: {
-            target: ["es2019", "chrome74"],
-            cssTarget: ["chrome74"],
+            // Modern syntax is transformed by plugin-legacy to SystemJS
+            // for the Android 7 WebView that has no native ES module support.
+            target: "es2019",
+            cssTarget: "chrome49",
           },
           esbuild: {
             target: "es2019",
@@ -146,6 +149,19 @@ export default defineConfig({
         server: { entry: "server" },
       },
   ...(isCapacitorBuild
-    ? { nitro: false as const, plugins: [capacitorRelativeAssetsPlugin()] }
+    ? {
+        nitro: false as const,
+        plugins: [
+          // Android 7's bundled Chromium is older than Vite's native module
+          // baseline. Use a fully legacy SystemJS bundle on *all* Android
+          // versions, with local polyfills (never downloaded at runtime).
+          legacy({
+            targets: ["Chrome >= 49", "ChromeAndroid >= 49"],
+            renderModernChunks: false,
+            polyfills: true,
+          }),
+          capacitorRelativeAssetsPlugin(),
+        ],
+      }
     : {}),
 });
