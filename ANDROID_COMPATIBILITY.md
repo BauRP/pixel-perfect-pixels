@@ -80,3 +80,6 @@ The hosted GitHub Actions environment did not offer Android 17 Preview SDK 37 ev
 ## 2026-11-01 — Исправление WebView Android 7
 
 WebView эмулятора Android 7 не поддерживает нативные ES-модули Vite. Обычное понижение синтаксиса до ES2019 недостаточно: `<script type="module">` вообще не выполнится на старом движке. Для Android APK подключён `@vitejs/plugin-legacy` 8.2.3 с локальными SystemJS-чанками и полифилами (`renderModernChunks=false`), сохраняя веб-версию сайта без изменений. JS и полифилы включены в APK и не требуют интернета. CI отдельно проверяет наличие legacy-чанков и скриптов загрузки в `dist/client/index.html`. Результат подлежит подтверждению эмуляторными испытаниями Android 7.
+
+## 2026-11-01 — Исправление загрузчика старых WebView
+CI выявил, что Vite выпускает System.register чанки, но TanStack Start создаёт HTML вне стандартного HTML-конвейера плагина legacy. Поэтому полифиллы и загрузчик не попадали в `index.html`. Теперь `scripts/bootstrap_legacy_android.mjs` **до `cap sync android`** копирует локальные `core-js-bundle` и `SystemJS` в `dist/client/assets`, подключает их в порядке ES-полифиллы → SystemJS → legacy entry и удаляет module-only скрипты из Android HTML. Команда CI строго проверяет файлы и сам HTML. Приложение не скачивает эти зависимости во время работы. Требуется подтвердить фактический запуск на API 24.

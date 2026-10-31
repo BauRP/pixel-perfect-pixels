@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "build:capacitor": "CAPACITOR_BUILD=1 vite build && cap sync android",
+    "build:capacitor": "CAPACITOR_BUILD=1 vite build && node scripts/bootstrap_legacy_android.mjs && cap sync android",
     "android:open": "CAPACITOR_BUILD=1 vite build && cap sync android && cap open android"
   },
   "dependencies": {
@@ -86,6 +86,8 @@
     "@types/react-window": "^2.0.0",
     "@vitejs/plugin-react": "^5.2.0",
     "@vitejs/plugin-legacy": "8.2.3",
+    "core-js-bundle": "3.50.0",
+    "systemjs": "6.15.1",
     "eslint": "^9.32.0",
     "eslint-config-prettier": "^10.1.1",
     "eslint-plugin-prettier": "^5.2.6",
