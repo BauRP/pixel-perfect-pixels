@@ -9,21 +9,20 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-emulators-${{ github.ref }}-${{ matrix.api || 'all' }}
+  group: android-emulators-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   emulator-smoke:
     name: Android API ${{ matrix.api }} device smoke
     # Push: min/max stable APIs; manual: every API (37 experimental).
-    if: ${{ github.event_name == 'workflow_dispatch' || matrix.api == 24 || matrix.api == 36 }}
     runs-on: ubuntu-latest
     timeout-minutes: 50
     continue-on-error: ${{ matrix.api == 37 }}
     strategy:
       fail-fast: false
       matrix:
-        api: [24,25,26,27,28,29,30,31,32,33,34,35,36,37]
+        api: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '[24,25,26,27,28,29,30,31,32,33,34,35,36,37]' || '[24,36]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v1
