@@ -62,14 +62,8 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Allow tall/wide aspect ratios on modern phones so the app
-                 stretches edge-to-edge instead of being letterboxed. -->
-            <meta-data
-                android:name="android.max_aspect"
-                android:value="2.4" />
-            <meta-data
-                android:name="android.min_aspect"
-                android:value="1.0" />
+            <!-- No hardcoded min/max aspect ratio: foldables, tall screens,
+                 split-screen and Android 17 desktop windows must resize freely. -->
         </activity>
 
         <provider

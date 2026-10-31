@@ -1,0 +1,63 @@
+name: Android 7–17 emulator compatibility
+
+on:
+  push:
+    branches: [ 'chatgpt/nova-gallery-*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-emulators-${{ github.ref }}-${{ matrix.api || 'all' }}
+  cancel-in-progress: true
+
+jobs:
+  emulator-smoke:
+    name: Android API ${{ matrix.api }} device smoke
+    # Push: min/max stable APIs; manual: every API (37 experimental).
+    if: ${{ github.event_name == 'workflow_dispatch' || matrix.api == 24 || matrix.api == 36 }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    continue-on-error: ${{ matrix.api == 37 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [24,25,26,27,28,29,30,31,32,33,34,35,36,37]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '21'
+          cache: gradle
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - name: Enable emulator hardware acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - run: bun install
+      - run: bun run build:capacitor
+      - name: Build app and Android device tests
+        working-directory: android
+        run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+      - name: Install and run device / navigation tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: |
+            cd android
+            ./gradlew :app:connectedDebugAndroidTest --stacktrace
+            cd ..
+            bash scripts/emulator_navigation_smoke.sh

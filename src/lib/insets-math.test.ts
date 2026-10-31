@@ -34,6 +34,14 @@ describe("Android 7–17 system area calculations", () => {
     expect(navReserveHeight(-10, false)).toBe(0);
     expect(navReserveHeight(NaN, false)).toBe(0);
   });
+  it("handles very tall displays without assuming a fixed aspect ratio", () => {
+    expect(normalizeSystemInsets({ top: 31, bottom: 22, left: 0, right: 0 }))
+      .toMatchObject({ top: 31, bottom: 22 });
+  });
+  it("handles split-screen caption bars and landscape cutouts together", () => {
+    expect(normalizeSystemInsets({ top: 38, bottom: 0, left: 27, right: 0 }))
+      .toMatchObject({ top: 38, bottom: 0, left: 27 });
+  });
   it("handles absent snapshot during an early cold launch", () => {
     expect(normalizeSystemInsets(undefined)).toEqual({
       top: 0, bottom: 0, left: 0, right: 0, keyboardVisible: false,
