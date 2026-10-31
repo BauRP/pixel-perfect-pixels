@@ -19,14 +19,14 @@ export function BottomNav() {
       data-bottom-nav
       style={{ paddingLeft: "var(--app-safe-left)", paddingRight: "var(--app-safe-right)" }}
     >
-      <ul className="mx-auto flex max-w-3xl items-stretch justify-around px-3">
+      <ul className="mx-auto flex max-w-5xl items-stretch justify-around px-3">
         {items.map(({ to, label, Icon, match }) => {
           const active = match(pathname);
           return (
             <li key={to} className="flex-1">
               <Link
                 to={to}
-                className="flex flex-col items-center gap-0.5 rounded-2xl px-2 py-1 transition-colors"
+                className="flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-2xl px-2 py-1 transition-colors"
                 style={{
                   color: active ? "var(--color-accent)" : "var(--color-muted-foreground)",
                 }}

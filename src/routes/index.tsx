@@ -158,7 +158,7 @@ function FolderGrid({
   const dense = columns >= 4;
   return (
     <div
-      className="px-4 pt-4 grid"
+      className="px-4 pt-4 grid adaptive-folder-grid"
       style={{
         gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
         gap: columns >= 4 ? "0.5rem" : columns === 3 ? "0.625rem" : "0.75rem",

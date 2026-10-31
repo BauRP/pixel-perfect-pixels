@@ -5,7 +5,7 @@ import { applyDocumentDirection, ensureLangResolved, useLang } from "@/lib/i18n"
 import { Capacitor } from "@capacitor/core";
 import { useVault } from "@/lib/vault-store";
 import { cssColorToHex } from "@/lib/css-color";
-import { initSystemInsets } from "@/lib/system-insets";
+import { initSystemInsets, updateSystemBarAppearance } from "@/lib/system-insets";
 
 /**
  * First launch after install: detect the device locale, map it to one of the
@@ -52,6 +52,7 @@ function useSystemStatusBar() {
         await StatusBar.setStyle({ style: light ? Style.Light : Style.Dark });
         if (/^#[0-9a-f]{6}$/i.test(bg)) await StatusBar.setBackgroundColor({ color: bg });
         await StatusBar.show();
+        await updateSystemBarAppearance(light);
       } catch (error) {
         console.warn("[status-bar] unavailable", error);
       }
@@ -87,7 +88,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     >
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
         <div
-          className="mx-auto w-full max-w-3xl"
+          className="mx-auto w-full max-w-5xl"
           style={{ paddingBottom: "calc(var(--app-nav-reserve) + var(--app-safe-bottom))" }}
         >
           {children}

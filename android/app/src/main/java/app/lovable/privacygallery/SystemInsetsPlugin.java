@@ -1,6 +1,9 @@
 package app.lovable.privacygallery;
 
 import android.webkit.WebView;
+import android.os.Build;
+import android.graphics.Color;
+import androidx.core.view.WindowCompat;
 
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -55,6 +58,29 @@ public class SystemInsetsPlugin extends Plugin {
             });
             // The native WebView may attach after the plugin has loaded.
             webView.post(() -> ViewCompat.requestApplyInsets(webView));
+        });
+    }
+
+    /**
+     * Contrast-correct native status/nav bar icons on both light and dark themes.
+     * Android 7 has no dark navigation icons: use a dark nav-bar background there.
+     */
+    @PluginMethod
+    public void setSystemBarAppearance(PluginCall call) {
+        final boolean light = call.getBoolean("lightBackground", false);
+        getActivity().runOnUiThread(() -> {
+            WindowCompat.getInsetsController(getActivity().getWindow(),
+                    getActivity().getWindow().getDecorView())
+                .setAppearanceLightStatusBars(light);
+            WindowCompat.getInsetsController(getActivity().getWindow(),
+                    getActivity().getWindow().getDecorView())
+                .setAppearanceLightNavigationBars(light);
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O && light) {
+                getActivity().getWindow().setNavigationBarColor(Color.BLACK);
+            } else {
+                getActivity().getWindow().setNavigationBarColor(Color.TRANSPARENT);
+            }
+            call.resolve();
         });
     }
 

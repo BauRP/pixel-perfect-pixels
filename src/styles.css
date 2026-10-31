@@ -188,3 +188,88 @@
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
+
+/* Safe layouts for small displays, rotations, notches and 3-button nav.
+   Modals are portaled outside AppShell, so they must apply insets themselves. */
+.safe-modal-content {
+  width: min(100% - 2rem - var(--app-safe-left) - var(--app-safe-right), 32rem);
+  max-height: calc(100vh - var(--app-safe-top) - var(--app-safe-bottom) - 1.5rem);
+  max-height: calc(100dvh - var(--app-safe-top) - var(--app-safe-bottom) - 1.5rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.safe-drawer-content {
+  padding-bottom: var(--app-safe-bottom);
+  padding-left: var(--app-safe-left);
+  padding-right: var(--app-safe-right);
+  max-height: calc(100vh - var(--app-safe-top) - var(--app-safe-bottom) - 1rem);
+  max-height: calc(100dvh - var(--app-safe-top) - var(--app-safe-bottom) - 1rem);
+  overflow-y: auto;
+}
+.adaptive-folder-grid {
+  min-width: 0;
+}
+/* On landscape phones, foldables and large windows, don't stretch two
+   gallery tiles to several hundred pixels just because a user chose 2 columns. */
+@media (min-width: 650px) {
+  .adaptive-folder-grid {
+    grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)) !important;
+  }
+}
+
+/* Chrome/WebView versions bundled with older Android devices may not support
+   OKLCH or CSS color-mix. Use readable, opaque fallbacks. */
+@supports not (color: oklch(0.5 0 0)) {
+  :root {
+    --background: #000000;
+    --foreground: #fafafa;
+    --surface: #242528;
+    --surface-elevated: #303238;
+    --card: #242528;
+    --card-foreground: #fafafa;
+    --popover: #28292c;
+    --popover-foreground: #fafafa;
+    --primary: #fafafa;
+    --primary-foreground: #000000;
+    --secondary: #36383d;
+    --secondary-foreground: #fafafa;
+    --muted: #303137;
+    --muted-foreground: #a1a1aa;
+    --accent: #31b879;
+    --accent-foreground: #0b2317;
+    --accent-glow: rgba(49, 184, 121, .28);
+    --destructive: #d94747;
+    --destructive-foreground: #ffffff;
+    --border: rgba(255,255,255,.10);
+    --input: rgba(255,255,255,.10);
+    --ring: #31b879;
+  }
+  :root.light {
+    --background: #fafafa;
+    --foreground: #191b20;
+    --surface: #ffffff;
+    --surface-elevated: #fafafa;
+    --card: #ffffff;
+    --card-foreground: #191b20;
+    --popover: #ffffff;
+    --popover-foreground: #191b20;
+    --primary: #191b20;
+    --primary-foreground: #ffffff;
+    --secondary: #eff0f2;
+    --secondary-foreground: #191b20;
+    --muted: #f2f3f5;
+    --muted-foreground: #666974;
+    --accent: #178758;
+    --accent-foreground: #ffffff;
+    --accent-glow: rgba(23,135,88,.22);
+    --destructive: #d23539;
+    --destructive-foreground: #ffffff;
+    --border: rgba(0,0,0,.10);
+    --input: rgba(0,0,0,.08);
+    --ring: #178758;
+  }
+}
+@supports not (color: color-mix(in oklab, black 50%, white)) {
+  .glass { background: var(--color-surface); }
+  .glass-strong { background: var(--color-surface); }
+}

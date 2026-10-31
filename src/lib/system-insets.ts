@@ -10,6 +10,7 @@ interface Insets {
 
 interface SystemInsetsPlugin {
   getInsets(): Promise<Insets>;
+  setSystemBarAppearance(options: { lightBackground: boolean }): Promise<void>;
   addListener(name: "insetsChanged", cb: (insets: Insets) => void):
     Promise<{ remove: () => Promise<void> }>;
 }
@@ -52,4 +53,10 @@ export function initSystemInsets(): void {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") refresh();
   });
+}
+
+/** Keep system button/gesture icons visible with the current app theme. */
+export async function updateSystemBarAppearance(lightBackground: boolean): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  await nativeInsets.setSystemBarAppearance({ lightBackground });
 }
