@@ -55,8 +55,6 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: |
-            cd android
-            ./gradlew :app:connectedDebugAndroidTest --stacktrace
-            cd ..
-            bash scripts/emulator_navigation_smoke.sh
+          # The runner executes each script line in a fresh shell.
+          # Use ONE script to retain the working directory and fail atomically.
+          script: bash scripts/run_android_emulator_tests.sh

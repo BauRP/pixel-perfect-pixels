@@ -2,8 +2,7 @@ package app.lovable.privacygallery;
 
 import android.app.Activity;
 import android.content.pm.ActivityInfo;
-import android.content.pm.PackageManager;
-import android.view.View;
+ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.WebView;
@@ -16,6 +15,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 
 import org.junit.Rule;
 import org.junit.Test;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.runner.RunWith;
 
 import static org.junit.Assert.*;
@@ -72,6 +74,40 @@ public class AndroidCompatibilitySmokeTest {
             assertTrue(bars.top >= 0 && bars.bottom >= 0);
             assertTrue(bars.left >= 0 && bars.right >= 0);
         });
+    }
+
+    @Test
+    public void webAppSafeAreaVariablesAndNavigationRender() throws Exception {
+        AtomicReference<WebView> web = new AtomicReference<>();
+        scenario.getScenario().onActivity(activity ->
+            web.set(findWebView(activity.getWindow().getDecorView())));
+        assertNotNull("WebView must be attached", web.get());
+
+        // Wait for the actual React app to load, not just the Android activity.
+        // Evaluate on UI thread; wait only on the instrumentation thread.
+        String state = "NOT_READY";
+        for (int attempt = 0; attempt < 25; attempt++) {
+            CountDownLatch done = new CountDownLatch(1);
+            AtomicReference<String> jsResult = new AtomicReference<>("");
+            scenario.getScenario().onActivity(activity -> web.get().evaluateJavascript(
+                "(function(){const r=document.documentElement;" +
+                "const n=document.querySelector('[data-bottom-nav]');" +
+                "if(!n)return 'NOT_READY';" +
+                "const s=getComputedStyle(r);" +
+                "const top=s.getPropertyValue('--app-safe-top').trim();" +
+                "const bottom=s.getPropertyValue('--app-safe-bottom').trim();" +
+                "if(!top||!bottom)return 'MISSING_INSETS';" +
+                "const box=n.getBoundingClientRect();" +
+                "if(box.width<=0||box.height<=0)return 'BAD_NAV_SIZE';" +
+                "if(box.bottom>innerHeight+3)return 'NAV_OUTSIDE_WINDOW';" +
+                "return 'OK';})()",
+                result -> { jsResult.set(result); done.countDown(); }));
+            assertTrue("WebView JS callback timed out", done.await(5, TimeUnit.SECONDS));
+            state = jsResult.get();
+            if (!"\"NOT_READY\"".equals(state)) break;
+            Thread.sleep(400);
+        }
+        assertEquals("Web app and safe-area navigation must render", "\"OK\"", state);
     }
 
     @Test

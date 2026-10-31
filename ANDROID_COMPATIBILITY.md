@@ -62,7 +62,7 @@ The hosted GitHub Actions environment did not offer Android 17 Preview SDK 37 ev
 
 ## Тестирование Android APK на реальных эмуляторах
 
-Добавлен отдельный workflow `.github/workflows/android-device-smoke.yml`.
+Добавлен отдельный workflow `.github/workflows/android-device-smoke.yml`. В первом запуске 31.10.2026 обе проверки завершились ошибкой настройки: `./gradlew: not found`, потому что шаг `cd android` выполнялся отдельной оболочкой. Исправлено запуском единого `scripts/run_android_emulator_tests.sh`. Это пока не подтверждает прохождение эмуляторов.
 
 - При отправке изменений в рабочую ветку запускаются **Android 7.0 (API 24)** и **Android 16 (API 36)**. Они проверяют реальную установку и запуск APK, Android WindowInsets, видимость WebView и отсутствие полноэкранного скрытия статус-бара.
 - Ручной запуск `workflow_dispatch` позволяет прогнать **все API 24–37**. API 37 считается экспериментальной целью до успешной установки соответствующего образа и выполнения испытаний.
