@@ -82,6 +82,13 @@ public class SecureVaultPlugin extends Plugin {
     }
 
     private static String[] mediaPermissions() {
+        if (Build.VERSION.SDK_INT >= 34) {
+            return new String[] {
+                Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VIDEO,
+                "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
+            };
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             return new String[] { Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO };
         }
@@ -122,7 +129,7 @@ public class SecureVaultPlugin extends Plugin {
     public void requestMediaPermission(PluginCall call) {
         String st = mediaPermissionState();
         Activity a = getActivity();
-        if ("granted".equals(st) || a == null) {
+        if ("granted".equals(st) || "partial".equals(st) || a == null) {
             JSObject r = new JSObject();
             r.put("state", st);
             call.resolve(r);

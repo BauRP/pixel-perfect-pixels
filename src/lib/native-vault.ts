@@ -71,15 +71,9 @@ export async function ensurePrivateVaultDir(): Promise<void> {
  * MediaStore delete request instead.
  */
 export async function ensureDeletePermission(): Promise<boolean> {
-  if (!isNative()) return false;
-  try {
-    const { granted } = await SecureVault.hasAllFilesAccess();
-    if (granted) return true;
-    const res = await SecureVault.requestAllFilesAccess();
-    return res.granted;
-  } catch {
-    return false;
-  }
+  // Prefer scoped MediaStore user confirmation; never request unrestricted
+  // filesystem access just to move an image into the private Safe.
+  return false;
 }
 
 /** Permanently delete the given public-storage files. */

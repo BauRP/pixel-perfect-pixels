@@ -117,28 +117,33 @@ function FolderView() {
   const enterSelect = () => { setSelectMode(true); setSelected(new Set()); };
   const cancelSelect = () => { setSelectMode(false); setSelected(new Set()); };
 
-  const doDelete = () => {
+  const doDelete = async () => {
     if (selected.size === 0) { cancelSelect(); setConfirmDelete(false); return; }
     const targets = folder.items.filter((i) => selected.has(i.id));
-    void purgeFromDevice(targets);
-    deviceScan.removeItems(folder.id, selected);
-    toast.success(t("deleted_count", { n: selected.size }));
+    const deleted = await purgeFromDevice(targets);
+    const confirmed = new Set(targets.filter((it) =>
+      deleted.has(it.nativeUri ?? it.path)).map((it) => it.id));
+    if (confirmed.size > 0) {
+      if (confirmed.size === folder.items.length) navigate({ to: "/" });
+      deviceScan.removeItems(folder.id, confirmed);
+      toast.success(t("deleted_count", { n: confirmed.size }));
+    }
+    if (confirmed.size < targets.length) toast.error(t("delete_failed"));
     cancelSelect();
     setConfirmDelete(false);
-    // If the album emptied out, return to gallery root.
-    if (folder.items.length - selected.size <= 0) navigate({ to: "/" });
   };
 
   /**
    * Permanently remove the underlying files from public storage on device.
    * On web there is no filesystem to touch — the store update is enough.
    */
-  const purgeFromDevice = async (targets: ScannedItem[]) => {
-    if (!isNative() || targets.length === 0) return;
-    const paths = targets
-      .map((i) => i.nativeUri ?? i.path)
-      .filter((p): p is string => Boolean(p));
-    try { await deleteOriginals(paths); } catch { /* store already updated */ }
+  const purgeFromDevice = async (targets: ScannedItem[]): Promise<Set<string>> => {
+    const paths = targets.map((i) => i.nativeUri ?? i.path).filter(Boolean);
+    if (!isNative()) return new Set(paths);
+    try {
+      const result = await deleteOriginals(paths);
+      return new Set(result.deleted);
+    } catch { return new Set(); }
   };
 
   /**
@@ -151,10 +156,14 @@ function FolderView() {
   const deleteFromViewer = async (item: ScannedItem) => {
     const last = rawFolder ? rawFolder.items.length <= 1 : true;
     setViewer(null);
-    if (last) navigate({ to: "/" });
-    await purgeFromDevice([item]);
-    deviceScan.removeItems(folder.id, new Set([item.id]));
-    toast.success(t("deleted"));
+    const deleted = await purgeFromDevice([item]);
+    if (deleted.has(item.nativeUri ?? item.path)) {
+      if (last) navigate({ to: "/" });
+      deviceScan.removeItems(folder.id, new Set([item.id]));
+      toast.success(t("deleted"));
+    } else {
+      toast.error(t("delete_failed"));
+    }
   };
 
   const shareAlbum = async () => {
