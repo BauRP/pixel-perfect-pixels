@@ -73,6 +73,8 @@ public class SecureVaultPlugin extends Plugin {
     private static SecureVaultPlugin instance = null;
     private PluginCall pendingDeleteCall;
     private List<String> pendingDeletePaths;
+    private List<Uri> pendingDeleteUris;
+    private List<String> pendingAlreadyDeleted;
 
     @Override
     public void load() {
@@ -98,11 +100,18 @@ public class SecureVaultPlugin extends Plugin {
     /** "granted" | "partial" (Android 14 selected photos) | "denied" | "prompt". */
     private String mediaPermissionState() {
         Activity a = getActivity();
-        boolean all = true;
-        for (String p : mediaPermissions()) {
-            if (ContextCompat.checkSelfPermission(getContext(), p) != PackageManager.PERMISSION_GRANTED) { all = false; break; }
-        }
-        if (all) return "granted";
+        // READ_MEDIA_VISUAL_USER_SELECTED is a separate partial-access state,
+        // not a requirement when the user has granted all images and videos.
+        boolean images = Build.VERSION.SDK_INT < 33 ||
+            ContextCompat.checkSelfPermission(getContext(), Manifest.permission.READ_MEDIA_IMAGES)
+                == PackageManager.PERMISSION_GRANTED;
+        boolean videos = Build.VERSION.SDK_INT < 33 ||
+            ContextCompat.checkSelfPermission(getContext(), Manifest.permission.READ_MEDIA_VIDEO)
+                == PackageManager.PERMISSION_GRANTED;
+        if (Build.VERSION.SDK_INT >= 33 && images && videos) return "granted";
+        if (Build.VERSION.SDK_INT < 33 &&
+            ContextCompat.checkSelfPermission(getContext(), Manifest.permission.READ_EXTERNAL_STORAGE)
+                == PackageManager.PERMISSION_GRANTED) return "granted";
         if (Build.VERSION.SDK_INT >= 34 && ContextCompat.checkSelfPermission(getContext(),
                 "android.permission.READ_MEDIA_VISUAL_USER_SELECTED") == PackageManager.PERMISSION_GRANTED) {
             return "partial";
@@ -274,88 +283,122 @@ public class SecureVaultPlugin extends Plugin {
     }
 
     // ── delete originals from public storage ─────────────────────────────
+    /**
+     * Never mistake a content:// URI for a filesystem path.
+     * Android 11+: use MediaStore.createDeleteRequest for unowned media.
+     * Android 10: use RecoverableSecurityException's system confirmation.
+     * Android 7-9: delete with the legacy storage permission.
+     */
     @PluginMethod
     public void deleteOriginals(PluginCall call) {
-        JSArray paths = call.getArray("paths");
-        if (paths == null) {
+        JSArray input = call.getArray("paths");
+        if (input == null) {
             call.reject("paths is required");
             return;
         }
-        List<String> input;
+        List<String> paths;
         try {
-            input = paths.toList();
+            paths = input.toList();
         } catch (org.json.JSONException e) {
             call.reject("invalid paths");
             return;
         }
 
         List<String> deleted = new ArrayList<>();
-        List<String> needsConfirm = new ArrayList<>();
+        List<String> failed = new ArrayList<>();
         List<Uri> confirmUris = new ArrayList<>();
+        List<String> confirmPaths = new ArrayList<>();
+        PendingIntent android10Permission = null;
+        ContentResolver resolver = getContext().getContentResolver();
 
-        for (Object o : input) {
-            if (o == null) continue;
-            String abs = normalize(String.valueOf(o));
-            if (abs == null || abs.length() == 0) continue;
-
-            Uri mediaUri = findMediaUri(abs);
-            boolean gone = false;
-
-            if (mediaUri != null) {
-                try {
-                    int n = getContext().getContentResolver().delete(mediaUri, null, null);
-                    gone = n > 0;
-                } catch (SecurityException se) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
-                            && se instanceof RecoverableSecurityException) {
-                        confirmUris.add(mediaUri);
-                        needsConfirm.add(abs);
-                        continue;
+        for (String original : paths) {
+            if (original == null || original.length() == 0) continue;
+            // The same raw content URI is returned in the result so JS can
+            // remove exactly the file that the system confirmed deleting.
+            Uri uri = original.startsWith("content://")
+                    ? Uri.parse(original) : findMediaUri(normalize(original));
+            if (uri == null) {
+                if (Build.VERSION.SDK_INT <= 28) {
+                    File file = new File(normalize(original));
+                    if (file.exists() && file.delete()) {
+                        deleted.add(original);
+                    } else {
+                        failed.add(original);
                     }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        confirmUris.add(mediaUri);
-                        needsConfirm.add(abs);
-                        continue;
-                    }
-                } catch (Exception ignored) {}
-            }
-
-            File f = new File(abs);
-            if (!gone && f.exists()) {
-                try { gone = f.delete(); } catch (Exception ignored) {}
-            }
-            if (!gone && !f.exists()) gone = true;
-
-            if (gone) {
-                if (mediaUri != null) {
-                    try { getContext().getContentResolver().delete(mediaUri, null, null); }
-                    catch (Exception ignored) {}
+                } else {
+                    failed.add(original);
                 }
-                deleted.add(abs);
-            } else if (mediaUri != null) {
-                confirmUris.add(mediaUri);
-                needsConfirm.add(abs);
+                continue;
             }
-        }
-
-        if (!confirmUris.isEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
-                PendingIntent pi = MediaStore.createDeleteRequest(
-                        getContext().getContentResolver(), confirmUris);
-                pendingDeleteCall = call;
-                pendingDeletePaths = new ArrayList<>(deleted);
-                pendingDeletePaths.addAll(needsConfirm);
-                call.setKeepAlive(true);
-                IntentSender sender = pi.getIntentSender();
-                getActivity().startIntentSenderForResult(
-                        sender, DELETE_REQUEST_CODE, null, 0, 0, 0);
-                return;
-            } catch (IntentSender.SendIntentException | RuntimeException e) {
-                // fall through to the plain result below
+                if (resolver.delete(uri, null, null) > 0) {
+                    deleted.add(original);
+                } else if (!mediaExists(uri)) {
+                    deleted.add(original);
+                } else {
+                    confirmUris.add(uri);
+                    confirmPaths.add(original);
+                }
+            } catch (SecurityException security) {
+                if (Build.VERSION.SDK_INT == 29 &&
+                        security instanceof RecoverableSecurityException) {
+                    if (android10Permission == null) {
+                        android10Permission =
+                                ((RecoverableSecurityException) security).getUserAction().getActionIntent();
+                        confirmUris.add(uri);
+                        confirmPaths.add(original);
+                    } else {
+                        // Android 10 requires one consent at a time.
+                        failed.add(original);
+                    }
+                } else if (Build.VERSION.SDK_INT >= 30) {
+                    confirmUris.add(uri);
+                    confirmPaths.add(original);
+                } else {
+                    failed.add(original);
+                }
+            } catch (Exception error) {
+                Log.w("GalleryDelete", "Could not delete " + original, error);
+                failed.add(original);
             }
         }
 
-        resolveDelete(call, deleted, needsConfirm);
+        if (!confirmUris.isEmpty() && Build.VERSION.SDK_INT >= 29) {
+            try {
+                PendingIntent request = Build.VERSION.SDK_INT == 29
+                        ? android10Permission
+                        : MediaStore.createDeleteRequest(resolver, confirmUris);
+                if (request != null) {
+                    pendingDeleteCall = call;
+                    pendingDeletePaths = confirmPaths;
+                    pendingDeleteUris = confirmUris;
+                    pendingAlreadyDeleted = deleted;
+                    // Keep non-confirmable items in the result after user choice.
+                    pendingFailedPaths = failed;
+                    call.setKeepAlive(true);
+                    getActivity().startIntentSenderForResult(
+                            request.getIntentSender(), DELETE_REQUEST_CODE,
+                            null, 0, 0, 0);
+                    return;
+                }
+            } catch (IntentSender.SendIntentException | RuntimeException error) {
+                Log.e("GalleryDelete", "System delete dialog failed", error);
+            }
+            failed.addAll(confirmPaths);
+        }
+        resolveDelete(call, deleted, failed);
+    }
+
+    private List<String> pendingFailedPaths;
+
+    private boolean mediaExists(Uri uri) {
+        try (Cursor cursor = getContext().getContentResolver().query(
+                uri, new String[] { MediaStore.MediaColumns._ID }, null, null, null)) {
+            return cursor != null && cursor.moveToFirst();
+        } catch (Exception error) {
+            // Inaccessible is not proof of deletion: avoid a false success.
+            return true;
+        }
     }
 
     private void resolveDelete(PluginCall call, List<String> deleted, List<String> failed) {
@@ -365,28 +408,43 @@ public class SecureVaultPlugin extends Plugin {
         call.resolve(ret);
     }
 
-    /** Called by MainActivity when the system delete dialog returns. */
+    /** Called after the OS confirmation screen closes. */
     public static void onDeleteRequestResult(int resultCode) {
-        SecureVaultPlugin p = instance;
-        if (p == null || p.pendingDeleteCall == null) return;
-        PluginCall call = p.pendingDeleteCall;
-        List<String> paths = p.pendingDeletePaths == null
-                ? new ArrayList<String>() : p.pendingDeletePaths;
-        p.pendingDeleteCall = null;
-        p.pendingDeletePaths = null;
+        SecureVaultPlugin plugin = instance;
+        if (plugin == null || plugin.pendingDeleteCall == null) return;
+        PluginCall call = plugin.pendingDeleteCall;
+        List<String> deleted = plugin.pendingAlreadyDeleted != null
+                ? plugin.pendingAlreadyDeleted : new ArrayList<>();
+        List<String> failed = plugin.pendingFailedPaths != null
+                ? plugin.pendingFailedPaths : new ArrayList<>();
+        List<String> paths = plugin.pendingDeletePaths;
+        List<Uri> uris = plugin.pendingDeleteUris;
+        plugin.pendingDeleteCall = null;
+        plugin.pendingAlreadyDeleted = null;
+        plugin.pendingFailedPaths = null;
+        plugin.pendingDeletePaths = null;
+        plugin.pendingDeleteUris = null;
 
-        List<String> deleted = new ArrayList<>();
-        List<String> failed = new ArrayList<>();
-        for (String abs : paths) {
-            if (resultCode == Activity.RESULT_OK && !new File(abs).exists()) deleted.add(abs);
-            else if (!new File(abs).exists()) deleted.add(abs);
-            else failed.add(abs);
+        if (paths != null && uris != null) {
+            for (int i = 0; i < paths.size(); i++) {
+                boolean removed = !plugin.mediaExists(uris.get(i));
+                if (Build.VERSION.SDK_INT == 29 &&
+                        resultCode == Activity.RESULT_OK && !removed) {
+                    // The Android 10 prompt grants one operation; actually
+                    // execute it after obtaining consent before reporting success.
+                    try {
+                        removed = plugin.getContext().getContentResolver()
+                                .delete(uris.get(i), null, null) > 0;
+                    } catch (Exception ignored) {
+                        removed = false;
+                    }
+                }
+                if (removed) deleted.add(paths.get(i));
+                else failed.add(paths.get(i));
+            }
         }
-        JSObject ret = new JSObject();
-        ret.put("deleted", JSArray.from(deleted.toArray(new String[0])));
-        ret.put("failed", JSArray.from(failed.toArray(new String[0])));
         call.setKeepAlive(false);
-        call.resolve(ret);
+        plugin.resolveDelete(call, deleted, failed);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────

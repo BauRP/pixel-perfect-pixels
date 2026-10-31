@@ -22,11 +22,8 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
 
-    <!-- Required to permanently remove the ORIGINAL media from public
-         storage after it has been encrypted into the private Safe. -->
-    <uses-permission
-        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
-        tools:ignore="ScopedStorage" />
+    <!-- Deletions on Android 10+ use MediaStore system confirmation.
+         Do not request broad MANAGE_EXTERNAL_STORAGE access. -->
 
     <!-- Biometric unlock for the private Safe -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />

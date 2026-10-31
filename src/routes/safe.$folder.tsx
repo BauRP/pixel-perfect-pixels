@@ -25,7 +25,7 @@ import { useBackHandler } from "@/lib/back-handler";
 import { toast } from "sonner";
 import { useDeviceScan, materializeFile, deviceScan, type ScannedItem } from "@/lib/device-scan";
 import {
-  isNative, ensureDeletePermission, deleteOriginals, ensurePrivateVaultDir,
+  isNative, deleteOriginals, ensurePrivateVaultDir,
   restoreToPublic, shareNative,
 } from "@/lib/native-vault";
 import { ConfirmSheet } from "./gallery.$folder";
@@ -113,10 +113,8 @@ function SafeFolderView() {
     if (items.length === 0) return;
     setBusy(true);
     try {
-      // Ask once for the OS permission that lets us hard-delete originals.
-      // A denial is not fatal — the native layer then falls back to the
-      // system MediaStore delete-request dialog.
-      if (isNative()) await ensureDeletePermission();
+      // Scoped MediaStore owns deletion; no unrestricted all-files access
+      // needs to be requested just to move media into the Safe.
 
       // 1. Read + encrypt each selected item into the app's private,
       //    .nomedia-guarded internal directory (one file at a time so a
@@ -586,5 +584,8 @@ function publicRelativeDir(f: EncryptedFile): string {
   const dir = abs.slice(0, abs.lastIndexOf("/"));
   const m = dir.match(/(?:emulated\/\d+|sdcard|storage\/[^/]+)\/(.+)$/);
   if (m && m[1]) return m[1];
+  // MediaStore records a RELATIVE_PATH instead of an absolute filesystem path.
+  // Restore to the same gallery album rather than generic Pictures/Movies.
+  if (dir && !dir.startsWith("/") && !dir.startsWith("content:")) return dir;
   return f.type.startsWith("video/") ? "Movies" : "Pictures";
 }

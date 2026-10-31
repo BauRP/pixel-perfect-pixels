@@ -407,11 +407,12 @@ async function scanNative(): Promise<boolean> {
     lastScanResult = res;
     console.info(SCAN_TAG, `scan ${res.status}: ${res.albums.length} album(s), ${res.errors.length} error(s)`);
     
-    const genuineEmpty = res.status === "empty" && res.roots.length > 0 && res.roots.every((r) => r.ok && r.items === 0);
-    const hadAlbums = state.albums.length > 0;
+    // A successful MediaStore query returning zero rows really means the
+    // currently authorized media set is empty; don't keep stale photos.
+    const genuineEmpty = res.status === "empty";
 
     // SAFEGUARD: Never wipe existing albums on a subsequent empty or partial scan result
-    if (res.status === "success" || (genuineEmpty && !hadAlbums)) {
+    if (res.status === "success" || res.status === "empty") {
       set({ albums: res.albums, scanning: false, scanned: true });
     } else {
       console.warn(SCAN_TAG, `keeping ${state.albums.length} existing album(s) — status: ${res.status}, genuineEmpty: ${genuineEmpty}`);
