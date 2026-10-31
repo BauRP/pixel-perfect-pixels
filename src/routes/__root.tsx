@@ -90,15 +90,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "Vault — Private Gallery" },
       { name: "description", content: "A premium mobile gallery with a biometric-locked private Safe." },
       { property: "og:title", content: "Vault — Private Gallery" },
-      { property: "og:description", content: "A premium mobile gallery with a biometric-locked private Safe." },
+      { property: "og:description", content: "A premium mobile gallery with a PIN-protected encrypted Safe." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
-      { rel: "preconnect", href: "https://fonts.googleapis.com" },
-      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" },
+      // On Android the gallery must boot entirely offline. System-font
+      // fallbacks are used without blocking on Google's remote font CSS.
     ],
   }),
   shellComponent: RootShell,
@@ -174,12 +173,12 @@ function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="en" dir="ltr">
       <head>
-        <script dangerouslySetInnerHTML={{ __html: BOOTSTRAP_ERROR_HANDLER }} />
+        <script data-nova-boot-error="1" dangerouslySetInnerHTML={{ __html: BOOTSTRAP_ERROR_HANDLER }} />
         <HeadContent />
       </head>
       <body>
         <div id="root">{children}</div>
-        <Scripts />
+        {import.meta.env.VITE_CAPACITOR_BUILD !== "1" && <Scripts />}
       </body>
     </html>
   );

@@ -31,8 +31,12 @@ for (const [packageFile, destination] of copied) {
 }
 await writeFile(join(assetsDir, "nova-bootstrap.js"),
   "(function(){'use strict';" +
-  "if(!window.System||!window.System.import){throw Error('SystemJS unavailable');}" +
-  "window.System.import('./assets/" + entry + "').catch(function(e){" +
+  "window.__novaLegacyBootState='starting';" +
+  "if(!window.System||!window.System.import){window.__novaLegacyBootState='no-systemjs';throw Error('SystemJS unavailable');}" +
+  "window.System.import('./assets/" + entry + "').then(function(){" +
+  "window.__novaLegacyBootState='loaded';" +
+  "},function(e){" +
+  "window.__novaLegacyBootState='failed: '+(e&&e.message||e);" +
   "console.error('[Nova legacy boot]',e);" +
   "if(typeof window.dispatchEvent==='function'){" +
   "var evt=document.createEvent('Event');evt.initEvent('nova-legacy-error',false,false);" +
@@ -43,9 +47,14 @@ let output = html
   // Remove modern-only JavaScript that cannot even parse on Android 7.
   .replace(/<script\b(?=[^>]*\btype\s*=\s*["']module["'])[^>]*>(?:[\s\S]*?<\/script>)?/gi, "")
   .replace(/<link\b(?=[^>]*\brel\s*=\s*["']modulepreload["'])[^>]*>/gi, "")
-  // The plugin's conditional HTML injection doesn't run in TanStack Start's
-  // prerender step. Avoid any partial/double bootstrap from another plugin.
-  .replace(/<script\b(?=[^>]*\bnomodule\b)[^>]*>[\s\S]*?<\/script>/gi, "");
+  // TanStack Start renders several hydration/start scripts as ordinary
+  // <script> tags. They include bare ESM "import { ... }" expressions and
+  // crash EVERY Android WebView when interpreted as classic scripts:
+  // SyntaxError: Unexpected token { / import statement outside a module.
+  // This APK exclusively uses SystemJS; retain just our ES5 error handler.
+  .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, (script) =>
+    /\bdata-nova-boot-error\s*=\s*["']1["']/i.test(script) ? script : "")
+  .replace(/<script\b[^>]*\/\s*>/gi, "");
 if (!output.includes("</body>")) throw new Error("index.html missing </body>");
 output = output.replace("</body>",
   '<script src="./assets/nova-core-polyfills.js"></script>' +

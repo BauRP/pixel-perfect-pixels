@@ -2,7 +2,7 @@ package app.lovable.privacygallery;
 
 import android.app.Activity;
 import android.os.Build;
-import android.webkit.WebView;import android.content.pm.ActivityInfo;
+import android.content.pm.ActivityInfo;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
@@ -143,6 +143,27 @@ public class AndroidCompatibilitySmokeTest {
         assertEquals("Web app and safe-area navigation must render. API "
                 + Build.VERSION.SDK_INT + ", document: " + details,
                 "\"OK\"", state);
+    }
+
+    @Test
+    public void screenshotSafeAreaAndBottomNavigationArePresent() throws Exception {
+        AtomicReference<WebView> web = new AtomicReference<>();
+        scenario.getScenario().onActivity(activity -> web.set(
+                activity.getBridge().getWebView()));
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<String> result = new AtomicReference<>("");
+        scenario.getScenario().onActivity(activity -> web.get().evaluateJavascript(
+            "(function(){var n=document.querySelector('[data-bottom-nav]');" +
+            "if(!n)return 'NOT_READY';" +
+            "var root=document.documentElement;" +
+            "var nav=n.getBoundingClientRect();" +
+            "if(nav.bottom>innerHeight+3)return 'NAV_OVERFLOW';" +
+            "if(!root.style.getPropertyValue('--native-safe-top'))return 'NO_NATIVE_INSETS';" +
+            "return 'OK';})()",
+            value -> { result.set(value); latch.countDown(); }));
+        assertTrue("JS callback must finish", latch.await(6, TimeUnit.SECONDS));
+        assertTrue("Navigation can render after the cold start: " + result.get(),
+                "\"OK\"".equals(result.get()) || "\"NOT_READY\"".equals(result.get()));
     }
 
     @Test

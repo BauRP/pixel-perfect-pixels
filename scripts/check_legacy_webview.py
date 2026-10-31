@@ -27,6 +27,17 @@ for name in expected:
         raise SystemExit("Android 7 compatibility: loader omitted from HTML: " + name)
 if any(tag.get("type") == "module" for tag in parser.scripts):
     raise SystemExit("Android 7 compatibility: modern module script still in app index")
+# The only inline JavaScript allowed is our dedicated ES5 error handler.
+# TanStack Start SSR hydration scripts cannot be executed in classic mode.
+inline_scripts = [tag for tag in parser.scripts if not tag.get("src")]
+if len(inline_scripts) != 1 or inline_scripts[0].get("data-nova-boot-error") != "1":
+    raise SystemExit("Android 7 compatibility: unexpected TanStack or ESM inline scripts")
+if len(parser.scripts) != 4:
+    raise SystemExit("Android 7 compatibility: unexpected JS script count")
+if scripts[-3:] != ["./assets/" + n for n in expected]:
+    raise SystemExit("Android 7 compatibility: offline loader script order incorrect")
+if re.search(r'<script\b[^>]*\bsrc=["\']https?://', html, re.I):
+    raise SystemExit("Android 7 compatibility: online scripts included in offline APK")
 entry = list(assets.glob("index-legacy-*.js"))
 if len(entry) != 1:
     raise SystemExit("Android 7 compatibility: expected exactly one legacy JS entry")

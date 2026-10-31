@@ -48,6 +48,18 @@ describe("Android 7–17 system area calculations", () => {
     expect(scrollContentBottomReserve(92, false)).toBe(92);
     expect(scrollContentBottomReserve(92, true)).toBe(0);
   });
+  it("supports switching between three-button and gesture navigation", () => {
+    const buttons = normalizeSystemInsets({ top: 25, bottom: 50 });
+    const gestures = normalizeSystemInsets({ top: 25, bottom: 18 });
+    expect(buttons.top).toBe(gestures.top);
+    expect(gestures.bottom).toBeLessThan(buttons.bottom);
+    expect(scrollContentBottomReserve(81, false)).toBe(81);
+  });
+  it("keeps safe insets for side cutouts after rotation", () => {
+    const rotated = normalizeSystemInsets({ top: 0, bottom: 24, left: 35, right: 9 });
+    expect(rotated.left).toBe(35);
+    expect(rotated.right).toBe(9);
+  });
   it("handles absent snapshot during an early cold launch", () => {
     expect(normalizeSystemInsets(undefined)).toEqual({
       top: 0, bottom: 0, left: 0, right: 0, keyboardVisible: false,
