@@ -390,8 +390,11 @@ function SafeFolderView() {
           style={{ paddingLeft: "var(--app-safe-left)", paddingRight: "var(--app-safe-right)" }}
         >
           <div
-            className="flex items-center gap-3 px-4 pt-[max(var(--app-safe-top),0.75rem)] pb-3"
-            style={{ background: "linear-gradient(180deg, rgba(0,0,0,.85), transparent)" }}
+            className="flex items-center gap-3 px-4 pb-3"
+            style={{
+              background: "linear-gradient(180deg, rgba(0,0,0,.85), transparent)",
+              paddingTop: "calc(var(--app-safe-top) + 0.5rem)",
+            }}
           >
             <span className="min-w-0 flex-1 truncate text-sm font-medium">
               {viewer.file.name}
@@ -429,7 +432,8 @@ function SafeFolderView() {
             </div>
           </div>
 
-          <div className="flex flex-1 items-center justify-center overflow-hidden px-2 pb-[max(var(--app-safe-bottom),0.75rem)]">
+          <div className="flex flex-1 items-center justify-center overflow-hidden px-2"
+            style={{ paddingBottom: "calc(var(--app-safe-bottom) + 0.5rem)" }}>
             {viewer.file.type.startsWith("video/") ? (
               <video src={viewer.url} controls autoPlay className="max-h-full max-w-full" />
             ) : viewer.file.type.startsWith("image/") ? (

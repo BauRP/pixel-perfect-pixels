@@ -16,7 +16,7 @@ import androidx.core.view.WindowCompat;
 import com.getcapacitor.BridgeActivity;
 
 /**
- * Nova Gallery — native shell. Ad-free.
+ * Nova Gallery — native shell. Native AdMob ads respect user consent.
  */
 public class MainActivity extends BridgeActivity {
 

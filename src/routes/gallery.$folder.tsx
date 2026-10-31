@@ -492,8 +492,13 @@ function MediaViewer({
 
       {chromeVisible && (
         <div
-          className="absolute top-0 inset-x-0 flex items-center justify-between px-4 pt-[max(var(--app-safe-top),1rem)] pb-3"
-          style={{ background: "linear-gradient(180deg, rgba(0,0,0,.7), transparent)" }}
+          className="absolute top-0 inset-x-0 flex items-center justify-between px-4 pb-3"
+          style={{
+            background: "linear-gradient(180deg, rgba(0,0,0,.7), transparent)",
+            paddingTop: "calc(var(--app-safe-top) + 0.5rem)",
+            paddingLeft: "calc(var(--app-safe-left) + 1rem)",
+            paddingRight: "calc(var(--app-safe-right) + 1rem)",
+          }}
           onClick={(e) => e.stopPropagation()}
         >
           <button
@@ -518,8 +523,15 @@ function MediaViewer({
 
       {chromeVisible && (
         <div
-          className="absolute bottom-0 inset-x-0 pb-[max(var(--app-safe-bottom),0.75rem)]"
-          style={{ background: "linear-gradient(0deg, rgba(0,0,0,.85), transparent)" }}
+          className="absolute bottom-0 inset-x-0"
+          style={{
+            background: "linear-gradient(0deg, rgba(0,0,0,.85), transparent)",
+            paddingBottom: "calc(var(--app-safe-bottom) + 0.5rem)",
+            paddingLeft: "var(--app-safe-left)",
+            paddingRight: "var(--app-safe-right)",
+            maxHeight: "calc(100vh - var(--app-safe-top) - var(--app-safe-bottom))",
+            overflowY: "auto",
+          }}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="mx-auto max-w-md px-4 pt-4">

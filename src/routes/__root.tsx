@@ -12,6 +12,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { initBackHandler } from "../lib/back-handler";
+import { initSystemInsets } from "../lib/system-insets";
 import { useT } from "../lib/i18n";
 
 function NotFoundComponent() {
@@ -214,7 +215,10 @@ function RootComponent() {
   }, [isCapacitor]);
 
   // Single global hardware back-button listener (Android/Capacitor).
-  useEffect(() => { initBackHandler(); }, []);
+  useEffect(() => {
+    initSystemInsets();
+    initBackHandler();
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

@@ -88,7 +88,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
         <div
           className="mx-auto w-full max-w-5xl"
-          style={{ paddingBottom: "var(--app-nav-reserve)" }}
+          style={{ paddingBottom: "var(--app-nav-reserve)", minWidth: 0 }}
         >
           {children}
         </div>

@@ -80,8 +80,15 @@ public class AndroidCompatibilitySmokeTest {
     @Test
     public void webAppSafeAreaVariablesAndNavigationRender() throws Exception {
         AtomicReference<WebView> web = new AtomicReference<>();
-        scenario.getScenario().onActivity(activity ->
-            web.set(findWebView(activity.getWindow().getDecorView())));
+        // Resolve Capacitor's OWN WebView. The decor tree can contain another
+        // WebView (UMP consent / Google ads); the first one is not guaranteed
+        // to host the React gallery.
+        scenario.getScenario().onActivity(activity -> {
+            WebView mainWebView = activity.getBridge() == null
+                    ? null : activity.getBridge().getWebView();
+            web.set(mainWebView != null
+                    ? mainWebView : findWebView(activity.getWindow().getDecorView()));
+        });
         assertNotNull("WebView must be attached", web.get());
 
         // Wait for the actual React app to load, not just the Android activity.
@@ -136,6 +143,23 @@ public class AndroidCompatibilitySmokeTest {
         assertEquals("Web app and safe-area navigation must render. API "
                 + Build.VERSION.SDK_INT + ", document: " + details,
                 "\"OK\"", state);
+    }
+
+    @Test
+    public void statusAndNavigationInsetsRemainWithinDisplayBounds() {
+        scenario.getScenario().onActivity(activity -> {
+            View root = activity.getWindow().getDecorView();
+            WindowInsetsCompat current = ViewCompat.getRootWindowInsets(root);
+            if (current == null) return;
+            Insets bars = current.getInsets(
+                WindowInsetsCompat.Type.systemBars()
+                | WindowInsetsCompat.Type.displayCutout()
+                | WindowInsetsCompat.Type.captionBar());
+            assertTrue("Top OS bar cannot exceed display", bars.top <= root.getHeight());
+            assertTrue("Bottom OS bar cannot exceed display", bars.bottom <= root.getHeight());
+            assertTrue("Side bars cannot exceed display", bars.left <= root.getWidth());
+            assertTrue("Side bars cannot exceed display", bars.right <= root.getWidth());
+        });
     }
 
     @Test
