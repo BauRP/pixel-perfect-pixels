@@ -114,7 +114,8 @@ function toItem(file: File, path: string): ScannedItem | null {
 function group(items: { item: ScannedItem; path: string }[]): ScannedAlbum[] {
   const map = new Map<string, ScannedItem[]>();
   for (const { item, path } of items) {
-    const key = albumKey(path);
+    // Preserve distinct DCIM/Camera and Pictures/Camera albums.
+    const key = path.split("/").slice(0, -1).join("/") || "Root";
     const arr = map.get(key) ?? [];
     arr.push(item);
     map.set(key, arr);
@@ -122,7 +123,7 @@ function group(items: { item: ScannedItem; path: string }[]): ScannedAlbum[] {
   const out: ScannedAlbum[] = [];
   for (const [name, arr] of map) {
     arr.sort((a, b) => b.mtime - a.mtime);
-    out.push({ id: name.toLowerCase().replace(/\s+/g, "-"), name, items: arr });
+    out.push({ id: encodeURIComponent(name), name: name.split("/").pop() || "Root", items: arr });
   }
   out.sort((a, b) => b.items.length - a.items.length);
   return out;
@@ -366,42 +367,23 @@ async function runNativeScan(): Promise<ScanResult> {
   if (!(await ensureMediaPermission())) {
     return { status: "permission_denied", albums: [], errors: ["media permission not granted"], roots: [] };
   }
-  const roots = ["DCIM", "Pictures", "Movies", "Download", "Documents"];
-  const ctx: WalkCtx = { out: [], errors: [] };
-  const reports: RootReport[] = [];
-  for (const root of roots) {
-    const before = ctx.out.length;
-    try {
-      await walkNative(root, ctx, true);
-      reports.push({ root, ok: true, items: ctx.out.length - before });
-    } catch (e) {
-      const msg = errText(e);
-      ctx.errors.push(`${root}: ${msg}`);
-      reports.push({ root, ok: false, items: 0, error: msg });
-    }
+  const { SecureVault } = await import("./native-vault");
+  const response = await SecureVault.getMediaItems();
+  const entries: { item: ScannedItem; path: string }[] = [];
+  for (const media of response.items) {
+    const kind = media.mime.startsWith("video/") ? "video" : media.mime.startsWith("image/") ? "image" : null;
+    if (!kind) continue;
+    const folder = media.relativePath.replace(/^\/+|\/+$/g, "") || "Pictures";
+    const path = folder + "/" + media.name;
+    entries.push({ path, item: {
+      id: media.uri + ":" + media.size + ":" + media.mtime,
+      name: media.name, kind, file: null,
+      url: Capacitor.convertFileSrc(media.uri),
+      mtime: media.mtime, size: media.size, path, nativeUri: media.uri,
+    } });
   }
-  for (const r of reports) {
-    if (r.ok) console.info(SCAN_TAG, `${r.root}: ${r.items} item(s)`);
-    else console.warn(SCAN_TAG, `${r.root}: failed — ${r.error}`);
-  }
-  const albums = group(ctx.out);
-  const okRoots = reports.filter((r) => r.ok);
-  
-  // P0 FIX: Check permission errors and missing errors before declaring empty or okRoots
-  const hasPermissionError = reports.some((r) => r.error && isPermissionError(r.error));
-  let status: ScanStatus;
-  if (ctx.out.length > 0) {
-    status = "success";
-  } else if (hasPermissionError) {
-    status = "permission_denied";
-  } else if (okRoots.length > 0 && reports.every((r) => r.ok)) {
-    status = "empty";
-  } else if (reports.every((r) => r.error && isMissingError(r.error))) {
-    status = "empty";
-  } else {
-    status = "unavailable";
-  }
-  return { status, albums, errors: ctx.errors, roots: reports };
+  return { status: entries.length ? "success" : "empty", albums: group(entries),
+    errors: [], roots: [{ root: "MediaStore", ok: true, items: entries.length }] };
 }
 
 let lastScanResult: ScanResult | null = null;

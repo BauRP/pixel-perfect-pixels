@@ -21,6 +21,8 @@ export interface SecureVaultPlugin {
   ensurePrivateDir(): Promise<{ path: string; nomedia: boolean }>;
   checkMediaPermission(): Promise<{ state: MediaPermissionState }>;
   requestMediaPermission(): Promise<{ state: MediaPermissionState }>;
+  getMediaItems(): Promise<{ items: { uri: string; name: string; mime: string;
+    size: number; mtime: number; relativePath: string }[] }>;
   hasAllFilesAccess(): Promise<{ granted: boolean }>;
   requestAllFilesAccess(): Promise<{ granted: boolean }>;
   deleteOriginals(options: { paths: string[] }): Promise<DeleteResult>;
@@ -40,6 +42,7 @@ const noop: SecureVaultPlugin = {
   async ensurePrivateDir() { return { path: "", nomedia: false }; },
   async checkMediaPermission() { return { state: "granted" as const }; },
   async requestMediaPermission() { return { state: "granted" as const }; },
+  async getMediaItems() { return { items: [] }; },
   async hasAllFilesAccess() { return { granted: false }; },
   async requestAllFilesAccess() { return { granted: false }; },
   async deleteOriginals() { return { deleted: [], failed: [] }; },

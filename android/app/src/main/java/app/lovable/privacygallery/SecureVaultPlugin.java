@@ -152,6 +152,59 @@ public class SecureVaultPlugin extends Plugin {
         c.resolve(r);
     }
 
+    // Read shared media by MediaStore content URIs: works with scoped storage.
+    @PluginMethod
+    public void getMediaItems(PluginCall call) {
+        new Thread(() -> {
+            JSArray items = new JSArray();
+            boolean modern = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q;
+            Uri collection = MediaStore.Files.getContentUri("external");
+            String[] projection = modern
+                ? new String[] { MediaStore.Files.FileColumns._ID,
+                    MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE,
+                    MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_MODIFIED,
+                    MediaStore.MediaColumns.RELATIVE_PATH }
+                : new String[] { MediaStore.Files.FileColumns._ID,
+                    MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE,
+                    MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_MODIFIED,
+                    MediaStore.MediaColumns.DATA };
+            String filter = MediaStore.Files.FileColumns.MEDIA_TYPE + "=? OR "
+                + MediaStore.Files.FileColumns.MEDIA_TYPE + "=?";
+            String[] args = { Integer.toString(MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE),
+                              Integer.toString(MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) };
+            try (Cursor cursor = getContext().getContentResolver().query(
+                    collection, projection, filter, args,
+                    MediaStore.MediaColumns.DATE_MODIFIED + " DESC")) {
+                if (cursor != null) while (cursor.moveToNext()) {
+                    String name = cursor.getString(1);
+                    String mime = cursor.getString(2);
+                    if (name == null || mime == null) continue;
+                    String directory = cursor.getString(5);
+                    if (!modern) {
+                        File f = directory == null ? null : new File(directory);
+                        directory = f == null || f.getParent() == null ? "" : f.getParent();
+                        String root = Environment.getExternalStorageDirectory().getAbsolutePath();
+                        if (directory.startsWith(root + "/"))
+                            directory = directory.substring(root.length() + 1);
+                    }
+                    JSObject obj = new JSObject();
+                    obj.put("uri", ContentUris.withAppendedId(collection, cursor.getLong(0)).toString());
+                    obj.put("name", name);
+                    obj.put("mime", mime);
+                    obj.put("size", Math.max(0L, cursor.getLong(3)));
+                    obj.put("mtime", Math.max(0L, cursor.getLong(4)) * 1000L);
+                    obj.put("relativePath", directory == null ? "" : directory);
+                    items.put(obj);
+                }
+                JSObject result = new JSObject();
+                result.put("items", items);
+                call.resolve(result);
+            } catch (Exception error) {
+                call.reject("MediaStore scan failed: " + error.getMessage());
+            }
+        }, "nova-media-scan").start();
+    }
+
     // ── private directory enforcement ────────────────────────────────────
     private File ensureVaultDir() {
         File dir = new File(getContext().getFilesDir(), VAULT_DIR);
