@@ -18,8 +18,11 @@ export function BottomNav() {
       const css = getComputedStyle(root);
       const safeBottom = Number.parseFloat(css.getPropertyValue("--app-safe-bottom")) || 0;
       const total = el.getBoundingClientRect().height;
-      root.style.setProperty("--app-measured-nav-height",
-        Math.max(0, total - safeBottom) + "px");
+      const nextHeight = Math.max(0, total - safeBottom) + "px";
+      // Avoid a style mutation feedback loop with our own MutationObserver.
+      if (root.style.getPropertyValue("--app-measured-nav-height") !== nextHeight) {
+        root.style.setProperty("--app-measured-nav-height", nextHeight);
+      }
     };
     setHeight();
     let observer: ResizeObserver | undefined;
