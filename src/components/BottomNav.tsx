@@ -17,8 +17,9 @@ export function BottomNav() {
       className="glass-strong fixed inset-x-0 bottom-0 z-50 pb-[max(var(--app-safe-bottom),0.25rem)] pt-1"
       aria-label={t("primary_nav")}
       data-bottom-nav
+      style={{ paddingLeft: "var(--app-safe-left)", paddingRight: "var(--app-safe-right)" }}
     >
-      <ul className="mx-auto flex max-w-md items-stretch justify-around px-3">
+      <ul className="mx-auto flex max-w-3xl items-stretch justify-around px-3">
         {items.map(({ to, label, Icon, match }) => {
           const active = match(pathname);
           return (

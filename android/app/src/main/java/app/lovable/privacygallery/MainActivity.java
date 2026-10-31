@@ -27,6 +27,7 @@ public class MainActivity extends BridgeActivity {
         // Регистрация плагинов Capacitor (обязательно ПОСЛЕ super.onCreate)
         registerPlugin(SecureVaultPlugin.class);
         registerPlugin(NativeAdsPlugin.class);
+        registerPlugin(SystemInsetsPlugin.class);
 
         applyTransparentStatusBar();
 
@@ -37,10 +38,13 @@ public class MainActivity extends BridgeActivity {
     // ── Прозрачный статус-бар ──────────────────────────────────────────────
     private void applyTransparentStatusBar() {
         Window w = getWindow();
-        WindowCompat.setDecorFitsSystemWindows(w, true);
+        // Consistent edge-to-edge coordinates on Android 7 through 17.
+        // Java WindowInsetsCompat supplies padding for every actual system bar.
+        WindowCompat.setDecorFitsSystemWindows(w, false);
         w.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
         w.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
         w.setStatusBarColor(Color.TRANSPARENT);
+        w.setNavigationBarColor(Color.TRANSPARENT);
     }
 
     // ── Жизненный цикл ────────────────────────────────────────────────────

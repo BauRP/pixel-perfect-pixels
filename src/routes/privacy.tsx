@@ -41,7 +41,12 @@ function PrivacyScreen() {
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col"
-      style={{ paddingTop: "var(--app-safe-top)", background: "var(--color-background)" }}
+      style={{
+        paddingTop: "var(--app-safe-top)",
+        paddingLeft: "var(--app-safe-left)",
+        paddingRight: "var(--app-safe-right)",
+        background: "var(--color-background)",
+      }}
     >
       <header className="glass-strong flex items-center gap-2 px-3 py-2 shrink-0">
         <button
