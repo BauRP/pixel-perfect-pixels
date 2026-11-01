@@ -55,7 +55,7 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -partition-size 4096
           # The runner executes each script line in a fresh shell.
           # Use ONE script to retain the working directory and fail atomically.
           script: bash scripts/run_android_emulator_tests.sh

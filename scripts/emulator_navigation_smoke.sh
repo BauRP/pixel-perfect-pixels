@@ -33,6 +33,9 @@ start_app() {
   adb pull "/sdcard/nova-$1.png" "emulator-diagnostics/$1.png" >/dev/null 2>&1 || true
 }
 start_app portrait
+# Capture OS insets state for physical rotation, gestures, cutouts and
+# keyboard modes, independent of Java instrumentation pass/fail.
+adb shell dumpsys window > emulator-diagnostics/window-portrait.txt || true
 adb shell wm size 360x780
 start_app compact
 adb shell wm size 780x360
