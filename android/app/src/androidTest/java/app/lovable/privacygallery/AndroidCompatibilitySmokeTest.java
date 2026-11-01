@@ -203,6 +203,40 @@ public class AndroidCompatibilitySmokeTest {
                 " window-safe-area test: " + details, "\"OK\"", state);
     }
 
+    /**
+     * A fixed bottom bar can fit the viewport while its actual tab hit
+     * targets still overlap Android's gesture strip or three-button region.
+     * Measure rendered CSS geometry, not a guessed navigation mode.
+     */
+    @Test
+    public void bottomNavigationHitTargetsStayAboveSystemControls() throws Exception {
+        String state = awaitWebViewState(
+            "(function(){var root=document.documentElement;" +
+            "var nav=document.querySelector('[data-bottom-nav]');" +
+            "if(!nav)return 'NOT_READY';" +
+            "var links=nav.querySelectorAll('a');" +
+            "if(links.length!==3)return 'MISSING_TABS';" +
+            "var b=nav.getBoundingClientRect();" +
+            "var css=getComputedStyle(nav);" +
+            "var paddingBottom=parseFloat(css.paddingBottom)||0;" +
+            "var leftPadding=parseFloat(css.paddingLeft)||0;" +
+            "var rightPadding=parseFloat(css.paddingRight)||0;" +
+            "var minY=b.bottom-paddingBottom;" +
+            "for(var i=0;i<links.length;i++){" +
+            "var r=links[i].getBoundingClientRect();" +
+            "if(r.width<=0||r.height<40)return 'TINY_TAB';" +
+            "if(r.bottom>minY+3)return 'TAB_OVERLAPS_SYSTEM_BAR';" +
+            "if(r.left<b.left+leftPadding-3||r.right>b.right-rightPadding+3)" +
+            "return 'TAB_OVERLAPS_SIDE_CUTOUT';" +
+            "}" +
+            "if(b.bottom>innerHeight+3)return 'NAV_OUTSIDE_SCREEN';" +
+            "return 'OK';})()"
+        );
+        assertEquals("Android API " + Build.VERSION.SDK_INT +
+                " tab hit targets must stay above measured system bars",
+                "\"OK\"", state);
+    }
+
     @Test
     public void statusAndNavigationInsetsRemainWithinDisplayBounds() {
         scenario.getScenario().onActivity(activity -> {

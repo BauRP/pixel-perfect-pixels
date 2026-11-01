@@ -18,7 +18,7 @@ jobs:
     # Push: min/max stable APIs; manual: every API (37 experimental).
     runs-on: ubuntu-latest
     timeout-minutes: 50
-    continue-on-error: ${{ matrix.api == 37 }}
+    # Android 17 is not certified: an API 37 failure must remain visible.
     strategy:
       fail-fast: false
       matrix:

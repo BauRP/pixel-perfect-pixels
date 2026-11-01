@@ -64,10 +64,10 @@ export function BottomNav() {
         {items.map(({ to, label, Icon, match }) => {
           const active = match(pathname);
           return (
-            <li key={to} className="flex-1">
+            <li key={to} className="min-w-0 flex-1">
               <Link
                 to={to}
-                className="flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-2xl px-2 py-1 transition-colors"
+                className="flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-2xl px-2 py-1 transition-colors"
                 style={{
                   color: active ? "var(--color-accent)" : "var(--color-muted-foreground)",
                 }}
@@ -76,7 +76,7 @@ export function BottomNav() {
                   className="relative flex h-7 w-9 items-center justify-center rounded-xl transition-all"
                   style={{
                     background: active
-                      ? "color-mix(in oklab, var(--color-accent) 15%, transparent)"
+                      ? "var(--color-muted)"
                       : "transparent",
                   }}
                 >

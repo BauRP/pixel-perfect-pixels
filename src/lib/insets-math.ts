@@ -41,10 +41,12 @@ export function scrollContentBottomReserve(navHeight: number, imeOpen: boolean):
 export function fitInsetsToViewport(
   insets: SafeSystemInsets, viewportWidth: number, viewportHeight: number,
 ): SafeSystemInsets {
-  const width = Number.isFinite(viewportWidth) ? Math.max(0, viewportWidth) : 0;
-  const height = Number.isFinite(viewportHeight) ? Math.max(0, viewportHeight) : 0;
-  const fitPair = (a: number, b: number, available: number): [number, number] => {
-    if (available <= 0) return [0, 0];
+  const width = Number.isFinite(viewportWidth) && viewportWidth > 0 ? viewportWidth : null;
+  const height = Number.isFinite(viewportHeight) && viewportHeight > 0 ? viewportHeight : null;
+  const fitPair = (a: number, b: number, available: number | null): [number, number] => {
+    // A zero-sized viewport is common before the first Android WebView frame.
+    // It means 'not measured yet', NOT 'no status/navigation bars'.
+    if (available === null) return [a, b];
     const sum = a + b;
     if (sum <= available) return [a, b];
     const share = a / sum;

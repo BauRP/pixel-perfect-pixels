@@ -89,6 +89,18 @@ describe("Android 7–17 system area calculations", () => {
     expect(fitInsetsToViewport(safe, 360, 720)).toEqual(safe);
     expect(fitInsetsToViewport(safe, 720, 360)).toEqual(safe);
   });
+  it("does not erase true system bars while the first WebView frame is unmeasured", () => {
+    const insets = normalizeSystemInsets({top: 26, bottom: 48, left: 12, right: 0});
+    expect(fitInsetsToViewport(insets, 0, 0)).toEqual(insets);
+    expect(fitInsetsToViewport(insets, Number.NaN, -1)).toEqual(insets);
+    expect(fitInsetsToViewport(insets, 0, 700)).toEqual(insets);
+  });
+  it("does not overrun landscape width when system nav is on the side", () => {
+    const safe = normalizeSystemInsets({top: 24, bottom: 48, left: 35, right: 27});
+    const actual = fitInsetsToViewport(safe, 50, 320);
+    expect(actual.left + actual.right).toBeLessThanOrEqual(50);
+    expect(actual.top + actual.bottom).toBeLessThanOrEqual(320);
+  });
   it("handles absent snapshot during an early cold launch", () => {
     expect(normalizeSystemInsets(undefined)).toEqual({
       top: 0, bottom: 0, left: 0, right: 0, keyboardVisible: false,
