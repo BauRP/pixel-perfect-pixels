@@ -57,3 +57,10 @@ export function fitInsetsToViewport(
   const [left, right] = fitPair(insets.left, insets.right, width);
   return { ...insets, top, bottom, left, right };
 }
+
+// An early Android WebView snapshot may be received with no actual viewport
+// dimensions. Return an explicit indicator instead of treating it as 0px bars.
+export function isMeasuredViewport(width: number, height: number): boolean {
+  return Number.isFinite(width) && width > 0 &&
+    Number.isFinite(height) && height > 0;
+}

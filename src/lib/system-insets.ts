@@ -1,5 +1,5 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
-import { normalizeSystemInsets, fitInsetsToViewport, type RawSystemInsets } from "./insets-math";
+import { normalizeSystemInsets, fitInsetsToViewport, isMeasuredViewport, type RawSystemInsets } from "./insets-math";
 
 type Insets = RawSystemInsets;
 
@@ -45,7 +45,10 @@ export function initSystemInsets(): void {
     root.dataset.imeOpen = String(keyboard);
     // Expose a passive boot marker for emulator integration testing; no
     // private data or user photo metadata is involved.
-    root.dataset.novaInsetsReady = "true";
+    // A zero-sized WebView can occur before its first real frame. Preserve
+    // the native inset values but report that viewport validation is pending.
+    root.dataset.novaInsetsReady =
+      isMeasuredViewport(window.innerWidth, window.innerHeight) ? "true" : "pending";
   };
   const refresh = () => {
     const versionAtRequest = pushedVersion;

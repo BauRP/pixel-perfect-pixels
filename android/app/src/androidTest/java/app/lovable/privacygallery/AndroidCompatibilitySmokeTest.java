@@ -140,6 +140,7 @@ public class AndroidCompatibilitySmokeTest {
                         !"\"WEBVIEW_REPLACED\"".equals(last) &&
                         !"\"NO_NATIVE_INSETS\"".equals(last) &&
                         !"\"MISSING_INSETS\"".equals(last) &&
+                        !last.startsWith("\"TABS_HIDDEN_IME_") &&
                         !"null".equals(last) && !last.isEmpty()) {
                     return last;
                 }
@@ -217,6 +218,8 @@ public class AndroidCompatibilitySmokeTest {
             "var links=nav.querySelectorAll('a');" +
             "if(links.length!==3)return 'MISSING_TABS';" +
             "var b=nav.getBoundingClientRect();" +
+            "if(getComputedStyle(nav).display==='none')" +
+            "return 'TABS_HIDDEN_IME_'+(root.dataset.imeOpen||'unknown');" +
             "var css=getComputedStyle(nav);" +
             "var paddingBottom=parseFloat(css.paddingBottom)||0;" +
             "var leftPadding=parseFloat(css.paddingLeft)||0;" +
@@ -224,7 +227,8 @@ public class AndroidCompatibilitySmokeTest {
             "var minY=b.bottom-paddingBottom;" +
             "for(var i=0;i<links.length;i++){" +
             "var r=links[i].getBoundingClientRect();" +
-            "if(r.width<=0||r.height<40)return 'TINY_TAB';" +
+            "if(r.width<=0||r.height<40)return 'TINY_TAB_'+i+" +
+            "'_'+Math.round(r.width)+'x'+Math.round(r.height);" +
             "if(r.bottom>minY+3)return 'TAB_OVERLAPS_SYSTEM_BAR';" +
             "if(r.left<b.left+leftPadding-3||r.right>b.right-rightPadding+3)" +
             "return 'TAB_OVERLAPS_SIDE_CUTOUT';" +

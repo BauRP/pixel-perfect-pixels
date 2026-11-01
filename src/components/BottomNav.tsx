@@ -17,6 +17,9 @@ export function BottomNav() {
       const root = document.documentElement;
       // Full rendered bar already includes the OS gesture/button inset.
       const measured = el.getBoundingClientRect().height;
+      // Hidden during text input; do not reserve space underneath the IME.
+      // On WebViews with older Tailwind/CSS support, derive the full nav
+      // height from the actually rendered element, never a fixed device mode.
       const nextHeight = Math.max(0, measured) + "px";
       // Avoid a style mutation feedback loop with our own MutationObserver.
       if (root.style.getPropertyValue("--app-measured-nav-height") !== nextHeight) {
@@ -69,6 +72,9 @@ export function BottomNav() {
                 to={to}
                 className="flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-2xl px-2 py-1 transition-colors"
                 style={{
+                  // 44px remains functional even on old WebViews that ignore
+                  // Tailwind's generated calc(var(--spacing) * 11) rule.
+                  minHeight: "44px",
                   color: active ? "var(--color-accent)" : "var(--color-muted-foreground)",
                 }}
               >

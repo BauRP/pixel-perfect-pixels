@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeSystemInsets, navReserveHeight, scrollContentBottomReserve, fitInsetsToViewport } from "./insets-math";
+import { normalizeSystemInsets, navReserveHeight, scrollContentBottomReserve, fitInsetsToViewport, isMeasuredViewport } from "./insets-math";
 
 describe("Android 7–17 system area calculations", () => {
   it("keeps all three-button nav and status bar regions", () => {
@@ -100,6 +100,12 @@ describe("Android 7–17 system area calculations", () => {
     const actual = fitInsetsToViewport(safe, 50, 320);
     expect(actual.left + actual.right).toBeLessThanOrEqual(50);
     expect(actual.top + actual.bottom).toBeLessThanOrEqual(320);
+  });
+  it("distinguishes a first-frame unmeasured viewport from absent OS bars", () => {
+    expect(isMeasuredViewport(0, 0)).toBe(false);
+    expect(isMeasuredViewport(NaN, 400)).toBe(false);
+    expect(isMeasuredViewport(360, 780)).toBe(true);
+    expect(isMeasuredViewport(780, 360)).toBe(true);
   });
   it("handles absent snapshot during an early cold launch", () => {
     expect(normalizeSystemInsets(undefined)).toEqual({
