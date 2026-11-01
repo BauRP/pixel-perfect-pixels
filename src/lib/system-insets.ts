@@ -43,7 +43,9 @@ export function initSystemInsets(): void {
     const versionAtRequest = pushedVersion;
     void nativeInsets.getInsets().then((snapshot) => {
       if (versionAtRequest === pushedVersion) apply(snapshot);
-    }).catch(() => {});
+    }).catch((error) => {
+      console.warn("[insets] native snapshot failed", error);
+    });
   };
   // Subscribe before the snapshot so a fast system transition cannot be missed.
   void nativeInsets.addListener("insetsChanged", (event) => {

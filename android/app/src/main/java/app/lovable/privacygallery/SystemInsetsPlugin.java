@@ -1,6 +1,8 @@
 package app.lovable.privacygallery;
 
 import android.webkit.WebView;
+import android.view.View;
+import android.util.Log;
 import android.os.Build;
 import android.graphics.Color;
 import androidx.core.view.WindowCompat;
@@ -24,40 +26,44 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 public class SystemInsetsPlugin extends Plugin {
     private volatile JSObject latest = new JSObject();
 
+    /** One consistent snapshot for changes and for the first JS request. */
+    private JSObject snapshot(View view, WindowInsetsCompat windowInsets) {
+        Insets bars = windowInsets.getInsets(
+                WindowInsetsCompat.Type.statusBars()
+                | WindowInsetsCompat.Type.navigationBars()
+                | WindowInsetsCompat.Type.displayCutout()
+                | WindowInsetsCompat.Type.captionBar());
+        Insets mandatory = windowInsets.getInsets(
+                WindowInsetsCompat.Type.mandatorySystemGestures());
+        float density = view.getResources().getDisplayMetrics().density;
+        if (density <= 0) density = 1f;
+        JSObject result = new JSObject();
+        result.put("top", Math.ceil(bars.top / density));
+        result.put("bottom", Math.ceil(Math.max(bars.bottom, mandatory.bottom) / density));
+        result.put("left", Math.ceil(bars.left / density));
+        result.put("right", Math.ceil(bars.right / density));
+        result.put("keyboardVisible",
+                windowInsets.isVisible(WindowInsetsCompat.Type.ime()));
+        return result;
+    }
+
+    private void publish(JSObject next) {
+        String before = latest.toString();
+        latest = next;
+        if (!before.equals(next.toString())) {
+            notifyListeners("insetsChanged", next, true);
+        }
+    }
+
     @Override
     public void load() {
         super.load();
         getActivity().runOnUiThread(() -> {
             final WebView webView = getBridge().getWebView();
             if (webView == null) return;
-            ViewCompat.setOnApplyWindowInsetsListener(webView, (view, windowInsets) -> {
-                Insets bars = windowInsets.getInsets(
-                        WindowInsetsCompat.Type.statusBars()
-                        | WindowInsetsCompat.Type.navigationBars()
-                        | WindowInsetsCompat.Type.displayCutout()
-                        | WindowInsetsCompat.Type.captionBar());
-                // Include the gesture touch region even when the gesture bar is translucent.
-                // Side-swipe gestures should NOT create blank left/right columns.
-                // Reserve only the actual bar/cutout, plus mandatory bottom gestures.
-                Insets mandatory = windowInsets.getInsets(
-                        WindowInsetsCompat.Type.mandatorySystemGestures());
-                boolean keyboardVisible = windowInsets.isVisible(WindowInsetsCompat.Type.ime());
-                float density = view.getResources().getDisplayMetrics().density;
-                if (density <= 0) density = 1f;
-                JSObject next = new JSObject();
-                next.put("top", Math.ceil(bars.top / density));
-                next.put("bottom", Math.ceil(Math.max(bars.bottom, mandatory.bottom) / density));
-                next.put("left", Math.ceil(bars.left / density));
-                next.put("right", Math.ceil(bars.right / density));
-                next.put("keyboardVisible", keyboardVisible);
-                // Don't guess button/gesture mode: OEMs can use custom bars.
-                // Always use the measured insets.
-                String before = latest.toString();
-                latest = next;
-                if (!before.equals(next.toString())) {
-                    notifyListeners("insetsChanged", next, true);
-                }
-                return windowInsets; // Never consume the OS insets.
+            ViewCompat.setOnApplyWindowInsetsListener(webView, (view, insets) -> {
+                publish(snapshot(view, insets));
+                return insets; // Never consume system insets.
             });
             // The native WebView may attach after the plugin has loaded.
             webView.post(() -> ViewCompat.requestApplyInsets(webView));
@@ -89,6 +95,17 @@ public class SystemInsetsPlugin extends Plugin {
 
     @PluginMethod
     public void getInsets(PluginCall call) {
-        call.resolve(latest);
+        // JS may request insets before an onApplyWindowInsets event arrives.
+        // Obtain a fresh root snapshot on the UI thread, and keep the
+        // subscription for later changes (rotation/buttons/gestures/keyboard).
+        getActivity().runOnUiThread(() -> {
+            WebView web = getBridge() == null ? null : getBridge().getWebView();
+            if (web != null) {
+                WindowInsetsCompat current = ViewCompat.getRootWindowInsets(web);
+                if (current != null) publish(snapshot(web, current));
+                else ViewCompat.requestApplyInsets(web);
+            }
+            call.resolve(latest);
+        });
     }
 }

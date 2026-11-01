@@ -24,12 +24,14 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-
-        // Регистрация плагинов Capacitor (обязательно ПОСЛЕ super.onCreate)
+        // Capacitor 4+ (including 8): ALL local plugins MUST be registered
+        // BEFORE BridgeActivity.onCreate constructs its native JS bridge.
+        // Otherwise SystemInsets, MediaStore/Safe and NativeAds are unavailable
+        // even though Android Java compilation passes.
         registerPlugin(SecureVaultPlugin.class);
         registerPlugin(NativeAdsPlugin.class);
         registerPlugin(SystemInsetsPlugin.class);
+        super.onCreate(savedInstanceState);
 
         applyTransparentStatusBar();
 

@@ -22,6 +22,21 @@ check("Gradle wrapper 8.13",r"gradle-8\.13-bin\.zip","android/gradle/wrapper/gra
 check("CI Android SDK 36",r"platforms;android-36",".github/workflows/build.yml")
 check("CI runs SDK guard",r"python3 scripts/check_android_compat\.py",".github/workflows/build.yml")
 check("Native insets registered",r"registerPlugin\(SystemInsetsPlugin\.class\)","android/app/src/main/java/app/lovable/privacygallery/MainActivity.java")
+# Capacitor 4+ constructs the bridge inside super.onCreate.
+# All local plugins must be registered before that point.
+activity = read("android/app/src/main/java/app/lovable/privacygallery/MainActivity.java")
+creation = re.search(r"void onCreate\(Bundle savedInstanceState\)\s*\{(.*?)applyTransparentStatusBar\(", activity, re.S)
+if not creation:
+    raise SystemExit("Cannot inspect MainActivity.onCreate")
+body = creation.group(1)
+super_at = body.find("super.onCreate(savedInstanceState)")
+if super_at < 0:
+    raise SystemExit("Capacitor BridgeActivity.onCreate not called")
+for name in ("SecureVaultPlugin", "NativeAdsPlugin", "SystemInsetsPlugin"):
+    registration = body.find("registerPlugin(" + name + ".class)")
+    if registration < 0 or registration > super_at:
+        raise SystemExit(name + " must be registered BEFORE super.onCreate")
+print("OK: all three local Capacitor plugins register before the bridge starts")
 for permission in ("READ_MEDIA_IMAGES","READ_MEDIA_VIDEO","READ_MEDIA_VISUAL_USER_SELECTED","READ_EXTERNAL_STORAGE"):
     check(permission,r"android\.permission\."+permission+r"\b","android/app/src/main/AndroidManifest.xml")
 print("Minimum API 24, build/target API 36. Android 17 and devices unverified.")
