@@ -11,9 +11,17 @@ adb shell dumpsys webviewupdate | head -25 || true
 adb shell wm size
 adb shell wm density
 adb shell pm path "$PACKAGE" | grep '^package:' >/dev/null
+original_rotation="$(adb shell settings get system user_rotation | tr -d '\r')"
+original_auto_rotate="$(adb shell settings get system accelerometer_rotation | tr -d '\r')"
 cleanup() {
   adb shell wm size reset >/dev/null 2>&1 || true
   adb shell wm density reset >/dev/null 2>&1 || true
+  if [[ "$original_rotation" =~ ^[0-3]$ ]]; then
+    adb shell settings put system user_rotation "$original_rotation" >/dev/null 2>&1 || true
+  fi
+  if [[ "$original_auto_rotate" =~ ^[01]$ ]]; then
+    adb shell settings put system accelerometer_rotation "$original_auto_rotate" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 start_app() {
@@ -29,6 +37,14 @@ adb shell wm size 360x780
 start_app compact
 adb shell wm size 780x360
 start_app wide
+adb shell wm size reset
+adb shell settings put system accelerometer_rotation 0
+adb shell settings put system user_rotation 1
+sleep 2
+start_app orientation_90
+adb shell settings put system user_rotation 0
+sleep 2
+start_app orientation_0
 cleanup
 API="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
 if (( API >= 29 )); then
