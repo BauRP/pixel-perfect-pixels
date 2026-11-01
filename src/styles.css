@@ -330,7 +330,7 @@
   /* Center relative to the USABLE display, not the full edge-to-edge
      viewport. A 3-button bar and a landscape camera cutout must not be
      allowed to hide the dialog's confirmation or cancel controls. */
-  top: calc(50% + (var(--app-safe-top) - var(--app-safe-bottom)) / 2);
+  top: calc(50% + var(--app-modal-center-shift, 0px));
   /* Keep the overlay and keyboard-focus trap unchanged. */
   max-height: calc(100vh - var(--app-safe-top) - var(--app-safe-bottom) - 1rem);
   max-height: calc(100dvh - var(--app-safe-top) - var(--app-safe-bottom) - 1rem);

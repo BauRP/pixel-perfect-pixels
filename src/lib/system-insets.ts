@@ -34,6 +34,10 @@ export function initSystemInsets(): void {
     const root = document.documentElement;
     ["top", "bottom", "left", "right"].forEach((name, n) =>
       root.style.setProperty(`--native-safe-${name}`, `${values[n]}px`));
+    // Chrome 69 cannot divide CSS custom-property lengths inside calc().
+    // Calculate the safe viewport's center in JS using the real OS insets.
+    root.style.setProperty("--app-modal-center-shift",
+      `${(safe.top - safe.bottom) / 2}px`);
     root.dataset.imeOpen = String(keyboard);
     // Expose a passive boot marker for emulator integration testing; no
     // private data or user photo metadata is involved.
