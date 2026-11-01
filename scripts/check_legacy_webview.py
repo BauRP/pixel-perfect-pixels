@@ -1,33 +1,33 @@
 #!/usr/bin/env python3
-"""Verify offline WebView startup includes a native ES-module entry for Chrome 69+."""
-from pathlib import Path
+"""Check isolated Android SPA output, not TanStack Start SSR output."""
 from html.parser import HTMLParser
-root = Path("dist/client")
-html = (root / "index.html").read_text("utf8")
-assets = root / "assets"
-class Parser(HTMLParser):
+from pathlib import Path
+
+root=Path("dist/client")
+html=(root/"index.html").read_text("utf8")
+class Parse(HTMLParser):
     def __init__(self):
         super().__init__()
-        self.scripts = []
-    def handle_starttag(self, tag, attrs):
-        if tag == "script":
-            self.scripts.append(dict(attrs))
-parser = Parser()
-parser.feed(html)
-scripts = parser.scripts
-inline = [s for s in scripts if not s.get("src")]
-if len(scripts) != 3 or len(inline) != 1 or inline[0].get("data-nova-boot-error") != "1":
-    raise SystemExit("Android WebView: SSR/legacy scripts still present: " + str(scripts))
-if scripts[-2].get("src") != "./assets/nova-core-polyfills.js":
-    raise SystemExit("Android WebView: local core-js must load first")
-entry = scripts[-1].get("src", "")
-if scripts[-1].get("type") != "module" or not entry.startswith("./assets/index-"):
-    raise SystemExit("Android WebView: expected native module entry: " + str(scripts[-1]))
-if not (root / entry).is_file():
-    raise SystemExit("Android WebView: entry not emitted: " + entry)
-if not (assets / "nova-core-polyfills.js").is_file():
-    raise SystemExit("Android WebView: offline polyfills missing")
-if "nova-system.min.js" in html or "System.import" in html:
-    raise SystemExit("Android WebView: incompatible SystemJS loader still in HTML")
-print("OK: offline polyfills and native Chrome69+ ES module entry are included.")
-print("This confirms packaging, not successful emulator launch.")
+        self.scripts=[]
+    def handle_starttag(self,tag,attrs):
+        if tag=="script": self.scripts.append(dict(attrs))
+p=Parse();p.feed(html)
+js=p.scripts
+inline=[a for a in js if not a.get("src")]
+module=[a for a in js if a.get("type")=="module"]
+if len(inline)!=1 or inline[0].get("data-nova-boot-error")!="1":
+    raise SystemExit("Android SPA error handler or SSR script count incorrect: "+str(inline))
+if len(module)!=1 or len(js)!=3:
+    raise SystemExit("Expected exactly inline error, offline polyfill and native module: "+str(js))
+if js[1].get("src")!="./assets/nova-core-polyfills.js":
+    raise SystemExit("Offline JS polyfills must be loaded first")
+if not (root/"assets/nova-core-polyfills.js").is_file():
+    raise SystemExit("Missing local core-js payload")
+entry=module[0].get("src","")
+if not entry.startswith("./assets/") or not (root/entry).is_file():
+    raise SystemExit("Missing Android bundled JS entry: "+entry)
+if "System.import" in html or "$tsr" in html or "window.__TSR" in html:
+    raise SystemExit("TanStack server hydrate stream leaked into Android APK")
+if "https://fonts.googleapis.com" in html:
+    raise SystemExit("Android runtime must not fetch external fonts")
+print("OK: standalone Android SPA, local polyfills, one module entry, no SSR.")

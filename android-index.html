@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <title>Nova Gallery</title>
+  <script data-nova-boot-error="1">
+  (function () {
+    function show(message) {
+      var node = document.getElementById('root');
+      if (!node || document.querySelector('[data-nova-error]')) return;
+      var el = document.createElement('div');
+      el.setAttribute('data-nova-error','1');
+      el.style.cssText='padding:48px 20px;min-height:55vh;background:#101116;color:white;font:16px sans-serif;text-align:center';
+      el.textContent='Nova Gallery could not start: '+String(message||'unknown');
+      node.appendChild(el);
+    }
+    window.addEventListener('error',function (e) {show(e.message || e.error && e.error.message);});
+    window.addEventListener('unhandledrejection',function (e) {show(e.reason && e.reason.message);});
+  })();
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="./src/android-client.tsx"></script>
+</body>
+</html>

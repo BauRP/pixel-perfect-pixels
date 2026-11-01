@@ -49,7 +49,7 @@ jobs:
       - name: Build Web App for Android
         run: bun run build:capacitor
 
-      - name: Verify bundled offline Android 7 legacy JavaScript
+      - name: Verify standalone Android SPA and offline WebView assets
         run: python3 scripts/check_legacy_webview.py
 
       - name: Validate Android project inputs

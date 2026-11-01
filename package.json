@@ -10,8 +10,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "build:capacitor": "CAPACITOR_BUILD=1 vite build && node scripts/bootstrap_legacy_android.mjs && cap sync android",
-    "android:open": "CAPACITOR_BUILD=1 vite build && cap sync android && cap open android"
+    "build:capacitor": "CAPACITOR_BUILD=1 vite build --config vite.android.config.ts && node scripts/finalize_android_bundle.mjs && cap sync android",
+    "android:open": "bun run build:capacitor && cap open android"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",
