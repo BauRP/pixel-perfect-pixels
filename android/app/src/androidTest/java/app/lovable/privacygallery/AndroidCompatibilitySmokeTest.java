@@ -77,93 +77,103 @@ public class AndroidCompatibilitySmokeTest {
         });
     }
 
+    /**
+     * Activity start and WebView initialization are asynchronous, especially on
+     * Android 10/13 emulator images. A single evaluateJavascript callback may
+     * never arrive while the WebView recreates. Poll the LIVE Capacitor WebView
+     * on the UI thread, and retry transient "NOT_READY"/callback timeouts.
+     * Never classify a timeout as a passed layout test.
+     */
+    private String awaitWebViewState(String javascript) throws Exception {
+        String last = "NOT_READY";
+        for (int attempt = 0; attempt < 32; attempt++) {
+            CountDownLatch latch = new CountDownLatch(1);
+            AtomicReference<String> result = new AtomicReference<>("");
+            scenario.getScenario().onActivity(activity -> {
+                WebView web = activity.getBridge() == null
+                        ? null : activity.getBridge().getWebView();
+                if (web == null || !web.isAttachedToWindow()) {
+                    result.set("\"NOT_READY\"");
+                    latch.countDown();
+                    return;
+                }
+                try {
+                    web.evaluateJavascript(javascript, value -> {
+                        result.set(value == null ? "null" : value);
+                        latch.countDown();
+                    });
+                } catch (RuntimeException error) {
+                    result.set("\"WEBVIEW_REPLACED\"");
+                    latch.countDown();
+                }
+            });
+            if (!latch.await(3, TimeUnit.SECONDS)) {
+                last = "CALLBACK_TIMEOUT";
+            } else {
+                last = result.get();
+                if (!"\"NOT_READY\"".equals(last) &&
+                        !"\"WEBVIEW_REPLACED\"".equals(last) &&
+                        !"null".equals(last) && !last.isEmpty()) {
+                    return last;
+                }
+            }
+            Thread.sleep(350);
+        }
+        return last;
+    }
+
+    private String webViewDiagnostic() throws Exception {
+        String js = "(function(){try{return JSON.stringify({" +
+                "url:location.href,ready:document.readyState," +
+                "userAgent:navigator.userAgent,title:document.title," +
+                "bodyText:(document.body&&document.body.innerText||'').slice(0,320)," +
+                "hasNav:!!document.querySelector('[data-bottom-nav]')," +
+                "hasShell:!!document.querySelector('[data-app-shell]')," +
+                "scriptCount:document.scripts.length," +
+                "insetsReady:document.documentElement.dataset.novaInsetsReady||'unknown'," +
+                "hasError:!!document.querySelector('[data-nova-error]')" +
+                "});}catch(e){return 'DIAG_ERROR:'+e.message}})()";
+        return awaitWebViewState(js);
+    }
+
     @Test
     public void webAppSafeAreaVariablesAndNavigationRender() throws Exception {
-        AtomicReference<WebView> web = new AtomicReference<>();
-        // Resolve Capacitor's OWN WebView. The decor tree can contain another
-        // WebView (UMP consent / Google ads); the first one is not guaranteed
-        // to host the React gallery.
-        scenario.getScenario().onActivity(activity -> {
-            WebView mainWebView = activity.getBridge() == null
-                    ? null : activity.getBridge().getWebView();
-            web.set(mainWebView != null
-                    ? mainWebView : findWebView(activity.getWindow().getDecorView()));
-        });
-        assertNotNull("WebView must be attached", web.get());
-
-        // Wait for the actual React app to load, not just the Android activity.
-        // Evaluate on UI thread; wait only on the instrumentation thread.
-        String state = "NOT_READY";
-        for (int attempt = 0; attempt < 40; attempt++) {
-            CountDownLatch done = new CountDownLatch(1);
-            AtomicReference<String> jsResult = new AtomicReference<>("");
-            scenario.getScenario().onActivity(activity -> web.get().evaluateJavascript(
-                "(function(){const r=document.documentElement;" +
-                "const n=document.querySelector('[data-bottom-nav]');" +
-                "if(!n)return 'NOT_READY';" +
-                "const s=getComputedStyle(r);" +
-                "const top=s.getPropertyValue('--app-safe-top').trim();" +
-                "const bottom=s.getPropertyValue('--app-safe-bottom').trim();" +
-                "if(!top||!bottom)return 'MISSING_INSETS';" +
-                "const box=n.getBoundingClientRect();" +
-                "if(box.width<=0||box.height<=0)return 'BAD_NAV_SIZE';" +
-                "if(box.bottom>innerHeight+3)return 'NAV_OUTSIDE_WINDOW';" +
-                "return 'OK';})()",
-                result -> { jsResult.set(result); done.countDown(); }));
-            assertTrue("WebView JS callback timed out", done.await(5, TimeUnit.SECONDS));
-            state = jsResult.get();
-            if (!"\"NOT_READY\"".equals(state)) break;
-            Thread.sleep(400);
-        }
-        String details = "";
-        if (!"\"OK\"".equals(state)) {
-            CountDownLatch done = new CountDownLatch(1);
-            AtomicReference<String> diagnostic = new AtomicReference<>("");
-            scenario.getScenario().onActivity(activity -> web.get().evaluateJavascript(
-                "(function(){try{return JSON.stringify({" +
-                "url:location.href,ready:document.readyState," +
-                "userAgent:navigator.userAgent," +
-                "title:document.title," +
-                "bodyText:(document.body&&document.body.innerText||'').slice(0,320)," +
-                "scriptCount:document.scripts.length," +
-                "scriptSrcs:Array.prototype.map.call(document.scripts,function(s){return s.src||s.type||'inline'}).slice(-10)," +
-                "hasRoot:!!document.getElementById('root')," +
-                "rootText:(document.getElementById('root')&&document.getElementById('root').innerText||'').slice(0,320)," +
-                "hasNav:!!document.querySelector('[data-bottom-nav]')," +
-                "legacyRuntime:!!(window.System&&window.System.import)," +
-                "legacyBoot:window.__novaLegacyBootState||'unknown'," +
-                "errorFlag:!!document.querySelector('[data-nova-error]')" +
-                "});}catch(e){return 'DIAG_ERROR:'+e.message}})()",
-                result -> { diagnostic.set(result); done.countDown(); }));
-            done.await(5, TimeUnit.SECONDS);
-            details = diagnostic.get();
-            android.util.Log.e("AndroidCompatTest",
-                    "Missing gallery UI diagnostic: " + details);
-        }
-        assertEquals("Web app and safe-area navigation must render. API "
-                + Build.VERSION.SDK_INT + ", document: " + details,
+        String state = awaitWebViewState(
+            "(function(){var root=document.documentElement;" +
+            "var n=document.querySelector('[data-bottom-nav]');" +
+            "if(!n)return 'NOT_READY';" +
+            "var s=getComputedStyle(root);" +
+            "if(!s.getPropertyValue('--app-safe-top').trim()||" +
+            "!s.getPropertyValue('--app-safe-bottom').trim())return 'MISSING_INSETS';" +
+            "var box=n.getBoundingClientRect();" +
+            "if(box.width<=0||box.height<=0)return 'BAD_NAV_SIZE';" +
+            "if(box.bottom>innerHeight+3)return 'NAV_OUTSIDE_WINDOW';" +
+            "return 'OK';})()"
+        );
+        String details = "\"OK\"".equals(state) ? "" : webViewDiagnostic();
+        assertEquals("Android API " + Build.VERSION.SDK_INT +
+                " navigation/state " + state + "; WebView " + details,
                 "\"OK\"", state);
     }
 
     @Test
     public void screenshotSafeAreaAndBottomNavigationArePresent() throws Exception {
-        AtomicReference<WebView> web = new AtomicReference<>();
-        scenario.getScenario().onActivity(activity -> web.set(
-                activity.getBridge().getWebView()));
-        CountDownLatch latch = new CountDownLatch(1);
-        AtomicReference<String> result = new AtomicReference<>("");
-        scenario.getScenario().onActivity(activity -> web.get().evaluateJavascript(
+        String state = awaitWebViewState(
             "(function(){var n=document.querySelector('[data-bottom-nav]');" +
-            "if(!n)return 'NOT_READY';" +
-            "var root=document.documentElement;" +
-            "var nav=n.getBoundingClientRect();" +
-            "if(nav.bottom>innerHeight+3)return 'NAV_OVERFLOW';" +
-            "if(!root.style.getPropertyValue('--native-safe-top'))return 'NO_NATIVE_INSETS';" +
-            "return 'OK';})()",
-            value -> { result.set(value); latch.countDown(); }));
-        assertTrue("JS callback must finish", latch.await(6, TimeUnit.SECONDS));
-        assertTrue("Navigation can render after the cold start: " + result.get(),
-                "\"OK\"".equals(result.get()) || "\"NOT_READY\"".equals(result.get()));
+            "var shell=document.querySelector('[data-app-shell]');" +
+            "var content=document.querySelector('[data-app-content]');" +
+            "if(!n||!shell||!content)return 'NOT_READY';" +
+            "var nav=n.getBoundingClientRect(),body=content.getBoundingClientRect();" +
+            "if(nav.bottom>innerHeight+3||nav.width<=0)return 'NAV_OVERFLOW';" +
+            "var safe=parseFloat(getComputedStyle(document.documentElement)" +
+            ".getPropertyValue('--native-safe-top'))||0;" +
+            "if(body.top<safe-3)return 'STATUS_BAR_OVERLAP';" +
+            "if(!document.documentElement.dataset.novaInsetsReady)return 'NO_NATIVE_INSETS';" +
+            "return 'OK';})()"
+        );
+        String details = "\"OK\"".equals(state) ? "" : webViewDiagnostic();
+        assertEquals("Android API " + Build.VERSION.SDK_INT +
+                " window-safe-area test: " + details, "\"OK\"", state);
     }
 
     @Test

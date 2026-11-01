@@ -207,11 +207,19 @@
 /* Safe layouts for small displays, rotations, notches and 3-button nav.
    Modals are portaled outside AppShell, so they must apply insets themselves. */
 .safe-modal-content {
-  width: min(100% - 2rem - var(--app-safe-left) - var(--app-safe-right), 32rem);
+  /* Chromium 69 and 74 have no CSS min() for lengths. Provide calc() first
+     so older Androids never position a 100%-wide dialog under side cutouts. */
+  width: calc(100% - 2rem - var(--app-safe-left) - var(--app-safe-right));
+  max-width: 32rem;
   max-height: calc(100vh - var(--app-safe-top) - var(--app-safe-bottom) - 1.5rem);
   max-height: calc(100dvh - var(--app-safe-top) - var(--app-safe-bottom) - 1.5rem);
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+@supports (width: min(100%, 32rem)) {
+  .safe-modal-content {
+    width: min(calc(100% - 2rem - var(--app-safe-left) - var(--app-safe-right)), 32rem);
+  }
 }
 .safe-drawer-content {
   padding-bottom: var(--app-safe-bottom);

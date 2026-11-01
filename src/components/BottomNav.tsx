@@ -82,7 +82,7 @@ export function BottomNav() {
                 >
                   <Icon size={18} strokeWidth={active ? 2.4 : 1.8} />
                 </span>
-                <span className="text-[9px] font-medium tracking-wide uppercase leading-none">{label}</span>
+                <span className="max-w-full truncate text-[9px] font-medium tracking-wide uppercase leading-none">{label}</span>
               </Link>
             </li>
           );

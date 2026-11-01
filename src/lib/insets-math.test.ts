@@ -60,6 +60,15 @@ describe("Android 7–17 system area calculations", () => {
     expect(rotated.left).toBe(35);
     expect(rotated.right).toBe(9);
   });
+  it("keeps viewport-safe layout without adding device bottom padding twice", () => {
+    const gestureInsets = normalizeSystemInsets({ top: 27, bottom: 20, left: 8, right: 8 });
+    const buttonsInsets = normalizeSystemInsets({ top: 27, bottom: 54, left: 8, right: 8 });
+    expect(gestureInsets.left).toBe(buttonsInsets.left);
+    expect(gestureInsets.right).toBe(buttonsInsets.right);
+    // Full measured tab height already includes the inset.
+    expect(scrollContentBottomReserve(70, false)).toBe(70);
+    expect(scrollContentBottomReserve(102, false)).toBe(102);
+  });
   it("handles absent snapshot during an early cold launch", () => {
     expect(normalizeSystemInsets(undefined)).toEqual({
       top: 0, bottom: 0, left: 0, right: 0, keyboardVisible: false,
