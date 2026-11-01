@@ -1,30 +1,31 @@
 #!/usr/bin/env bash
-# A single shell is essential: reactivecircus executes separate YAML script
-# lines in separate shells and a preceding 'cd android' does not persist.
+# Run independent Java instrumentation and shell smoke, even if one fails.
+# This distinguishes a slow WebView JS callback from a native app crash.
 set -euo pipefail
 mkdir -p emulator-diagnostics
+status_tests=0
+status_shell=0
 on_exit() {
   status=$?
-  # These are disposable CI emulators, never user devices.
+  # These are disposable GitHub CI emulators, never personal phones.
   adb logcat -d -v time > emulator-diagnostics/logcat.txt 2>&1 || true
   adb shell dumpsys webviewupdate > emulator-diagnostics/webview-provider.txt 2>&1 || true
   adb shell dumpsys window > emulator-diagnostics/window.txt 2>&1 || true
-  adb shell screencap -p /sdcard/nova-screen.png >/dev/null 2>&1 || true
-  adb pull /sdcard/nova-screen.png emulator-diagnostics/screen.png >/dev/null 2>&1 || true
-  printf '%s\n' "Emulator exit code: $status" > emulator-diagnostics/result.txt
+  echo "Java tests: $status_tests | native shell smoke: $status_shell | script: $status" > emulator-diagnostics/result.txt
 }
 trap on_exit EXIT
-echo "Connected emulator:"
 adb wait-for-device
 adb devices -l
 adb shell getprop ro.build.version.sdk
 chmod +x android/gradlew
+# The Java test runner can remove the app on completion. Always try the
+# independent install/launch/resize/navigation test afterwards.
 (
   cd android
   ./gradlew :app:connectedDebugAndroidTest --stacktrace --no-daemon
-)
-# The instrumented test runner may uninstall the target package when it
-# finishes. Reinstall the real app before exercising activity and navigation.
+) || status_tests=$?
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 adb shell pm path app.lovable.privacygallery | grep '^package:' >/dev/null
-bash scripts/emulator_navigation_smoke.sh
+bash scripts/emulator_navigation_smoke.sh || status_shell=$?
+printf 'Instrumentation result=%s | UI launch/resize result=%s\n' "$status_tests" "$status_shell"
+if (( status_tests != 0 || status_shell != 0 )); then exit 1; fi

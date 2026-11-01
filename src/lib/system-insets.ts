@@ -1,5 +1,5 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
-import { normalizeSystemInsets, type RawSystemInsets } from "./insets-math";
+import { normalizeSystemInsets, fitInsetsToViewport, type RawSystemInsets } from "./insets-math";
 
 type Insets = RawSystemInsets;
 
@@ -25,7 +25,8 @@ export function initSystemInsets(): void {
   let last = "";
   const apply = (i: Insets) => {
     if (!i || typeof i.top !== "number" || typeof i.bottom !== "number") return;
-    const safe = normalizeSystemInsets(i);
+    const safe = fitInsetsToViewport(normalizeSystemInsets(i),
+      window.innerWidth, window.innerHeight);
     const values = [safe.top, safe.bottom, safe.left, safe.right];
     const keyboard = safe.keyboardVisible;
     const key = values.join(":") + ":" + keyboard;

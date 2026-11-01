@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeSystemInsets, navReserveHeight, scrollContentBottomReserve } from "./insets-math";
+import { normalizeSystemInsets, navReserveHeight, scrollContentBottomReserve, fitInsetsToViewport } from "./insets-math";
 
 describe("Android 7–17 system area calculations", () => {
   it("keeps all three-button nav and status bar regions", () => {
@@ -76,6 +76,18 @@ describe("Android 7–17 system area calculations", () => {
     expect(portrait.bottom).toBe(56);
     expect(landscape.left).toBe(34);
     expect(scrollContentBottomReserve(94, keyboard.keyboardVisible)).toBe(0);
+  });
+  it("does not overflow small split-screen windows with a tall status or nav bar", () => {
+    const safe = normalizeSystemInsets({ top: 48, bottom: 56, left: 20, right: 20 });
+    const compact = fitInsetsToViewport(safe, 30, 75);
+    expect(compact.top + compact.bottom).toBeLessThanOrEqual(75);
+    expect(compact.left + compact.right).toBeLessThanOrEqual(30);
+    expect(compact.top).toBeGreaterThanOrEqual(0);
+  });
+  it("preserves exact system insets on normal portrait and landscape displays", () => {
+    const safe = normalizeSystemInsets({ top: 28, bottom: 24, left: 13, right: 7 });
+    expect(fitInsetsToViewport(safe, 360, 720)).toEqual(safe);
+    expect(fitInsetsToViewport(safe, 720, 360)).toEqual(safe);
   });
   it("handles absent snapshot during an early cold launch", () => {
     expect(normalizeSystemInsets(undefined)).toEqual({

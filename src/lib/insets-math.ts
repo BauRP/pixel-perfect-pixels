@@ -35,3 +35,23 @@ export function navReserveHeight(measuredHeight: number, imeVisible: boolean): n
 export function scrollContentBottomReserve(navHeight: number, imeOpen: boolean): number {
   return navReserveHeight(navHeight, imeOpen);
 }
+
+// Bound inset values by the active WebView viewport to prevent impossible
+// padding on very small split-screen windows. Never make negative CSS gaps.
+export function fitInsetsToViewport(
+  insets: SafeSystemInsets, viewportWidth: number, viewportHeight: number,
+): SafeSystemInsets {
+  const width = Number.isFinite(viewportWidth) ? Math.max(0, viewportWidth) : 0;
+  const height = Number.isFinite(viewportHeight) ? Math.max(0, viewportHeight) : 0;
+  const fitPair = (a: number, b: number, available: number): [number, number] => {
+    if (available <= 0) return [0, 0];
+    const sum = a + b;
+    if (sum <= available) return [a, b];
+    const share = a / sum;
+    const fittedA = Math.floor(available * share);
+    return [fittedA, Math.floor(available - fittedA)];
+  };
+  const [top, bottom] = fitPair(insets.top, insets.bottom, height);
+  const [left, right] = fitPair(insets.left, insets.right, width);
+  return { ...insets, top, bottom, left, right };
+}
