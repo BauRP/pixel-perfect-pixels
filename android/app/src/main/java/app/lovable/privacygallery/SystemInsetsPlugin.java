@@ -34,6 +34,7 @@ public class SystemInsetsPlugin extends Plugin {
                 | WindowInsetsCompat.Type.captionBar());
         Insets mandatory = windowInsets.getInsets(
                 WindowInsetsCompat.Type.mandatorySystemGestures());
+        Insets ime = windowInsets.getInsets(WindowInsetsCompat.Type.ime());
         float density = view.getResources().getDisplayMetrics().density;
         if (density <= 0) density = 1f;
         JSObject result = new JSObject();
@@ -41,8 +42,13 @@ public class SystemInsetsPlugin extends Plugin {
         result.put("bottom", Math.ceil(Math.max(bars.bottom, mandatory.bottom) / density));
         result.put("left", Math.ceil(bars.left / density));
         result.put("right", Math.ceil(bars.right / density));
-        result.put("keyboardVisible",
-                windowInsets.isVisible(WindowInsetsCompat.Type.ime()));
+        // Do not mistake a transient IME visibility flag for an actual
+        // keyboard covering the app's bottom navigation controls.
+        final int thresholdPx = Math.round(48f * density);
+        boolean keyboardOverlapsBottom =
+                windowInsets.isVisible(WindowInsetsCompat.Type.ime())
+                && ime.bottom > Math.max(bars.bottom, mandatory.bottom) + thresholdPx;
+        result.put("keyboardVisible", keyboardOverlapsBottom);
         return result;
     }
 
