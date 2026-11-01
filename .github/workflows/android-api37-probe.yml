@@ -1,8 +1,11 @@
-name: Android 17 API 37 build probe
+name: Android 17 API 37 isolated build
 
-# Manual experimental check only: hosted runners currently cannot install
-# API 37. Do not run a known-failing probe on each production-APK commit.
+# Keep the production APK on the verified SDK 36 until this job passes.
+# Compile with API 37 in a temporary CI checkout, NEVER modify main or
+# commit the temporary SDK bump.
 on:
+  push:
+    branches: [ 'chatgpt/nova-gallery-*' ]
   workflow_dispatch:
 
 permissions:
@@ -14,11 +17,9 @@ concurrency:
 
 jobs:
   build-api37:
-    name: API 37 compile experiment
+    name: Android 17 API 37 compile
     runs-on: ubuntu-latest
-    timeout-minutes: 40
-    # Experimental only; do not mark failed SDK 37 probes as success.
-    # The independently verified SDK 36 APK workflow remains separate.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -32,36 +33,30 @@ jobs:
       - uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
-      - name: Discover and install Android 17 platform
+      - name: Install official Android 17 SDK and temporarily configure API 37
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager --channel=3 --list | tee api37-packages.txt
-          # Android 17 is API 37; early SDK distributions may use the
-          # preview codename rather than the numbered platform package.
-          if ! sdkmanager --channel=3 'platforms;android-37'; then
-            sdkmanager --channel=3 'platforms;android-CinnamonBun'
-          fi
-          if [[ ! -f "$ANDROID_HOME/platforms/android-37/android.jar" ]]; then
-            echo 'SDK 37 android.jar not installed; SDK 37 NOT certified.' >&2
-            exit 1
-          fi
+          sdkmanager --list | grep -E 'android-37|build-tools;37' | tee android37-available.txt || true
+          sdkmanager --install 'platforms;android-37' 'build-tools;37.0.0'
+          test -s "$ANDROID_HOME/platforms/android-37/android.jar"
           sed -i 's/compileSdkVersion = 36/compileSdkVersion = 37/' android/variables.gradle
           sed -i 's/targetSdkVersion = 36/targetSdkVersion = 37/' android/variables.gradle
-          sed -i 's/rootProject.ext.compileSdkVersion : 36/rootProject.ext.compileSdkVersion : 37/' android/capacitor-cordova-android-plugins/build.gradle
-          sed -i 's/rootProject.ext.targetSdkVersion : 36/rootProject.ext.targetSdkVersion : 37/' android/capacitor-cordova-android-plugins/build.gradle
-          echo 'API 37 compilation configured.'
-      - name: Build app with Android 17 API
+          grep -q 'compileSdkVersion = 37' android/variables.gradle
+          grep -q 'targetSdkVersion = 37' android/variables.gradle
+          echo 'Android 17 platform installed and compile/target SDK = 37 for this CI run.'
+      - name: Build Android 17-compatible debug APK
         run: |
           bun install --frozen-lockfile
           bun run build:capacitor
+          python3 scripts/check_legacy_webview.py
           cd android
-          ./gradlew :app:assembleDebug --stacktrace
-      - name: Save SDK discovery and failure diagnostics
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+      - name: Preserve Android 17 probe diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: android-17-sdk-probe
-          path: api37-packages.txt
+          name: nova-android17-build-probe
+          path: android37-available.txt
           if-no-files-found: warn
           retention-days: 3

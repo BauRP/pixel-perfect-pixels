@@ -15,14 +15,14 @@ concurrency:
 jobs:
   emulator-smoke:
     name: Android API ${{ matrix.api }} device smoke
-    # Push: min/max stable APIs; manual: every API (37 experimental).
+    # Push: Android 7/8/10/13/14/16; manual: every API 24–37.
     runs-on: ubuntu-latest
     timeout-minutes: 50
     # Android 17 is not certified: an API 37 failure must remain visible.
     strategy:
       fail-fast: false
       matrix:
-        api: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '[24,25,26,27,28,29,30,31,32,33,34,35,36,37]' || '[24,29,33,36]') }}
+        api: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '[24,25,26,27,28,29,30,31,32,33,34,35,36,37]' || '[24,26,29,33,34,36]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
