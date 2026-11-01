@@ -1,8 +1,8 @@
 name: Android 17 API 37 build probe
 
+# Manual experimental check only: hosted runners currently cannot install
+# API 37. Do not run a known-failing probe on each production-APK commit.
 on:
-  push:
-    branches: [ 'chatgpt/nova-gallery-*' ]
   workflow_dispatch:
 
 permissions:
@@ -17,8 +17,8 @@ jobs:
     name: API 37 compile experiment
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    # Experimental only; never replace the independently verified SDK 36 APK.
-    continue-on-error: true
+    # Experimental only; do not mark failed SDK 37 probes as success.
+    # The independently verified SDK 36 APK workflow remains separate.
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2

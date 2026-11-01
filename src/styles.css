@@ -326,9 +326,12 @@
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-.safe-modal-content {
-  /* Move the dialog's visual center toward the safe window when necessary.
-     Keep the overlay and keyboard-focus trap unchanged. */
+ .safe-modal-content {
+  /* Center relative to the USABLE display, not the full edge-to-edge
+     viewport. A 3-button bar and a landscape camera cutout must not be
+     allowed to hide the dialog's confirmation or cancel controls. */
+  top: calc(50% + (var(--app-safe-top) - var(--app-safe-bottom)) / 2);
+  /* Keep the overlay and keyboard-focus trap unchanged. */
   max-height: calc(100vh - var(--app-safe-top) - var(--app-safe-bottom) - 1rem);
   max-height: calc(100dvh - var(--app-safe-top) - var(--app-safe-bottom) - 1rem);
   box-sizing: border-box;

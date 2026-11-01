@@ -69,6 +69,14 @@ describe("Android 7–17 system area calculations", () => {
     expect(scrollContentBottomReserve(70, false)).toBe(70);
     expect(scrollContentBottomReserve(102, false)).toBe(102);
   });
+  it("does not let keyboard-open state add navigation reserve", () => {
+    const portrait = normalizeSystemInsets({top: 28, bottom: 56, keyboardVisible: false});
+    const landscape = normalizeSystemInsets({top: 0, bottom: 26, left: 34, keyboardVisible: false});
+    const keyboard = normalizeSystemInsets({top: 28, bottom: 56, keyboardVisible: true});
+    expect(portrait.bottom).toBe(56);
+    expect(landscape.left).toBe(34);
+    expect(scrollContentBottomReserve(94, keyboard.keyboardVisible)).toBe(0);
+  });
   it("handles absent snapshot during an early cold launch", () => {
     expect(normalizeSystemInsets(undefined)).toEqual({
       top: 0, bottom: 0, left: 0, right: 0, keyboardVisible: false,

@@ -114,7 +114,7 @@ export function ScreenHeader({
             )}
           </div>
         </div>
-        {right}
+        {right && <div className="flex min-w-0 shrink-0 items-center justify-end gap-1">{right}</div>}
       </div>
     </header>
   );

@@ -2,7 +2,6 @@ package app.lovable.privacygallery;
 
 import android.webkit.WebView;
 import android.view.View;
-import android.util.Log;
 import android.os.Build;
 import android.graphics.Color;
 import androidx.core.view.WindowCompat;
@@ -100,10 +99,20 @@ public class SystemInsetsPlugin extends Plugin {
         // subscription for later changes (rotation/buttons/gestures/keyboard).
         getActivity().runOnUiThread(() -> {
             WebView web = getBridge() == null ? null : getBridge().getWebView();
-            if (web != null) {
-                WindowInsetsCompat current = ViewCompat.getRootWindowInsets(web);
-                if (current != null) publish(snapshot(web, current));
-                else ViewCompat.requestApplyInsets(web);
+            View source = web != null ? web : getActivity().getWindow().getDecorView();
+            WindowInsetsCompat current = ViewCompat.getRootWindowInsets(source);
+            if (current == null && web != null) {
+                // Early startup: the decor view can already have insets
+                // before the child WebView is attached.
+                source = getActivity().getWindow().getDecorView();
+                current = ViewCompat.getRootWindowInsets(source);
+            }
+            if (current != null) {
+                publish(snapshot(source, current));
+            } else {
+                // Empty snapshot is NOT proof that all system bars are zero.
+                // Ask Android to dispatch an actual snapshot when attached.
+                ViewCompat.requestApplyInsets(source);
             }
             call.resolve(latest);
         });

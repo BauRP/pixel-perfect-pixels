@@ -47,7 +47,9 @@ export function initSystemInsets(): void {
       console.warn("[insets] native snapshot failed", error);
     });
   };
-  // Subscribe before the snapshot so a fast system transition cannot be missed.
+  // Read immediately rather than waiting for native listener registration;
+  // then take another snapshot once subscribed to close any startup race.
+  refresh();
   void nativeInsets.addListener("insetsChanged", (event) => {
     pushedVersion++;
     apply(event);
