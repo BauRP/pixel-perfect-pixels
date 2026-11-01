@@ -70,6 +70,7 @@ public class NativeAdsPlugin extends Plugin {
     private NativeAd nativeAd = null;
     private boolean loading = false;
     private final AtomicBoolean sdkInitStarted = new AtomicBoolean(false);
+    private final AtomicBoolean consentFlowStarted = new AtomicBoolean(false);
     private ConsentInformation consentInfo = null;
     /** True once the consent info request for this session has completed (success or error). */
     private volatile boolean consentResolved = false;
@@ -90,7 +91,13 @@ public class NativeAdsPlugin extends Plugin {
     public void load() {
         super.load();
         registerNetworkCallback();
-        gatherConsent();
+        // Avoid launching Google UMP while Capacitor constructs the WebView.
+        // The first JS consent/status request triggers UMP before any ad load.
+    }
+
+    private void ensureConsentFlow() {
+        if (!consentFlowStarted.compareAndSet(false, true)) return;
+        getActivity().runOnUiThread(this::gatherConsent);
     }
 
     /** The only Google Mobile Ads SDK initialization in the app (off the UI thread). */
@@ -195,6 +202,7 @@ public class NativeAdsPlugin extends Plugin {
 
     @PluginMethod
     public void getConsentStatus(final PluginCall call) {
+        ensureConsentFlow();
         call.resolve(consentStatus());
     }
 
@@ -205,6 +213,7 @@ public class NativeAdsPlugin extends Plugin {
 
     @PluginMethod
     public void getPrivacyOptionsStatus(final PluginCall call) {
+        ensureConsentFlow();
         JSObject r = new JSObject();
         r.put("required", privacyOptionsRequired());
         call.resolve(r);
@@ -212,6 +221,7 @@ public class NativeAdsPlugin extends Plugin {
 
     @PluginMethod
     public void showPrivacyOptionsForm(final PluginCall call) {
+        ensureConsentFlow();
         final Activity activity = getActivity();
         if (activity == null) {
             call.reject("NO_ACTIVITY");
@@ -284,6 +294,7 @@ public class NativeAdsPlugin extends Plugin {
     // ── Loading ─────────────────────────────────────────────────────────────
     @PluginMethod
     public void loadAd(final PluginCall call) {
+        ensureConsentFlow();
         final String prodId = call.getString("adId");
         if (prodId == null || prodId.isEmpty()) {
             call.reject("adId is required");
@@ -330,6 +341,11 @@ public class NativeAdsPlugin extends Plugin {
                             loading = false;
                             Activity a = getActivity();
                             if (a == null || a.isDestroyed() || a.isFinishing()) {
+                                ad.destroy();
+                                return;
+                            }
+                            if (!canRequestAds()) {
+                                // User could withdraw consent while an ad loads.
                                 ad.destroy();
                                 return;
                             }

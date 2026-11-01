@@ -183,7 +183,12 @@ function onAdLoaded() {
   clearDeadline();
   clearRetry();
   attempt = 0;
-  // A late fill is shown only while the gallery is still active.
+  // A late ad must never be displayed after consent changes.
+  if (!canRequestAds) {
+    setState("CONSENT_REQUIRED", "late ad discarded after consent changed");
+    void NativeAds.destroy().catch(() => {});
+    return;
+  }
   setState("LOADED");
 }
 
@@ -194,10 +199,13 @@ function onConsent(c: ConsentStatus) {
   if (c.debugFallback) adLog("warn", "consent unresolved — DEBUG fallback allows test ads only");
   if (!canRequestAds) {
     clearRetry();
-    if (state !== "LOADED" && !requestInFlight) {
-      setState(c.resolved ? "CONSENT_REQUIRED" : "CONSENT_PENDING",
-        c.resolved ? "consent does not permit ad requests" : "waiting for consent info");
-    }
+    clearDeadline();
+    requestInFlight = false;
+    const hadAd = state === "LOADED";
+    setState(c.resolved ? "CONSENT_REQUIRED" : "CONSENT_PENDING",
+      c.resolved ? "consent does not permit ad requests" : "waiting for consent info");
+    // Remove the native overlay as soon as permission is withdrawn.
+    if (hadAd) void NativeAds.destroy().catch(() => {});
     return;
   }
   if (!was && state !== "LOADED") {
