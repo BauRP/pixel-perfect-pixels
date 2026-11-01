@@ -107,6 +107,15 @@ describe("Android 7–17 system area calculations", () => {
     expect(isMeasuredViewport(360, 780)).toBe(true);
     expect(isMeasuredViewport(780, 360)).toBe(true);
   });
+  it("keeps side notch and top status bar in split-screen with navigation controls", () => {
+    const p = normalizeSystemInsets({ top: 34, bottom: 50, left: 28, right: 0 });
+    expect(fitInsetsToViewport(p, 280, 360)).toEqual(p);
+    const compact = fitInsetsToViewport(p, 70, 80);
+    expect(compact.top + compact.bottom).toBeLessThanOrEqual(80);
+    expect(compact.left + compact.right).toBeLessThanOrEqual(70);
+    expect(scrollContentBottomReserve(72, false)).toBe(72);
+    expect(scrollContentBottomReserve(72, true)).toBe(0);
+  });
   it("handles absent snapshot during an early cold launch", () => {
     expect(normalizeSystemInsets(undefined)).toEqual({
       top: 0, bottom: 0, left: 0, right: 0, keyboardVisible: false,

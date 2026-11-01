@@ -52,7 +52,10 @@ jobs:
           echo 'Android 17 platform android-37.0 installed; target SDK 37 configured for this CI run.'
       - name: Build Android 17-compatible debug APK
         run: |
-          bun install --frozen-lockfile
+          # Match the successfully verified APK workflow. The repository's
+          # lockfile is not frozen-compatible with Bun 1.3.2 yet; freezing
+          # it stops the SDK 37 experiment before the Android compiler runs.
+          bun install
           bun run build:capacitor
           python3 scripts/check_legacy_webview.py
           cd android

@@ -432,3 +432,33 @@ html, body, #root {
   min-width: 0;
   box-sizing: border-box;
 }
+
+/* Native WebView compatibility baseline.
+   Android 7–10 WebViews may ignore newer Tailwind @layer/@theme constructs.
+   Keep app canvas and core theme token aliases available independently of
+   the generated utility system; the regular theme values still take priority. */
+:root {
+  --color-background: var(--background, #000000);
+  --color-foreground: var(--foreground, #fafafa);
+  --color-surface: var(--surface, #242528);
+  --color-surface-elevated: var(--surface-elevated, #303238);
+  --color-muted: var(--muted, #303137);
+  --color-muted-foreground: var(--muted-foreground, #a1a1aa);
+  --color-accent: var(--accent, #31b879);
+  --color-border: var(--border, rgba(255,255,255,.10));
+  --color-destructive: var(--destructive, #d94747);
+}
+html, body, #root {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: Arial, sans-serif;
+}
+[data-app-shell] {
+  padding-left: var(--app-safe-left);
+  padding-right: var(--app-safe-right);
+  padding-top: var(--app-safe-top);
+}
+@media (max-width: 320px) {
+  [data-bottom-nav] ul { padding-left: 0.25rem; padding-right: 0.25rem; }
+  [data-bottom-nav] li > a { padding-left: 0.25rem; padding-right: 0.25rem; }
+}
