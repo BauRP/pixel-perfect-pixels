@@ -29,6 +29,8 @@ sleep 2
 adb shell pidof "$PACKAGE" >/dev/null || { echo "Wide screen app crash"; exit 1; }
 cleanup
 # Navigation overlays are available only on some Android 10+ system images.
+# Verify both layouts actually respond after a system-mode change.
+# Visual layout is asserted separately by the instrumented WebView tests.
 API="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
 if [[ "$API" -ge 29 ]]; then
   for mode in threebutton gestural; do
@@ -37,6 +39,7 @@ if [[ "$API" -ge 29 ]]; then
       echo "Enabled $mode system navigation"
       sleep 2
       adb shell pidof "$PACKAGE" >/dev/null || { echo "App crashed after navigation change"; exit 1; }
+      adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp|InsetsState' | head -12 || true
     else
       echo "SKIP $mode: navigation overlay not available on this emulator image"
     fi

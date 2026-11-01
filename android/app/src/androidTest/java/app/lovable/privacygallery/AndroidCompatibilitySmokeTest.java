@@ -13,6 +13,7 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.test.ext.junit.rules.ActivityScenarioRule;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.rule.GrantPermissionRule;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -29,7 +30,18 @@ import static org.junit.Assert.*;
  */
 @RunWith(AndroidJUnit4.class)
 public class AndroidCompatibilitySmokeTest {
-    @Rule
+    // Request gallery permissions before the ActivityScenario launches.
+    // Otherwise Android 10/13 may display a runtime permission sheet while
+    // evaluateJavascript awaits a paused/inactive WebView, causing false
+    // CALLBACK_TIMEOUT failures that look like a layout regression.
+    @Rule(order = 0)
+    public GrantPermissionRule mediaPermissions = Build.VERSION.SDK_INT >= 33
+            ? GrantPermissionRule.grant(
+                    "android.permission.READ_MEDIA_IMAGES",
+                    "android.permission.READ_MEDIA_VIDEO")
+            : GrantPermissionRule.grant("android.permission.READ_EXTERNAL_STORAGE");
+
+    @Rule(order = 1)
     public ActivityScenarioRule<MainActivity> scenario =
             new ActivityScenarioRule<>(MainActivity.class);
 
@@ -86,7 +98,7 @@ public class AndroidCompatibilitySmokeTest {
      */
     private String awaitWebViewState(String javascript) throws Exception {
         String last = "NOT_READY";
-        for (int attempt = 0; attempt < 32; attempt++) {
+        for (int attempt = 0; attempt < 24; attempt++) {
             CountDownLatch latch = new CountDownLatch(1);
             AtomicReference<String> result = new AtomicReference<>("");
             scenario.getScenario().onActivity(activity -> {
@@ -107,8 +119,21 @@ public class AndroidCompatibilitySmokeTest {
                     latch.countDown();
                 }
             });
-            if (!latch.await(3, TimeUnit.SECONDS)) {
+            if (!latch.await(4, TimeUnit.SECONDS)) {
                 last = "CALLBACK_TIMEOUT";
+                // Keep the WebView state in diagnostics rather than claiming
+                // a blank screen is an Android layout failure.
+                scenario.getScenario().onActivity(activity -> {
+                    WebView web = activity.getBridge() == null
+                            ? null : activity.getBridge().getWebView();
+                    if (web != null) {
+                        android.util.Log.w("AndroidCompatTest",
+                                "WebView JS callback timeout: URL=" + web.getUrl()
+                                + " progress=" + web.getProgress()
+                                + " attached=" + web.isAttachedToWindow()
+                                + " visible=" + web.getVisibility());
+                    }
+                });
             } else {
                 last = result.get();
                 if (!"\"NOT_READY\"".equals(last) &&
