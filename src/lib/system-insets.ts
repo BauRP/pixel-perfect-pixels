@@ -29,7 +29,10 @@ export function initSystemInsets(): void {
       window.innerWidth, window.innerHeight);
     const values = [safe.top, safe.bottom, safe.left, safe.right];
     const keyboard = safe.keyboardVisible;
-    const key = values.join(":") + ":" + keyboard;
+    // The window can shrink while Android's raw insets remain unchanged.
+    // Include viewport dimensions when deciding whether to recompute.
+    const key = values.join(":") + ":" + keyboard +
+      ":" + window.innerWidth + ":" + window.innerHeight;
     if (key === last) return;
     last = key;
     const root = document.documentElement;

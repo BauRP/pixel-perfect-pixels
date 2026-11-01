@@ -11,12 +11,20 @@ on_exit() {
   adb logcat -d -v time > emulator-diagnostics/logcat.txt 2>&1 || true
   adb shell dumpsys webviewupdate > emulator-diagnostics/webview-provider.txt 2>&1 || true
   adb shell dumpsys window > emulator-diagnostics/window.txt 2>&1 || true
+  adb shell dumpsys power > emulator-diagnostics/power.txt 2>&1 || true
+  adb shell dumpsys activity activities > emulator-diagnostics/activities.txt 2>&1 || true
   echo "Java tests: $status_tests | native shell smoke: $status_shell | script: $status" > emulator-diagnostics/result.txt
 }
 trap on_exit EXIT
 adb wait-for-device
 adb devices -l
 adb shell getprop ro.build.version.sdk
+# Do not let the emulator sleep and suspend WebView JS callbacks mid-test.
+adb shell svc power stayon true || true
+adb shell settings put system screen_off_timeout 1800000 || true
+adb shell input keyevent KEYCODE_WAKEUP || true
+adb shell wm dismiss-keyguard || true
+adb shell input keyevent KEYCODE_HOME || true
 chmod +x android/gradlew
 # The Java test runner can remove the app on completion. Always try the
 # independent install/launch/resize/navigation test afterwards.

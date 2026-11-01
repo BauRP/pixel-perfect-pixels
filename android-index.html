@@ -14,10 +14,26 @@
       el.setAttribute('data-nova-error','1');
       el.style.cssText='padding:48px 20px;min-height:55vh;background:#101116;color:white;font:16px sans-serif;text-align:center';
       el.textContent='Nova Gallery could not start: '+String(message||'unknown');
+      var retry=document.createElement('button');
+      retry.type='button';
+      retry.textContent='Retry';
+      retry.style.cssText='display:block;margin:24px auto;padding:14px 24px;border:1px solid #aaa;background:#222;color:white;border-radius:12px;min-height:44px';
+      retry.onclick=function(){location.reload();};
+      el.appendChild(retry);
       node.appendChild(el);
     }
     window.addEventListener('error',function (e) {show(e.message || e.error && e.error.message);});
     window.addEventListener('unhandledrejection',function (e) {show(e.reason && e.reason.message);});
+    // Some WebViews stall silently during boot without throwing an exception.
+    // Do not leave the user with a permanently blank screen.
+    window.addEventListener('load',function(){
+      setTimeout(function(){
+        if(!document.querySelector('[data-bottom-nav]') &&
+           !document.querySelector('[data-nova-error]')){
+          show('The gallery did not finish loading.');
+        }
+      },16000);
+    });
   })();
   </script>
 </head>

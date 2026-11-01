@@ -138,6 +138,8 @@ public class AndroidCompatibilitySmokeTest {
                 last = result.get();
                 if (!"\"NOT_READY\"".equals(last) &&
                         !"\"WEBVIEW_REPLACED\"".equals(last) &&
+                        !"\"NO_NATIVE_INSETS\"".equals(last) &&
+                        !"\"MISSING_INSETS\"".equals(last) &&
                         !"null".equals(last) && !last.isEmpty()) {
                     return last;
                 }
