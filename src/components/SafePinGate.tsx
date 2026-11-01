@@ -122,13 +122,19 @@ export function SafePinGate({
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex flex-col"
+      className="fixed inset-0 z-[70] flex flex-col overflow-y-auto overflow-x-hidden"
       style={{
-        background:
-          "radial-gradient(120% 80% at 50% 0%, color-mix(in oklab, var(--color-accent) 22%, var(--color-background)) 0%, var(--color-background) 60%)",
+        background: "var(--color-background)",
+        // Unsupported color-mix gradients are ignored by older Android
+        // WebViews; keep the solid background and the actual PIN controls.
+        paddingTop: "var(--app-safe-top)",
+        paddingBottom: "calc(var(--app-safe-bottom) + 0.75rem)",
+        paddingLeft: "var(--app-safe-left)",
+        paddingRight: "var(--app-safe-right)",
+        overscrollBehavior: "contain",
       }}
     >
-      <div className="px-4 pt-[max(var(--app-safe-top),1rem)] pb-2">
+      <div className="px-4 pt-4 pb-2">
         <button
           onClick={onCancel}
           className="tap grid h-10 w-10 place-items-center rounded-full"
@@ -139,12 +145,12 @@ export function SafePinGate({
         </button>
       </div>
 
-      <div className="flex flex-col items-center px-6 pt-4">
+      <div className="flex min-w-0 flex-col items-center px-4 pt-2">
         <span
-          className="grid h-20 w-20 place-items-center rounded-3xl mb-6 shadow-lg"
+          className="grid h-16 w-16 shrink-0 place-items-center rounded-3xl mb-3 shadow-lg sm:h-20 sm:w-20 sm:mb-6"
           style={{
-            background: "color-mix(in oklab, var(--color-accent) 22%, var(--color-surface))",
-            boxShadow: "0 10px 40px -10px color-mix(in oklab, var(--color-accent) 55%, transparent)",
+            background: "var(--color-surface)",
+            boxShadow: "0 10px 40px -10px rgba(0,0,0,.22)",
           }}
         >
           <ShieldCheck size={38} style={{ color: "var(--color-accent)" }} />
@@ -176,7 +182,7 @@ export function SafePinGate({
 
         <p className="mt-3 h-4 text-xs text-destructive">{error || "\u00A0"}</p>
 
-        <div className="mt-5 mx-auto w-full max-w-[220px] grid grid-cols-3 gap-2">
+        <div className="mt-3 mx-auto w-full max-w-[220px] grid grid-cols-3 gap-2">
           {["1","2","3","4","5","6","7","8","9"].map((d) => (
             <KeypadBtn key={d} onClick={() => press(d)}>{d}</KeypadBtn>
           ))}
@@ -206,7 +212,7 @@ function KeypadBtn({
   return (
     <button
       onClick={onClick}
-      className="h-12 rounded-xl text-lg font-semibold flex items-center justify-center transition-all active:scale-95"
+      className="min-h-11 h-12 rounded-xl text-lg font-semibold flex items-center justify-center transition-all active:scale-95"
       style={{
         background: "var(--color-surface)",
         border: "1px solid var(--color-border)",

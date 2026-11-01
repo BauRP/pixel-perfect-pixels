@@ -652,8 +652,15 @@ function MediaViewer({
           onClick={(e) => { e.stopPropagation(); setDetailsOpen(false); }}
         >
           <div
-            className="w-full rounded-t-3xl p-5 pb-[max(var(--app-safe-bottom),1.25rem)]"
-            style={{ background: "var(--color-surface)", color: "var(--color-foreground)" }}
+            className="w-full rounded-t-3xl p-5 overflow-y-auto"
+            style={{
+              background: "var(--color-surface)",
+              color: "var(--color-foreground)",
+              paddingBottom: "calc(var(--app-safe-bottom) + 1.25rem)",
+              paddingLeft: "calc(var(--app-safe-left) + 1.25rem)",
+              paddingRight: "calc(var(--app-safe-right) + 1.25rem)",
+              maxHeight: "calc(100vh - var(--app-safe-top) - 0.5rem)",
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
@@ -730,14 +737,20 @@ export function ConfirmSheet({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] grid place-items-center bg-black/70 p-6"
-      style={{ pointerEvents: "auto" }}
+      className="fixed inset-0 z-[9999] grid place-items-center overflow-y-auto bg-black/70 p-4"
+      style={{
+        pointerEvents: "auto",
+        paddingTop: "calc(var(--app-safe-top) + 1rem)",
+        paddingBottom: "calc(var(--app-safe-bottom) + 1rem)",
+        paddingLeft: "calc(var(--app-safe-left) + 1rem)",
+        paddingRight: "calc(var(--app-safe-right) + 1rem)",
+      }}
       onPointerDown={stop}
       onTouchStart={stop}
       onClick={(e) => { e.stopPropagation(); onCancel(); }}
     >
       <div
-        className="w-full max-w-[320px] rounded-3xl p-5"
+        className="w-full max-w-[320px] rounded-3xl p-5 overflow-y-auto"
         style={{
           background: "var(--color-surface)",
           color: "var(--color-foreground)",
@@ -753,7 +766,7 @@ export function ConfirmSheet({
             type="button"
             onPointerDown={stop}
             onClick={(e) => { e.stopPropagation(); onCancel(); }}
-            className="tap h-10 flex-1 rounded-xl text-sm font-semibold"
+            className="tap min-h-11 flex-1 rounded-xl text-sm font-semibold"
             style={{ background: "var(--color-muted)" }}
           >
             {cancelLabel}
@@ -762,7 +775,7 @@ export function ConfirmSheet({
             type="button"
             onPointerDown={stop}
             onClick={(e) => { e.stopPropagation(); onConfirm(); }}
-            className="tap h-10 flex-1 rounded-xl bg-destructive text-sm font-semibold text-destructive-foreground"
+            className="tap min-h-11 flex-1 rounded-xl bg-destructive text-sm font-semibold text-destructive-foreground"
           >
             {confirmLabel}
           </button>

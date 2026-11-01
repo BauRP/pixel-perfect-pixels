@@ -390,7 +390,7 @@ function SafeFolderView() {
           style={{ paddingLeft: "var(--app-safe-left)", paddingRight: "var(--app-safe-right)" }}
         >
           <div
-            className="flex items-center gap-3 px-4 pb-3"
+            className="flex min-w-0 flex-wrap items-center gap-2 px-3 pb-3"
             style={{
               background: "linear-gradient(180deg, rgba(0,0,0,.85), transparent)",
               paddingTop: "calc(var(--app-safe-top) + 0.5rem)",
@@ -400,7 +400,7 @@ function SafeFolderView() {
               {viewer.file.name}
             </span>
             {/* Restore · Delete · Close — evenly spaced, never overlapping. */}
-            <div className="flex shrink-0 items-center gap-4">
+            <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
                 onClick={() => void restoreFromSafe(viewer.file)}
