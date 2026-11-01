@@ -80,13 +80,16 @@ export function AppShell({ children }: { children: ReactNode }) {
       data-app-shell
       className="fixed inset-0 flex flex-col overflow-hidden"
       style={{
+        position: "fixed", top: 0, right: 0, bottom: 0, left: 0,
+        display: "flex", flexDirection: "column", overflow: "hidden",
         paddingTop: "var(--app-safe-top)",
         paddingLeft: "var(--app-safe-left)",
         paddingRight: "var(--app-safe-right)",
         background: "var(--color-background)",
       }}
     >
-      <div data-app-content className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
+      <div data-app-content className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain"
+        style={{ flex: "1 1 auto", minHeight: 0, minWidth: 0, overflowY: "auto", overflowX: "hidden" }}>
         <div
           className="mx-auto w-full max-w-5xl"
           style={{ paddingBottom: "var(--app-nav-reserve)", minWidth: 0 }}

@@ -58,16 +58,19 @@ export function BottomNav() {
       aria-label={t("primary_nav")}
       data-bottom-nav
       style={{
+        position: "fixed", left: 0, right: 0, bottom: 0,
+        zIndex: 50,
         paddingLeft: "var(--app-safe-left)",
         paddingRight: "var(--app-safe-right)",
         paddingBottom: "calc(var(--app-safe-bottom) + 0.25rem)",
       }}
     >
-      <ul className="mx-auto flex max-w-5xl items-stretch justify-around px-3">
+      <ul className="mx-auto flex max-w-5xl items-stretch justify-around px-3"
+        style={{ display: "flex", paddingLeft: "0.75rem", paddingRight: "0.75rem", margin: "0 auto", listStyle: "none" }}>
         {items.map(({ to, label, Icon, match }) => {
           const active = match(pathname);
           return (
-            <li key={to} className="min-w-0 flex-1">
+            <li key={to} className="min-w-0 flex-1" style={{ flex: "1 1 0%", minWidth: 0 }}>
               <Link
                 to={to}
                 className="flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-2xl px-2 py-1 transition-colors"
@@ -75,6 +78,14 @@ export function BottomNav() {
                   // 44px remains functional even on old WebViews that ignore
                   // Tailwind's generated calc(var(--spacing) * 11) rule.
                   minHeight: "44px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  padding: "4px 8px",
+                  textDecoration: "none",
                   color: active ? "var(--color-accent)" : "var(--color-muted-foreground)",
                 }}
               >

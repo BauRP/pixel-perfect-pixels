@@ -225,6 +225,7 @@ public class AndroidCompatibilitySmokeTest {
             "var leftPadding=parseFloat(css.paddingLeft)||0;" +
             "var rightPadding=parseFloat(css.paddingRight)||0;" +
             "var minY=b.bottom-paddingBottom;" +
+            "if(links[0].tagName!=='A')return 'WRONG_LINK_ELEMENT';" +
             "for(var i=0;i<links.length;i++){" +
             "var r=links[i].getBoundingClientRect();" +
             "if(r.width<=0||r.height<40)return 'TINY_TAB_'+i+" +
