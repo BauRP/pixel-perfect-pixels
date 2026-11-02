@@ -73,9 +73,25 @@ export function AppShell({ children }: { children: ReactNode }) {
   useResolvedLanguage();
   useSystemStatusBar();
   useEffect(() => {
-    // Commit phase: the bottom navigation has actually been mounted.
-    // Do not treat a blank or stalled WebView's network progress as success.
-    signalGalleryUiReady();
+    // React effect completion is not equivalent to a *painted* navigation.
+    // Wait for two compositor frames and a measurable nav + shell before
+    // acknowledging the UI to the native Android startup watchdog.
+    let frame1 = 0;
+    let frame2 = 0;
+    frame1 = requestAnimationFrame(() => {
+      frame2 = requestAnimationFrame(() => {
+        const shell = document.querySelector("[data-app-shell]");
+        const nav = document.querySelector("[data-bottom-nav]");
+        const rect = nav?.getBoundingClientRect();
+        if (shell && nav && rect && rect.width >= 100 && rect.height >= 36) {
+          signalGalleryUiReady();
+        }
+      });
+    });
+    return () => {
+      cancelAnimationFrame(frame1);
+      cancelAnimationFrame(frame2);
+    };
   }, []);
   return (
     // Fixed app frame: [status bar inset] → [scrollable content] → [bottom nav].

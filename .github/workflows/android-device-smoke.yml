@@ -55,7 +55,12 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -partition-size 4096
+          # Android 10/13 Chromium 74/109 reports React mount while showing
+          # a uniformly black compositor surface on the deprecated indirect
+          # renderer. Run those SDKs with the supported software backend to
+          # distinguish emulator GPU failure from app-level navigation bugs.
+          # Other API levels retain their previously successful settings.
+          emulator-options: -no-window -gpu ${{ contains(fromJSON('[29,33]'), matrix.api) && 'software' || 'swiftshader_indirect' }} -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -partition-size 4096
           # The runner executes each script line in a fresh shell.
           # Use ONE script to retain the working directory and fail atomically.
           script: bash scripts/run_android_emulator_tests.sh

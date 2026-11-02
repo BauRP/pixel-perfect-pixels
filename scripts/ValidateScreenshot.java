@@ -23,19 +23,22 @@ public final class ValidateScreenshot {
         // strip that a naive nonblack-pixel test incorrectly called "UI".
         int yStart = Math.max(0, height / 20);
         int yEnd = Math.max(yStart + 1, height * 87 / 100);
-        int samples = 0, visible = 0;
+        int samples = 0, visible = 0, dark = 0;
         for (int y = yStart; y < yEnd; y += 3) {
             for (int x = xStart; x < xEnd; x += 3) {
                 int rgb = image.getRGB(x, y);
                 int r = (rgb >>> 16) & 255, g = (rgb >>> 8) & 255, b = rgb & 255;
                 samples++;
                 if (Math.max(r, Math.max(g, b)) >= 105) visible++;
+                if (Math.max(r, Math.max(g, b)) <= 50) dark++;
             }
         }
         int minimum = Math.max(18, samples / 4000);
         System.out.println("Screenshot " + args[0] + " " + width + "x" + height +
-                " visible=" + visible + "/" + samples + " minimum=" + minimum);
-        if (visible < minimum)
-            throw new IllegalStateException("App looks blank/black in actual emulator screenshot");
+                " visible=" + visible + "/" + samples +
+                " dark=" + dark + "/" + samples + " minimum=" + minimum);
+        if (visible < minimum || dark < minimum)
+            throw new IllegalStateException(
+                "App looks like a blank/solid-black/solid-white window rather than a gallery");
     }
 }
