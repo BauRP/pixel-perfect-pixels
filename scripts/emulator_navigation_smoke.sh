@@ -13,9 +13,14 @@ adb shell wm density
 adb shell pm path "$PACKAGE" | grep '^package:' >/dev/null
 original_rotation="$(adb shell settings get system user_rotation | tr -d '\r')"
 original_auto_rotate="$(adb shell settings get system accelerometer_rotation | tr -d '\r')"
+original_nav_overlay="$(adb shell cmd overlay list --user 0 2>/dev/null | grep -E '^\[x\] com.android.internal.systemui.navbar.' | head -1 | sed 's/^\[x\] //' || true)"
 cleanup() {
   adb shell wm size reset >/dev/null 2>&1 || true
   adb shell wm density reset >/dev/null 2>&1 || true
+  # Never leave a modified nav overlay for subsequent emulator tests.
+  if [[ -n "$original_nav_overlay" ]]; then
+    adb shell cmd overlay enable "$original_nav_overlay" >/dev/null 2>&1 || true
+  fi
   if [[ "$original_rotation" =~ ^[0-3]$ ]]; then
     adb shell settings put system user_rotation "$original_rotation" >/dev/null 2>&1 || true
   fi
@@ -29,6 +34,8 @@ start_app() {
   sleep 4
   adb shell pidof "$PACKAGE" >/dev/null || { echo "APK process crashed: $1"; return 1; }
   adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' | head -4 || true
+  adb shell dumpsys activity top > "emulator-diagnostics/activity-$1.txt" 2>&1 || true
+  adb shell dumpsys window > "emulator-diagnostics/window-$1.txt" 2>&1 || true
   adb shell screencap -p "/sdcard/nova-$1.png" >/dev/null 2>&1 || true
   adb pull "/sdcard/nova-$1.png" "emulator-diagnostics/$1.png" >/dev/null 2>&1 || true
 }
