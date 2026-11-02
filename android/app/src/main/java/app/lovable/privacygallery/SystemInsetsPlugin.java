@@ -50,6 +50,10 @@ public class SystemInsetsPlugin extends Plugin {
                 windowInsets.isVisible(WindowInsetsCompat.Type.ime())
                 && ime.bottom > Math.max(bars.bottom, mandatory.bottom) + thresholdPx;
         result.put("keyboardVisible", keyboardOverlapsBottom);
+        // A numeric zero is NOT proof that Android actually measured 0px
+        // bars. The JS shell must not mark its safe-area ready until a real
+        // WindowInsetsCompat instance has been observed.
+        result.put("measured", true);
         return result;
     }
 
@@ -158,6 +162,10 @@ public class SystemInsetsPlugin extends Plugin {
                 // Empty snapshot is NOT proof that all system bars are zero.
                 // Ask Android to dispatch an actual snapshot when attached.
                 ViewCompat.requestApplyInsets(source);
+                JSObject pending = new JSObject();
+                pending.put("measured", false);
+                call.resolve(pending);
+                return;
             }
             call.resolve(latest);
         });

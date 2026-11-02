@@ -64,3 +64,14 @@ export function isMeasuredViewport(width: number, height: number): boolean {
   return Number.isFinite(width) && width > 0 &&
     Number.isFinite(height) && height > 0;
 }
+
+/** The OS, not a missing/zero-filled bootstrap object, is authoritative.
+ * This intentionally rejects incomplete/NaN insets and waits for the first
+ * real WindowInsetsCompat callback before declaring navigation safe.
+ */
+export function isTrustedNativeInsetsSnapshot(input: RawSystemInsets & { measured?: boolean }): boolean {
+  return input?.measured === true &&
+    [input.top, input.bottom, input.left, input.right].every(
+      value => typeof value === "number" && Number.isFinite(value) && value >= 0,
+    );
+}

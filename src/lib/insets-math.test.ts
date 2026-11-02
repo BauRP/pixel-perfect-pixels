@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeSystemInsets, navReserveHeight, scrollContentBottomReserve, fitInsetsToViewport, isMeasuredViewport } from "./insets-math";
+import { normalizeSystemInsets, navReserveHeight, scrollContentBottomReserve, fitInsetsToViewport, isMeasuredViewport, isTrustedNativeInsetsSnapshot } from "./insets-math";
 
 describe("Android 7–17 system area calculations", () => {
   it("keeps all three-button nav and status bar regions", () => {
@@ -120,5 +120,19 @@ describe("Android 7–17 system area calculations", () => {
     expect(normalizeSystemInsets(undefined)).toEqual({
       top: 0, bottom: 0, left: 0, right: 0, keyboardVisible: false,
     });
+  });
+});
+
+describe("real Android WindowInsets readiness", () => {
+  it("rejects initial missing/zero-filled native bootstrap data", () => {
+    expect(isTrustedNativeInsetsSnapshot({ top: 0, bottom: 0, left: 0, right: 0 })).toBe(false);
+    expect(isTrustedNativeInsetsSnapshot({ measured: false, top: 0, bottom: 0, left: 0, right: 0 })).toBe(false);
+    expect(isTrustedNativeInsetsSnapshot({ measured: true, top: 0, bottom: 0 })).toBe(false);
+    expect(isTrustedNativeInsetsSnapshot({ measured: true, top: Number.NaN, bottom: 24, left: 0, right: 0 })).toBe(false);
+  });
+  it("accepts genuinely measured zero and gesture/three-button bars", () => {
+    expect(isTrustedNativeInsetsSnapshot({ measured: true, top: 0, bottom: 0, left: 0, right: 0 })).toBe(true);
+    expect(isTrustedNativeInsetsSnapshot({ measured: true, top: 29, bottom: 55, left: 0, right: 0 })).toBe(true);
+    expect(isTrustedNativeInsetsSnapshot({ measured: true, top: 0, bottom: 20, left: 40, right: 0 })).toBe(true);
   });
 });
