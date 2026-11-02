@@ -49,64 +49,11 @@ jobs:
           sed -i 's/gradle-8.13-bin.zip/gradle-9.4.1-bin.zip/' android/gradle/wrapper/gradle-wrapper.properties
           sed -i 's/compileSdkVersion = 36/compileSdkVersion = 37/' android/variables.gradle
           sed -i 's/targetSdkVersion = 36/targetSdkVersion = 37/' android/variables.gradle
-          # Capacitor Filesystem still applies the legacy kotlin-android
-          # plugin. AGP 9 enables built-in Kotlin and its new DSL by default,
-          # which fails during project configuration before compilation.
-          # Disable both only in this temporary SDK-37 checkout; never
-          # modify stable release configuration or generated plugin sources.
-          printf '\nandroid.builtInKotlin=false\nandroid.newDsl=false\n' >> android/gradle.properties
-          grep -q '^android.builtInKotlin=false
-          grep -q "gradle:9.2.0" android/build.gradle
-          grep -q 'gradle-9.4.1-bin.zip' android/gradle/wrapper/gradle-wrapper.properties
-          grep -q 'compileSdkVersion = 37' android/variables.gradle
-          grep -q 'targetSdkVersion = 37' android/variables.gradle
-          echo 'Temporary API 37 + AGP 9.2 / Gradle 9.4.1 configured; release SDK 36 unchanged.'
-      - name: Build Android 17-compatible debug APK
-        run: |
-          # Match the successfully verified APK workflow. The repository's
-          # lockfile is not frozen-compatible with Bun 1.3.2 yet; freezing
-          # it stops the SDK 37 experiment before the Android compiler runs.
-          bun install
-          bun run build:capacitor
-          python3 scripts/check_legacy_webview.py
-          cd android
-          ./gradlew --version
-          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace --no-daemon
-      - name: Preserve Android 17 probe diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: nova-android17-build-probe
-          path: android37-available.txt
-          if-no-files-found: warn
-          retention-days: 3
- android/gradle.properties
-          grep -q '^android.newDsl=false
-          grep -q "gradle:9.2.0" android/build.gradle
-          grep -q 'gradle-9.4.1-bin.zip' android/gradle/wrapper/gradle-wrapper.properties
-          grep -q 'compileSdkVersion = 37' android/variables.gradle
-          grep -q 'targetSdkVersion = 37' android/variables.gradle
-          echo 'Temporary API 37 + AGP 9.2 / Gradle 9.4.1 configured; release SDK 36 unchanged.'
-      - name: Build Android 17-compatible debug APK
-        run: |
-          # Match the successfully verified APK workflow. The repository's
-          # lockfile is not frozen-compatible with Bun 1.3.2 yet; freezing
-          # it stops the SDK 37 experiment before the Android compiler runs.
-          bun install
-          bun run build:capacitor
-          python3 scripts/check_legacy_webview.py
-          cd android
-          ./gradlew --version
-          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace --no-daemon
-      - name: Preserve Android 17 probe diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: nova-android17-build-probe
-          path: android37-available.txt
-          if-no-files-found: warn
-          retention-days: 3
- android/gradle.properties
+          # Capacitor Filesystem uses the legacy Kotlin Android plugin;
+          # opt out of AGP 9 built-in Kotlin/new DSL in this probe only.
+          printf '%s\n' 'android.builtInKotlin=false' 'android.newDsl=false' >> android/gradle.properties
+          grep -Fxq 'android.builtInKotlin=false' android/gradle.properties
+          grep -Fxq 'android.newDsl=false' android/gradle.properties
           grep -q "gradle:9.2.0" android/build.gradle
           grep -q 'gradle-9.4.1-bin.zip' android/gradle/wrapper/gradle-wrapper.properties
           grep -q 'compileSdkVersion = 37' android/variables.gradle
