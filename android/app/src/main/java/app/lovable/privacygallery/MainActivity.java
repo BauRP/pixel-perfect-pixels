@@ -212,6 +212,7 @@ public class MainActivity extends BridgeActivity {
     // until the next activity resume or rotation. Request an insets pass.
     private void refreshSystemAreas() {
         getWindow().getDecorView().post(() -> {
+            if (isFinishing() || isDestroyed()) return;
             if (getBridge() != null && getBridge().getWebView() != null) {
                 ViewCompat.requestApplyInsets(getBridge().getWebView());
             } else {

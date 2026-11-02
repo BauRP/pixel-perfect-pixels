@@ -14,6 +14,19 @@ interface SystemInsetsPlugin {
 const nativeInsets = registerPlugin<SystemInsetsPlugin>("SystemInsets");
 let initialized = false;
 let pushedVersion = 0;
+let lastAppliedNativeInsets: Insets | null = null;
+let nativeRefresh: (() => void) | null = null;
+let nativeResubscribe: (() => void) | null = null;
+
+/** The app window may resize without the OS sending a new inset event.
+ * Recalculate against the last real snapshot immediately while requesting
+ * a fresh native read. This prevents stale padding during fold/rotation.
+ */
+export function refreshSystemInsetsForViewport(): void {
+  if (!Capacitor.isNativePlatform()) return;
+  nativeResubscribe?.();
+  nativeRefresh?.();
+}
 
 /**
  * Native Android 7+ WindowInsets are the source of truth for status/navigation
@@ -26,6 +39,7 @@ export function initSystemInsets(): void {
   let last = "";
   const apply = (i: Insets) => {
     if (!i || typeof i.top !== "number" || typeof i.bottom !== "number") return;
+    lastAppliedNativeInsets = i;
     const safe = fitInsetsToViewport(normalizeSystemInsets(i),
       window.innerWidth, window.innerHeight);
     const values = [safe.top, safe.bottom, safe.left, safe.right];
@@ -59,6 +73,10 @@ export function initSystemInsets(): void {
       console.warn("[insets] native snapshot failed", error);
     });
   };
+  nativeRefresh = refresh;
+  nativeResubscribe = () => {
+    if (lastAppliedNativeInsets) apply(lastAppliedNativeInsets);
+  };
   // Read immediately rather than waiting for native listener registration;
   // then take another snapshot once subscribed to close any startup race.
   refresh();
@@ -70,12 +88,20 @@ export function initSystemInsets(): void {
       console.warn("[insets] native listener unavailable; refreshing on resume", error);
       refresh();
     });
-  window.addEventListener("focus", refresh);
-  window.addEventListener("orientationchange", refresh);
-  window.visualViewport?.addEventListener("resize", refresh);
-  window.addEventListener("resize", refresh);
+  const refreshForWindow = () => {
+    // Reapply the last real insets against the current viewport first,
+    // then obtain a newer OS snapshot. Never invent 0px during rotation.
+    nativeResubscribe?.();
+    refresh();
+  };
+  window.addEventListener("focus", refreshForWindow);
+  window.addEventListener("pageshow", refreshForWindow);
+  window.addEventListener("orientationchange", refreshForWindow);
+  window.visualViewport?.addEventListener("resize", refreshForWindow);
+  window.visualViewport?.addEventListener("scroll", refreshForWindow);
+  window.addEventListener("resize", refreshForWindow);
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") refresh();
+    if (document.visibilityState === "visible") refreshForWindow();
   });
 }
 

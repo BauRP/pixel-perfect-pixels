@@ -5,7 +5,7 @@ import { applyDocumentDirection, ensureLangResolved, useLang } from "@/lib/i18n"
 import { Capacitor } from "@capacitor/core";
 import { useVault } from "@/lib/vault-store";
 import { cssColorToHex } from "@/lib/css-color";
-import { initSystemInsets, updateSystemBarAppearance, signalGalleryUiReady } from "@/lib/system-insets";
+import { initSystemInsets, updateSystemBarAppearance, signalGalleryUiReady, refreshSystemInsetsForViewport } from "@/lib/system-insets";
 
 /**
  * First launch after install: detect the device locale, map it to one of the
@@ -73,6 +73,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   useResolvedLanguage();
   useSystemStatusBar();
   useEffect(() => {
+    refreshSystemInsetsForViewport();
     // React effect completion is not equivalent to a *painted* navigation.
     // Wait for two compositor frames and a measurable nav + shell before
     // acknowledging the UI to the native Android startup watchdog.
