@@ -41,6 +41,21 @@ if ! adb install -r android/app/build/outputs/apk/debug/app-debug.apk; then
   adb shell dumpsys package | head -35 || true
   exit 1
 fi
+# Layout tests must not be blocked by the first-run gallery permission
+# sheet. Permissions are pre-granted ONLY in disposable CI emulators; the
+# production app retains its ordinary user-controlled consent flow.
+grant_smoke_media_permissions() {
+  local sdk
+  sdk="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
+  if (( sdk >= 33 )); then
+    adb shell pm grant app.lovable.privacygallery android.permission.READ_MEDIA_IMAGES
+    adb shell pm grant app.lovable.privacygallery android.permission.READ_MEDIA_VIDEO
+  else
+    adb shell pm grant app.lovable.privacygallery android.permission.READ_EXTERNAL_STORAGE
+  fi
+  echo "CI layout-test media grants applied on API ${sdk}"
+}
+grant_smoke_media_permissions
 chmod +x android/gradlew
 # The Java test runner can remove the app on completion. Always try the
 # independent install/launch/resize/navigation test afterwards.
@@ -50,6 +65,7 @@ chmod +x android/gradlew
 ) || status_tests=$?
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 adb shell pm path app.lovable.privacygallery | grep '^package:' >/dev/null
+grant_smoke_media_permissions
 bash scripts/emulator_navigation_smoke.sh || status_shell=$?
 printf 'Instrumentation result=%s | UI launch/resize result=%s\n' "$status_tests" "$status_shell"
 if (( status_tests != 0 || status_shell != 0 )); then exit 1; fi

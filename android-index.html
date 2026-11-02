@@ -26,19 +26,26 @@
     window.addEventListener('unhandledrejection',function (e) {show(e.reason && e.reason.message);});
     // Some WebViews stall silently during boot without throwing an exception.
     // Do not leave the user with a permanently blank screen.
-    window.addEventListener('load',function(){
-      setTimeout(function(){
-        if(!document.querySelector('[data-bottom-nav]') &&
-           !document.querySelector('[data-nova-error]')){
-          show('The gallery did not finish loading.');
-        }
-      },16000);
-    });
+    // Arm from parser execution, not window.load. Some old Android WebViews
+    // wait forever for a module import and never dispatch load at all.
+    // Users must see a retry action rather than a black, noninteractive UI.
+    setTimeout(function(){
+      if(!document.querySelector('[data-bottom-nav]') &&
+         !document.querySelector('[data-nova-error]')){
+        show('The gallery did not finish loading.');
+      }
+    },20000);
   })();
   </script>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="root">
+    <!-- Shown until React replaces #root; no JS or network is required. -->
+    <div id="nova-boot-status" role="status" aria-live="polite"
+      style="box-sizing:border-box;min-height:75vh;padding:calc(48px + env(safe-area-inset-top,0px)) 24px 48px;background:#0b0b0f;color:#f5f5f7;font:16px/1.6 system-ui,sans-serif;text-align:center">
+      Nova Gallery is starting…
+    </div>
+  </div>
   <script type="module" src="./src/android-client.tsx"></script>
 </body>
 </html>

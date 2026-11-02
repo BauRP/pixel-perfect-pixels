@@ -32,7 +32,19 @@ trap cleanup EXIT
 start_app() {
   adb shell am start -W -n "$ACTIVITY"
   sleep 4
-  adb shell pidof "$PACKAGE" >/dev/null || { echo "APK process crashed: $1"; return 1; }
+  if ! adb shell pidof "$PACKAGE" >/dev/null; then
+    echo "Gallery process absent during $1; verify Activity and permission dialog before calling it a crash"
+    adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity|ResumedActivity' | head -8 || true
+    return 1
+  fi
+  # A popup belongs to the permission controller, not our gallery; it is
+  # a real smoke-test failure and must not be mislabelled as a process crash.
+  local focus
+  focus="$(adb shell dumpsys window | grep -m1 'mCurrentFocus=' || true)"
+  if [[ "$focus" == *GrantPermissionsActivity* ]]; then
+    echo "Unexpected Android media permission sheet obscures gallery during $1"
+    return 1
+  fi
   adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' | head -4 || true
   adb shell dumpsys activity top > "emulator-diagnostics/activity-$1.txt" 2>&1 || true
   adb shell dumpsys window > "emulator-diagnostics/window-$1.txt" 2>&1 || true

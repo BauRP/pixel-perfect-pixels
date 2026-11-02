@@ -30,6 +30,7 @@ public class MainActivity extends BridgeActivity {
     /** Called by the SystemInsets plugin after the React gallery shell mounts. */
     public void onGalleryUiReady() {
         galleryUiReady = true;
+        Log.i("NovaGalleryBoot", "React gallery UI mounted");
         mainHandler.removeCallbacks(localBootRecovery);
     }
 
@@ -68,8 +69,8 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
 
         applyTransparentStatusBar();
-        // The gallery is bundled offline, so a local page stuck below 20%
-        // after 25 seconds is not normal network slowness.
+        // A stuck blank WebView needs one bounded recovery even at 100% load
+        // progress. React's native UI-ready handshake cancels this watchdog.
         mainHandler.postDelayed(localBootRecovery, 25_000L);
 
         // Media permission is requested by the web layer (SecureVault.requestMediaPermission)
