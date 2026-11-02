@@ -2,6 +2,7 @@ package app.lovable.privacygallery;
 
 import android.app.Activity;
 import android.os.Build;
+import android.os.SystemClock;
 import android.content.pm.ActivityInfo;
 import android.view.View;
 import android.view.ViewGroup;
@@ -98,7 +99,11 @@ public class AndroidCompatibilitySmokeTest {
      */
     private String awaitWebViewState(String javascript) throws Exception {
         String last = "NOT_READY";
-        for (int attempt = 0; attempt < 24; attempt++) {
+        // A wall-clock deadline avoids three separate WebView assertions
+        // consuming minutes while the native local page is still loading.
+        // Allow the single native stall-recovery pass at 25 seconds to occur.
+        final long deadline = SystemClock.elapsedRealtime() + 55_000L;
+        while (SystemClock.elapsedRealtime() < deadline) {
             CountDownLatch latch = new CountDownLatch(1);
             AtomicReference<String> result = new AtomicReference<>("");
             scenario.getScenario().onActivity(activity -> {
@@ -106,6 +111,14 @@ public class AndroidCompatibilitySmokeTest {
                         ? null : activity.getBridge().getWebView();
                 if (web == null || !web.isAttachedToWindow()) {
                     result.set("\"NOT_READY\"");
+                    latch.countDown();
+                    return;
+                }
+                // Don't enqueue JS into an unfinished WebView navigation.
+                // Android 10/13 providers sometimes never invoke callbacks
+                // made at 10% progress even after the page recovers.
+                if (web.getProgress() < 80) {
+                    result.set("\"PAGE_LOADING_" + web.getProgress() + "\"");
                     latch.countDown();
                     return;
                 }
@@ -119,10 +132,8 @@ public class AndroidCompatibilitySmokeTest {
                     latch.countDown();
                 }
             });
-            if (!latch.await(4, TimeUnit.SECONDS)) {
+            if (!latch.await(3, TimeUnit.SECONDS)) {
                 last = "CALLBACK_TIMEOUT";
-                // Keep the WebView state in diagnostics rather than claiming
-                // a blank screen is an Android layout failure.
                 scenario.getScenario().onActivity(activity -> {
                     WebView web = activity.getBridge() == null
                             ? null : activity.getBridge().getWebView();
@@ -137,12 +148,18 @@ public class AndroidCompatibilitySmokeTest {
             } else {
                 last = result.get();
                 if (!"\"NOT_READY\"".equals(last) &&
+                        !last.startsWith("\"PAGE_LOADING_") &&
                         !"\"WEBVIEW_REPLACED\"".equals(last) &&
                         !"\"NO_NATIVE_INSETS\"".equals(last) &&
                         !"\"MISSING_INSETS\"".equals(last) &&
                         !last.startsWith("\"TABS_HIDDEN_IME_") &&
                         !"null".equals(last) && !last.isEmpty()) {
                     return last;
+                }
+            }
+            SystemClock.sleep(550L);
+        }
+        return last;
                 }
             }
             Thread.sleep(350);

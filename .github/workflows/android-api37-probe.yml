@@ -42,14 +42,18 @@ jobs:
           # (confirmed in CI #41345294671), not android-37.
           sdkmanager --install 'platforms;android-37.0' 'build-tools;37.0.0'
           test -s "$ANDROID_HOME/platforms/android-37.0/android.jar"
-          # Gradle requires the actual installed platform identifier.
-          # Set compileSdk to the versioned SDK path while still targeting
-          # the Android 17 API level. No modifications are committed.
-          sed -i "s/compileSdkVersion = 36/compileSdkVersion = 'android-37.0'/" android/variables.gradle
+          # AGP 8.13.0 (production) does not support the 37.0 SDK identifier.
+          # Official API 37 support requires AGP >=9.1.1. Upgrade AGP and
+          # its Gradle wrapper only in this disposable CI checkout.
+          sed -i "s/gradle:8.13.0/gradle:9.2.0/" android/build.gradle
+          sed -i 's/gradle-8.13-bin.zip/gradle-9.4.1-bin.zip/' android/gradle/wrapper/gradle-wrapper.properties
+          sed -i 's/compileSdkVersion = 36/compileSdkVersion = 37/' android/variables.gradle
           sed -i 's/targetSdkVersion = 36/targetSdkVersion = 37/' android/variables.gradle
-          grep -q "compileSdkVersion = 'android-37.0'" android/variables.gradle
+          grep -q "gradle:9.2.0" android/build.gradle
+          grep -q 'gradle-9.4.1-bin.zip' android/gradle/wrapper/gradle-wrapper.properties
+          grep -q 'compileSdkVersion = 37' android/variables.gradle
           grep -q 'targetSdkVersion = 37' android/variables.gradle
-          echo 'Android 17 platform android-37.0 installed; target SDK 37 configured for this CI run.'
+          echo 'Temporary API 37 + AGP 9.2 / Gradle 9.4.1 configured; release SDK 36 unchanged.'
       - name: Build Android 17-compatible debug APK
         run: |
           # Match the successfully verified APK workflow. The repository's
@@ -59,7 +63,8 @@ jobs:
           bun run build:capacitor
           python3 scripts/check_legacy_webview.py
           cd android
-          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+          ./gradlew --version
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace --no-daemon
       - name: Preserve Android 17 probe diagnostics
         if: always()
         uses: actions/upload-artifact@v4

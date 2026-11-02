@@ -7,6 +7,8 @@ import androidx.core.view.ViewCompat;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.webkit.WebView;
+import android.util.Log;
 import android.view.Window;
 import android.view.WindowManager;
 
@@ -21,6 +23,26 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private boolean attemptedLocalBootRecovery = false;
+
+    // On some API 29/33 WebView provider images, local Capacitor assets can
+    // stall at 10% before a single JS callback runs. Recover a stalled LOCAL
+    // page once per Activity, never restart an already loaded gallery, and
+    // never create a reload loop for a slow network URL.
+    private void recoverStalledLocalBoot() {
+        if (isFinishing() || isDestroyed() || attemptedLocalBootRecovery || getBridge() == null) return;
+        WebView web = getBridge().getWebView();
+        if (web == null) return;
+        String url = web.getUrl();
+        if (url == null || !(url.startsWith("https://localhost/") ||
+                url.startsWith("http://localhost/"))) return;
+        int progress = web.getProgress();
+        if (progress >= 20) return;
+        attemptedLocalBootRecovery = true;
+        Log.w("NovaGalleryBoot", "Recovering stalled local WebView: progress=" + progress);
+        web.stopLoading();
+        web.loadUrl(url);
+    }
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -34,6 +56,9 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
 
         applyTransparentStatusBar();
+        // The gallery is bundled offline, so a local page stuck below 20%
+        // after 25 seconds is not normal network slowness.
+        mainHandler.postDelayed(this::recoverStalledLocalBoot, 25_000L);
 
         // Media permission is requested by the web layer (SecureVault.requestMediaPermission)
         // right before the first scan, so scanning can never race the dialog.
