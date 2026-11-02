@@ -5,6 +5,7 @@ type Insets = RawSystemInsets;
 
 interface SystemInsetsPlugin {
   getInsets(): Promise<Insets>;
+  signalUiReady(): Promise<void>;
   setSystemBarAppearance(options: { lightBackground: boolean }): Promise<void>;
   addListener(name: "insetsChanged", cb: (insets: Insets) => void):
     Promise<{ remove: () => Promise<void> }>;
@@ -82,4 +83,15 @@ export function initSystemInsets(): void {
 export async function updateSystemBarAppearance(lightBackground: boolean): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
   await nativeInsets.setSystemBarAppearance({ lightBackground });
+}
+
+/**
+ * Only the mounted gallery UI sends this native handshake.
+ * A WebView's loading progress alone cannot certify React has rendered.
+ */
+export function signalGalleryUiReady(): void {
+  if (!Capacitor.isNativePlatform()) return;
+  void nativeInsets.signalUiReady().catch((error) => {
+    console.warn("[gallery] native UI-ready signal failed", error);
+  });
 }

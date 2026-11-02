@@ -24,24 +24,36 @@ public class MainActivity extends BridgeActivity {
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private boolean attemptedLocalBootRecovery = false;
+    private volatile boolean galleryUiReady = false;
+    private final Runnable localBootRecovery = this::recoverStalledLocalBoot;
+
+    /** Called by the SystemInsets plugin after the React gallery shell mounts. */
+    public void onGalleryUiReady() {
+        galleryUiReady = true;
+        mainHandler.removeCallbacks(localBootRecovery);
+    }
 
     // On some API 29/33 WebView provider images, local Capacitor assets can
     // stall at 10% before a single JS callback runs. Recover a stalled LOCAL
     // page once per Activity, never restart an already loaded gallery, and
     // never create a reload loop for a slow network URL.
     private void recoverStalledLocalBoot() {
-        if (isFinishing() || isDestroyed() || attemptedLocalBootRecovery || getBridge() == null) return;
+        if (isFinishing() || isDestroyed() || attemptedLocalBootRecovery
+                || galleryUiReady || getBridge() == null) return;
         WebView web = getBridge().getWebView();
         if (web == null) return;
         String url = web.getUrl();
         if (url == null || !(url.startsWith("https://localhost/") ||
                 url.startsWith("http://localhost/"))) return;
+        // Android 10/13 CI screenshots proved a blank window even after
+        // WebView progress reached 100%. Progress alone is not proof React
+        // rendered; only the explicit UI-ready handshake can cancel recovery.
         int progress = web.getProgress();
-        if (progress >= 20) return;
         attemptedLocalBootRecovery = true;
-        Log.w("NovaGalleryBoot", "Recovering stalled local WebView: progress=" + progress);
+        Log.w("NovaGalleryBoot", "One-time blank gallery recovery: progress="
+                + progress + " url=" + url);
         web.stopLoading();
-        web.loadUrl(url);
+        web.reload();
     }
 
     @Override
@@ -58,7 +70,7 @@ public class MainActivity extends BridgeActivity {
         applyTransparentStatusBar();
         // The gallery is bundled offline, so a local page stuck below 20%
         // after 25 seconds is not normal network slowness.
-        mainHandler.postDelayed(this::recoverStalledLocalBoot, 25_000L);
+        mainHandler.postDelayed(localBootRecovery, 25_000L);
 
         // Media permission is requested by the web layer (SecureVault.requestMediaPermission)
         // right before the first scan, so scanning can never race the dialog.

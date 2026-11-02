@@ -5,7 +5,7 @@ import { applyDocumentDirection, ensureLangResolved, useLang } from "@/lib/i18n"
 import { Capacitor } from "@capacitor/core";
 import { useVault } from "@/lib/vault-store";
 import { cssColorToHex } from "@/lib/css-color";
-import { initSystemInsets, updateSystemBarAppearance } from "@/lib/system-insets";
+import { initSystemInsets, updateSystemBarAppearance, signalGalleryUiReady } from "@/lib/system-insets";
 
 /**
  * First launch after install: detect the device locale, map it to one of the
@@ -72,6 +72,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   useApplyTheme();
   useResolvedLanguage();
   useSystemStatusBar();
+  useEffect(() => {
+    // Commit phase: the bottom navigation has actually been mounted.
+    // Do not treat a blank or stalled WebView's network progress as success.
+    signalGalleryUiReady();
+  }, []);
   return (
     // Fixed app frame: [status bar inset] → [scrollable content] → [bottom nav].
     // The content is the ONLY scroll container, so sticky headers inside it

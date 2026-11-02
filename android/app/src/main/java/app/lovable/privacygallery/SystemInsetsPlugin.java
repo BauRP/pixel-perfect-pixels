@@ -98,6 +98,20 @@ public class SystemInsetsPlugin extends Plugin {
         });
     }
 
+    /**
+     * UI-only readiness handshake. Native progress=100 does not guarantee
+     * that React rendered (observed on Android 10/13 emulator WebViews).
+     * A genuine AppShell mount is the sole condition for cancelling the
+     * one-time native boot watchdog.
+     */
+    @PluginMethod
+    public void signalUiReady(PluginCall call) {
+        if (getActivity() instanceof MainActivity) {
+            ((MainActivity) getActivity()).onGalleryUiReady();
+        }
+        call.resolve();
+    }
+
     @PluginMethod
     public void getInsets(PluginCall call) {
         // JS may request insets before an onApplyWindowInsets event arrives.
