@@ -1,5 +1,6 @@
 package app.lovable.privacygallery;
 
+import android.app.Activity;
 import android.webkit.WebView;
 import android.view.View;
 import android.os.Build;
@@ -63,7 +64,10 @@ public class SystemInsetsPlugin extends Plugin {
     @Override
     public void load() {
         super.load();
-        getActivity().runOnUiThread(() -> {
+        final Activity activity = getActivity();
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+        activity.runOnUiThread(() -> {
+            if (activity.isFinishing() || activity.isDestroyed() || getBridge() == null) return;
             final WebView webView = getBridge().getWebView();
             if (webView == null) return;
             ViewCompat.setOnApplyWindowInsetsListener(webView, (view, insets) -> {
@@ -82,17 +86,26 @@ public class SystemInsetsPlugin extends Plugin {
     @PluginMethod
     public void setSystemBarAppearance(PluginCall call) {
         final boolean light = call.getBoolean("lightBackground", false);
-        getActivity().runOnUiThread(() -> {
-            WindowCompat.getInsetsController(getActivity().getWindow(),
-                    getActivity().getWindow().getDecorView())
+        final Activity activity = getActivity();
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) {
+            call.reject("Activity is no longer active");
+            return;
+        }
+        activity.runOnUiThread(() -> {
+            if (activity.isFinishing() || activity.isDestroyed()) {
+                call.reject("Activity was destroyed before system bars could change");
+                return;
+            }
+            WindowCompat.getInsetsController(activity.getWindow(),
+                    activity.getWindow().getDecorView())
                 .setAppearanceLightStatusBars(light);
-            WindowCompat.getInsetsController(getActivity().getWindow(),
-                    getActivity().getWindow().getDecorView())
+            WindowCompat.getInsetsController(activity.getWindow(),
+                    activity.getWindow().getDecorView())
                 .setAppearanceLightNavigationBars(light);
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O && light) {
-                getActivity().getWindow().setNavigationBarColor(Color.BLACK);
+                activity.getWindow().setNavigationBarColor(Color.BLACK);
             } else {
-                getActivity().getWindow().setNavigationBarColor(Color.TRANSPARENT);
+                activity.getWindow().setNavigationBarColor(Color.TRANSPARENT);
             }
             call.resolve();
         });
@@ -106,9 +119,12 @@ public class SystemInsetsPlugin extends Plugin {
      */
     @PluginMethod
     public void signalUiReady(PluginCall call) {
-        if (getActivity() instanceof MainActivity) {
-            ((MainActivity) getActivity()).onGalleryUiReady();
+        final Activity activity = getActivity();
+        if (!(activity instanceof MainActivity) || activity.isFinishing() || activity.isDestroyed()) {
+            call.reject("Gallery activity is not available");
+            return;
         }
+        ((MainActivity) activity).onGalleryUiReady();
         call.resolve();
     }
 
@@ -117,14 +133,23 @@ public class SystemInsetsPlugin extends Plugin {
         // JS may request insets before an onApplyWindowInsets event arrives.
         // Obtain a fresh root snapshot on the UI thread, and keep the
         // subscription for later changes (rotation/buttons/gestures/keyboard).
-        getActivity().runOnUiThread(() -> {
+        final Activity activity = getActivity();
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) {
+            call.reject("Activity is no longer active");
+            return;
+        }
+        activity.runOnUiThread(() -> {
+            if (activity.isFinishing() || activity.isDestroyed()) {
+                call.reject("Activity was destroyed before reading insets");
+                return;
+            }
             WebView web = getBridge() == null ? null : getBridge().getWebView();
-            View source = web != null ? web : getActivity().getWindow().getDecorView();
+            View source = web != null ? web : activity.getWindow().getDecorView();
             WindowInsetsCompat current = ViewCompat.getRootWindowInsets(source);
             if (current == null && web != null) {
                 // Early startup: the decor view can already have insets
                 // before the child WebView is attached.
-                source = getActivity().getWindow().getDecorView();
+                source = activity.getWindow().getDecorView();
                 current = ViewCompat.getRootWindowInsets(source);
             }
             if (current != null) {
