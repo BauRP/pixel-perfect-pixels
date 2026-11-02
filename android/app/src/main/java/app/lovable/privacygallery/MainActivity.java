@@ -2,14 +2,17 @@ package app.lovable.privacygallery;
 
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.Bitmap;
 import android.content.res.Configuration;
 import androidx.core.view.ViewCompat;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.webkit.WebView;
 import android.util.Log;
 import android.view.Window;
+import android.view.PixelCopy;
 import android.view.WindowManager;
 import android.view.Gravity;
 import android.view.View;
@@ -37,6 +40,66 @@ public class MainActivity extends BridgeActivity {
     private final Runnable localBootRecovery = this::recoverStalledLocalBoot;
     private final Runnable nativeBootFallback = this::showNativeBootFallback;
     private FrameLayout bootRecoveryView;
+    private boolean softwarePaintRetryAttempted = false;
+    private final Runnable verifyPaint = this::verifyWindowPaint;
+
+    /**
+     * PixelCopy samples are transient, never persisted and never transmit
+     * pixels. They distinguish actual visible UI from a WebView that claims
+     * DOM readiness while the Android GPU compositor is solid black/white.
+     */
+    private void verifyWindowPaint() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || isFinishing() || isDestroyed()
+                || !galleryUiReady || bootRecoveryView != null || !hasWindowFocus()) return;
+        View decor = getWindow().getDecorView();
+        if (decor.getWidth() < 100 || decor.getHeight() < 100) return;
+        final int width = Math.min(360, decor.getWidth());
+        final int height = Math.max(100,
+                Math.round((float) width * decor.getHeight() / decor.getWidth()));
+        Bitmap sample;
+        try {
+            sample = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        } catch (RuntimeException error) {
+            Log.w("NovaGalleryBoot", "Skipping compositor check", error);
+            return;
+        }
+        try {
+            PixelCopy.request(getWindow(), sample, result -> {
+                try {
+                    if (result != PixelCopy.SUCCESS || isFinishing() || isDestroyed()
+                            || !galleryUiReady || !hasWindowFocus()) return;
+                    if (RenderedSurfaceProbe.hasUiContrast(sample)) return;
+                    Log.e("NovaGalleryBoot", "Confirmed uniform compositor despite React mount");
+                    WebView web = getBridge() == null ? null : getBridge().getWebView();
+                    if (web != null && !softwarePaintRetryAttempted) {
+                        softwarePaintRetryAttempted = true;
+                        galleryUiReady = false;
+                        // Switch rendering only after a verified blank frame,
+                        // never for normally working gallery/video sessions.
+                        web.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+                        web.invalidate();
+                        web.reload();
+                        mainHandler.postDelayed(nativeBootFallback, 18000L);
+                        Log.w("NovaGalleryBoot", "One software-compositor retry");
+                    } else {
+                        showNativeBootFallback();
+                    }
+                } finally {
+                    sample.recycle();
+                }
+            }, mainHandler);
+        } catch (RuntimeException error) {
+            sample.recycle();
+            Log.w("NovaGalleryBoot", "Unable to sample Android window", error);
+        }
+    }
+
+    private void schedulePaintVerification() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            mainHandler.removeCallbacks(verifyPaint);
+            mainHandler.postDelayed(verifyPaint, 2500L);
+        }
+    }
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
@@ -116,6 +179,7 @@ public class MainActivity extends BridgeActivity {
             Log.i("NovaGalleryBoot", "React gallery UI mounted");
             mainHandler.removeCallbacks(localBootRecovery);
             mainHandler.removeCallbacks(nativeBootFallback);
+            schedulePaintVerification();
             if (bootRecoveryView != null) {
                 ViewGroup parent = (ViewGroup) bootRecoveryView.getParent();
                 if (parent != null) parent.removeView(bootRecoveryView);
@@ -225,12 +289,14 @@ public class MainActivity extends BridgeActivity {
     public void onResume() {
         super.onResume();
         refreshSystemAreas();
+        if (galleryUiReady) schedulePaintVerification();
     }
 
     @Override
     public void onConfigurationChanged(Configuration configuration) {
         super.onConfigurationChanged(configuration);
         refreshSystemAreas();
+        if (galleryUiReady) schedulePaintVerification();
     }
 
     @Override

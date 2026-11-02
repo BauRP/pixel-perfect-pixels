@@ -2,6 +2,10 @@ package app.lovable.privacygallery;
 
 import android.app.Activity;
 import android.os.Build;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
 import android.os.SystemClock;
 import android.content.pm.ActivityInfo;
 import android.view.View;
@@ -56,6 +60,46 @@ public class AndroidCompatibilitySmokeTest {
             }
         }
         return null;
+    }
+
+    @Test
+    public void compositorProbeRejectsSolidBlackAndWhiteWindows() {
+        Bitmap bitmap = Bitmap.createBitmap(320, 600, Bitmap.Config.ARGB_8888);
+        try {
+            bitmap.eraseColor(Color.BLACK);
+            assertFalse(RenderedSurfaceProbe.hasUiContrast(bitmap));
+            bitmap.eraseColor(Color.WHITE);
+            assertFalse(RenderedSurfaceProbe.hasUiContrast(bitmap));
+            // OS-level controls alone are not proof of rendered gallery UI.
+            Paint p = new Paint();
+            p.setColor(Color.BLACK);
+            Canvas c = new Canvas(bitmap);
+            c.drawRect(0, 580, 320, 600, p);
+            assertFalse(RenderedSurfaceProbe.hasUiContrast(bitmap));
+        } finally {
+            bitmap.recycle();
+        }
+    }
+
+    @Test
+    public void compositorProbeAcceptsDarkAndLightGalleryControls() {
+        Bitmap bitmap = Bitmap.createBitmap(320, 600, Bitmap.Config.ARGB_8888);
+        try {
+            Canvas c = new Canvas(bitmap);
+            Paint p = new Paint();
+            bitmap.eraseColor(Color.rgb(14, 15, 20));
+            p.setColor(Color.WHITE);
+            c.drawRect(30, 60, 290, 88, p);
+            c.drawRect(40, 500, 270, 530, p);
+            assertTrue(RenderedSurfaceProbe.hasUiContrast(bitmap));
+            bitmap.eraseColor(Color.WHITE);
+            p.setColor(Color.BLACK);
+            c.drawRect(30, 60, 290, 88, p);
+            c.drawRect(40, 500, 270, 530, p);
+            assertTrue(RenderedSurfaceProbe.hasUiContrast(bitmap));
+        } finally {
+            bitmap.recycle();
+        }
     }
 
     @Test
