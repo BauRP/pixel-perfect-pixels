@@ -6,6 +6,7 @@ set -euo pipefail
 PACKAGE=app.lovable.privacygallery
 ACTIVITY="$PACKAGE/.MainActivity"
 mkdir -p emulator-diagnostics
+failedScreenshots=0
 echo "Android $(adb shell getprop ro.build.version.release | tr -d '\r'), API $(adb shell getprop ro.build.version.sdk | tr -d '\r')"
 adb shell dumpsys webviewupdate | head -25 || true
 adb shell wm size
@@ -50,6 +51,10 @@ start_app() {
   adb shell dumpsys window > "emulator-diagnostics/window-$1.txt" 2>&1 || true
   adb shell screencap -p "/sdcard/nova-$1.png" >/dev/null 2>&1 || true
   adb pull "/sdcard/nova-$1.png" "emulator-diagnostics/$1.png" >/dev/null 2>&1 || true
+  if ! java scripts/ValidateScreenshot.java "emulator-diagnostics/$1.png"; then
+    echo "FAIL: actual $1 screenshot has no readable gallery pixels"
+    failedScreenshots=$((failedScreenshots + 1))
+  fi
 }
 start_app portrait
 # Capture OS insets state for physical rotation, gestures, cutouts and
@@ -80,5 +85,10 @@ if (( API >= 29 )); then
       echo "SKIP $mode overlay: this Android emulator does not support it"
     fi
   done
+fi
+echo "APK launch and navigation snapshots analyzed; blank screenshots: $failedScreenshots"
+if (( failedScreenshots > 0 )); then
+  echo "FAIL: $failedScreenshots viewport screenshot(s) look blank; see emulator-diagnostics/"
+  exit 1
 fi
 echo "APK launch, compact/wide resize and available navigation modes completed."
