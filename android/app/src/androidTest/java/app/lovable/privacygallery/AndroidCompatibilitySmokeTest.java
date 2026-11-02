@@ -160,11 +160,6 @@ public class AndroidCompatibilitySmokeTest {
             SystemClock.sleep(550L);
         }
         return last;
-                }
-            }
-            Thread.sleep(350);
-        }
-        return last;
     }
 
     private String webViewDiagnostic() throws Exception {
