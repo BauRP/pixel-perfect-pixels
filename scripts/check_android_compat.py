@@ -22,6 +22,9 @@ check("Gradle wrapper 8.13",r"gradle-8\.13-bin\.zip","android/gradle/wrapper/gra
 check("CI Android SDK 36",r"platforms;android-36",".github/workflows/build.yml")
 check("CI runs SDK guard",r"python3 scripts/check_android_compat\.py",".github/workflows/build.yml")
 check("Native insets registered",r"registerPlugin\(SystemInsetsPlugin\.class\)","android/app/src/main/java/app/lovable/privacygallery/MainActivity.java")
+check("Native https origin",r'androidScheme:\s*"https"',"capacitor.config.ts")
+check("Bundled Capacitor origin",r'"androidScheme":\s*"https"',"android/app/src/main/assets/capacitor.config.json")
+check("Native non-WebView boot fallback",r'showNativeBootFallback\(',"android/app/src/main/java/app/lovable/privacygallery/MainActivity.java")
 # Capacitor 4+ constructs the bridge inside super.onCreate.
 # All local plugins must be registered before that point.
 activity = read("android/app/src/main/java/app/lovable/privacygallery/MainActivity.java")

@@ -14,9 +14,9 @@ import { routeTree } from "./routeTree.gen";
 
 /**
  * Dual-environment history:
- * - Native (Capacitor / Android WebView with `androidScheme: 'file'`) MUST use
- *   hash history. Under file:// the WebView has no origin, so any deep link
- *   or cold reload on a non-root path would 404 into a white screen.
+ * - Native Capacitor WebView uses local https://localhost/ served from APK.
+ *   Hash history preserves offline deep-link reloads without requesting
+ *   nonexistent asset routes from the local server.
  * - Web (Lovable preview, SSR, production browser) uses standard browser
  *   history so URLs stay clean and SSR/prerender work correctly.
  *

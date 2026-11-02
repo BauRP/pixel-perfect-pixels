@@ -6,6 +6,6 @@
 		"allowMixedContent": false
 	},
 	"server": {
-		"androidScheme": "file"
+		"androidScheme": "https"
 	}
 }

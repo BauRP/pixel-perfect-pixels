@@ -11,6 +11,15 @@ import android.webkit.WebView;
 import android.util.Log;
 import android.view.Window;
 import android.view.WindowManager;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import androidx.core.graphics.Insets;
+import androidx.core.view.WindowInsetsCompat;
 
 import androidx.annotation.Nullable;
 import androidx.core.view.WindowCompat;
@@ -26,12 +35,93 @@ public class MainActivity extends BridgeActivity {
     private boolean attemptedLocalBootRecovery = false;
     private volatile boolean galleryUiReady = false;
     private final Runnable localBootRecovery = this::recoverStalledLocalBoot;
+    private final Runnable nativeBootFallback = this::showNativeBootFallback;
+    private FrameLayout bootRecoveryView;
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    /**
+     * If even inline startup JavaScript/WebView paint cannot execute, render
+     * an Android-native recovery screen with an accessible Retry action.
+     * Never reload indefinitely, delete application data or require network.
+     */
+    private void showNativeBootFallback() {
+        if (isFinishing() || isDestroyed() || galleryUiReady || bootRecoveryView != null) return;
+        FrameLayout container = findViewById(android.R.id.content);
+        if (container == null) return;
+        FrameLayout overlay = new FrameLayout(this);
+        overlay.setTag("nova-native-boot-recovery");
+        overlay.setBackgroundColor(Color.rgb(15, 17, 23));
+        LinearLayout body = new LinearLayout(this);
+        body.setGravity(Gravity.CENTER);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setPadding(dp(24), dp(24), dp(24), dp(24));
+        TextView title = new TextView(this);
+        title.setText("Nova Gallery");
+        title.setTextSize(24f);
+        title.setGravity(Gravity.CENTER);
+        title.setTextColor(Color.WHITE);
+        TextView desc = new TextView(this);
+        desc.setText("The gallery could not finish displaying. Your photos and Safe are unchanged.");
+        desc.setTextSize(16f);
+        desc.setGravity(Gravity.CENTER);
+        desc.setTextColor(Color.rgb(208, 212, 220));
+        desc.setPadding(0, dp(16), 0, dp(20));
+        Button retry = new Button(this);
+        retry.setText("Retry opening gallery");
+        retry.setAllCaps(false);
+        retry.setMinHeight(dp(48));
+        retry.setOnClickListener(v -> {
+            if (isFinishing() || isDestroyed()) return;
+            overlay.setVisibility(View.GONE);
+            container.removeView(overlay);
+            bootRecoveryView = null;
+            WebView web = getBridge() == null ? null : getBridge().getWebView();
+            if (web != null) {
+                web.stopLoading();
+                web.reload();
+                // Manual retry is bounded; no automatic infinite reload loop.
+                mainHandler.postDelayed(nativeBootFallback, 25_000L);
+            } else {
+                mainHandler.postDelayed(nativeBootFallback, 2000L);
+            }
+        });
+        body.addView(title);
+        body.addView(desc);
+        body.addView(retry);
+        overlay.addView(body, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        ViewCompat.setOnApplyWindowInsetsListener(overlay, (view, insets) -> {
+            Insets safe = insets.getInsets(WindowInsetsCompat.Type.statusBars()
+                    | WindowInsetsCompat.Type.navigationBars()
+                    | WindowInsetsCompat.Type.displayCutout()
+                    | WindowInsetsCompat.Type.captionBar());
+            view.setPadding(safe.left, safe.top, safe.right, safe.bottom);
+            return insets;
+        });
+        container.addView(overlay, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        bootRecoveryView = overlay;
+        ViewCompat.requestApplyInsets(overlay);
+        Log.e("NovaGalleryBoot", "Local WebView never rendered; showing native recovery UI");
+    }
 
     /** Called by the SystemInsets plugin after the React gallery shell mounts. */
     public void onGalleryUiReady() {
-        galleryUiReady = true;
-        Log.i("NovaGalleryBoot", "React gallery UI mounted");
-        mainHandler.removeCallbacks(localBootRecovery);
+        mainHandler.post(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            galleryUiReady = true;
+            Log.i("NovaGalleryBoot", "React gallery UI mounted");
+            mainHandler.removeCallbacks(localBootRecovery);
+            mainHandler.removeCallbacks(nativeBootFallback);
+            if (bootRecoveryView != null) {
+                ViewGroup parent = (ViewGroup) bootRecoveryView.getParent();
+                if (parent != null) parent.removeView(bootRecoveryView);
+                bootRecoveryView = null;
+            }
+        });
     }
 
     // On some API 29/33 WebView provider images, local Capacitor assets can
@@ -39,8 +129,17 @@ public class MainActivity extends BridgeActivity {
     // page once per Activity, never restart an already loaded gallery, and
     // never create a reload loop for a slow network URL.
     private void recoverStalledLocalBoot() {
-        if (isFinishing() || isDestroyed() || attemptedLocalBootRecovery
-                || galleryUiReady || getBridge() == null) return;
+        if (isFinishing() || isDestroyed() || attemptedLocalBootRecovery || galleryUiReady) return;
+        // Permission dialogs, the lock screen and task backgrounding must not
+        // trigger a reload of a suspended renderer.
+        if (!hasWindowFocus()) {
+            mainHandler.postDelayed(localBootRecovery, 8000L);
+            return;
+        }
+        if (getBridge() == null) {
+            mainHandler.postDelayed(nativeBootFallback, 12000L);
+            return;
+        }
         WebView web = getBridge().getWebView();
         if (web == null) return;
         String url = web.getUrl();
@@ -55,6 +154,9 @@ public class MainActivity extends BridgeActivity {
                 + progress + " url=" + url);
         web.stopLoading();
         web.reload();
+        // Only one automatic reload. If the renderer stays blank, native
+        // Android controls remain available even with broken JavaScript.
+        mainHandler.postDelayed(nativeBootFallback, 20000L);
     }
 
     @Override
@@ -133,6 +235,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onDestroy() {
         mainHandler.removeCallbacksAndMessages(null);
+        bootRecoveryView = null;
         super.onDestroy();
     }
 }

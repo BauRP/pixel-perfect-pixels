@@ -8,7 +8,9 @@ const config: CapacitorConfig = {
     allowMixedContent: false,
   },
   server: {
-    androidScheme: "file",
+    // Capacitor 8 rejects file:// and silently switches to https://localhost.
+    // Declare the real local origin explicitly to keep cold reloads stable.
+    androidScheme: "https",
   },
 };
 
