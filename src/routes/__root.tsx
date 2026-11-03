@@ -4,10 +4,13 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { Suspense, useEffect, type ReactNode } from "react";
+import { AppShell } from "../components/AppShell";
+import { nativeRouteUsesPersistentFrame } from "../lib/native-route-frame";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -198,6 +201,9 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const nativeFrame = import.meta.env.VITE_CAPACITOR_BUILD === "1" &&
+    nativeRouteUsesPersistentFrame(pathname);
 
   // The Android Vite entry uses createRoot(), not hydrateRoot(). Unlike
   // TanStack Start SSR on the website, the native shell has no server tree
@@ -211,8 +217,24 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
+      {nativeFrame ? (
+        // The frame and its OS-safe bottom tabs now survive a delayed child
+        // route. React's root commit alone is not proof the child has loaded.
+        <AppShell persistentRoot>
+          <Suspense fallback={
+            <div role="status" data-nova-route-pending
+              style={{ padding: "36px 20px", color: "var(--color-foreground)" }}>
+              Nova Gallery is loading…
+            </div>
+          }>
+            <Outlet />
+          </Suspense>
+        </AppShell>
+      ) : (
+        // Website retains existing per-page frames and SSR semantics.
+        // Privacy remains a separate full-screen document on Android.
+        <Outlet />
+      )}
     </QueryClientProvider>
   );
 }

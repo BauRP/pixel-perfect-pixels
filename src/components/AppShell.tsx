@@ -71,7 +71,19 @@ function useSystemStatusBar() {
   }, [theme]);
 }
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({
+  children, persistentRoot = false,
+}: { children: ReactNode; persistentRoot?: boolean }) {
+  // Android's root owns the actual system-safe frame. Per-route wrappers
+  // are reduced to content markers, never nested fixed viewports/scrollbars.
+  // The web build is unchanged and continues using its per-route AppShell.
+  if (import.meta.env.VITE_CAPACITOR_BUILD === "1" && !persistentRoot) {
+    return <div data-nova-route-content style={{ minWidth: 0 }}>{children}</div>;
+  }
+  return <MeasuredAppFrame>{children}</MeasuredAppFrame>;
+}
+
+function MeasuredAppFrame({ children }: { children: ReactNode }) {
   useApplyTheme();
   useResolvedLanguage();
   useSystemStatusBar();
@@ -90,6 +102,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       const shell = document.querySelector("[data-app-shell]");
       const nav = document.querySelector("[data-bottom-nav]");
       const content = document.querySelector("[data-app-content]");
+      const routed = document.querySelector("[data-nova-route-content]");
       const box = nav?.getBoundingClientRect();
       const links = nav
         ? Array.from(nav.querySelectorAll("a")).map(a => a.getBoundingClientRect())
@@ -120,7 +133,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       const layoutIssue = !shell ? "SHELL_MISSING"
         : !content ? "CONTENT_MISSING"
         : !nav ? "BOTTOM_NAV_MISSING"
-        : assessGalleryLayout(values);
+        // A permanent frame can appear before an async route. The native
+        // watchdog must NOT mistake the three tabs for a usable gallery.
+        : import.meta.env.VITE_CAPACITOR_BUILD === "1" && !routed
+          ? "ROUTE_CONTENT_NOT_MOUNTED"
+          : assessGalleryLayout(values);
       if (layoutIssue === "OK") {
         root.dataset.novaBootPhase = "gallery-layout-ready";
       } else if (layoutIssue !== lastReportedIssue) {

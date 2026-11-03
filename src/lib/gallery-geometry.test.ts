@@ -43,3 +43,18 @@ describe("Nova Gallery actual Android bottom-nav geometry", () => {
     expect(inspect({ navWidth: Number.NaN })).toBe("NON_FINITE_GEOMETRY");
   });
 });
+
+import { nativeRouteUsesPersistentFrame } from "./native-route-frame";
+
+describe("persistent Android root frame", () => {
+  it("keeps native navigation visible across gallery, Safe and settings routes", () => {
+    expect(nativeRouteUsesPersistentFrame("/")).toBe(true);
+    expect(nativeRouteUsesPersistentFrame("/gallery/Camera")).toBe(true);
+    expect(nativeRouteUsesPersistentFrame("/safe")).toBe(true);
+    expect(nativeRouteUsesPersistentFrame("/safe/Album")).toBe(true);
+    expect(nativeRouteUsesPersistentFrame("/settings")).toBe(true);
+  });
+  it("keeps the full-screen privacy document independent", () => {
+    expect(nativeRouteUsesPersistentFrame("/privacy")).toBe(false);
+  });
+});

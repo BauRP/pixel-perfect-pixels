@@ -44,6 +44,14 @@ if 'import.meta.env.VITE_CAPACITOR_BUILD === "1"' not in router_source:
     raise SystemExit("Android route history must be hash-based before Capacitor bridge is initialized")
 if "defaultPendingComponent: NativeRoutePending" not in router_source:
     raise SystemExit("Native router must render a visible pending state for slow older WebViews")
+root_source=Path("src/routes/__root.tsx").read_text("utf8")
+app_shell_source=Path("src/components/AppShell.tsx").read_text("utf8")
+if "<AppShell persistentRoot>" not in root_source or "nativeRouteUsesPersistentFrame" not in root_source:
+    raise SystemExit("Android must mount a persistent bottom navigation outside asynchronous child routes")
+if "data-nova-route-content" not in app_shell_source:
+    raise SystemExit("Native route content must be distinguishable from the persistent shell")
+if "ROUTE_CONTENT_NOT_MOUNTED" not in app_shell_source:
+    raise SystemExit("A pending child route must never be reported as a ready gallery")
 entry_source=Path("src/android-client.tsx").read_text("utf8")
 if 'createRoot(mount).render(' not in entry_source:
     raise SystemExit("Standalone Android build must mount via createRoot")
