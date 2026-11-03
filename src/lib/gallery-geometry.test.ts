@@ -5,7 +5,7 @@ const baseline: GalleryLayoutEvidence = {
   viewportWidth: 360, viewportHeight: 780, navBottom: 780,
   navWidth: 360, navHeight: 108, navInnerBottom: 725,
   navInnerLeft: 0, navInnerRight: 360, links: 3,
-  minLinkWidth: 108, minLinkHeight: 44, maxLinkBottom: 724,
+  minLinkWidth: 108, minLinkHeight: 48, maxLinkBottom: 724,
   minLinkLeft: 12, maxLinkRight: 348, contentTop: 30,
   safeTop: 28, nativeInsetsReady: true, imeOpen: false,
 };
@@ -37,7 +37,8 @@ describe("Nova Gallery actual Android bottom-nav geometry", () => {
   });
   it("does not certify missing, tiny, keyboard-hidden or unmeasured tabs", () => {
     expect(inspect({ links: 2 })).toBe("MISSING_TABS");
-    expect(inspect({ minLinkHeight: 39 })).toBe("TINY_TAB_TARGET");
+    expect(inspect({ minLinkHeight: 47 })).toBe("TINY_TAB_TARGET");
+    expect(inspect({ minLinkWidth: 47 })).toBe("TINY_TAB_TARGET");
     expect(inspect({ imeOpen: true })).toBe("TABS_HIDDEN_BY_KEYBOARD");
     expect(inspect({ nativeInsetsReady: false })).toBe("NATIVE_INSETS_PENDING");
     expect(inspect({ navWidth: Number.NaN })).toBe("NON_FINITE_GEOMETRY");

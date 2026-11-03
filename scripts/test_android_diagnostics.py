@@ -12,6 +12,17 @@ LAUNCHER = (
 
 
 class DiagnosticsTests(unittest.TestCase):
+    def test_black_system_settings_screen_is_reported_as_emulator_failure(self):
+        outcome = classify("[NovaBoot] react-root-committed", "script: 1", "", "unpainted")
+        self.assertEqual(outcome["diagnosis"], "SYSTEM_COMPOSITOR_UNRELIABLE")
+        self.assertEqual(outcome["system_baseline"], "unpainted")
+
+    def test_valid_system_screen_does_not_hide_gallery_failures(self):
+        outcome = classify("[NovaBoot] state-waiting-for-layout", "script: 1",
+                           "", "painted")
+        self.assertEqual(outcome["diagnosis"], "ROUTE_MOUNTED_BUT_NATIVE_LAYOUT_UNVERIFIED")
+        self.assertEqual(outcome["system_baseline"], "painted")
+
     def test_launcher_crashes_are_not_gallery_crashes(self):
         summary = classify(LAUNCHER + "[NovaBoot] react-root-committed", "script: 1", "")
         self.assertEqual(summary["app_crashes"], 0)

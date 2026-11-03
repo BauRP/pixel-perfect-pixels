@@ -8,7 +8,7 @@ import sys
 APP = "app.lovable.privacygallery"
 
 
-def classify(log: str, result: str, foreground: str) -> dict:
+def classify(log: str, result: str, foreground: str, baseline: str = "") -> dict:
     # AndroidRuntime names its failing process on the line AFTER FATAL.
     # Most of the Android 10/13 "fatal" reports were actually Google's
     # emulator Launcher, not Nova Gallery. Keep those distinct.
@@ -35,7 +35,9 @@ def classify(log: str, result: str, foreground: str) -> dict:
     phases = {name: log.count(marker) for name, marker in phase_names.items()}
     issues = re.findall(r"\[NovaLayout\] ([A-Z_]+)", log)
 
-    if phases["router_load_rejected"]:
+    if baseline.strip() == "unpainted":
+        diagnosis = "SYSTEM_COMPOSITOR_UNRELIABLE"
+    elif phases["router_load_rejected"]:
         diagnosis = "ROUTER_LOAD_REJECTED"
     elif app_crashes:
         diagnosis = "GALLERY_PROCESS_CRASH"
@@ -74,6 +76,7 @@ def classify(log: str, result: str, foreground: str) -> dict:
         "play_services_provider_kills": len(re.findall(
             r"Killing .*app\.lovable\.privacygallery.*depends on provider.*google", log)),
         "wrong_foreground": "FAIL: " in foreground,
+        "system_baseline": baseline.strip() or "not_collected",
     }
 
 
@@ -84,7 +87,8 @@ def main() -> None:
         path = root / name
         return path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
 
-    state = classify(read("logcat.txt"), read("result.txt"), read("foreground.txt"))
+    state = classify(read("logcat.txt"), read("result.txt"), read("foreground.txt"),
+                     read("system-baseline.txt"))
     root.mkdir(parents=True, exist_ok=True)
     (root / "classification.json").write_text(
         json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")

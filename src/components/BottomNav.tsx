@@ -73,11 +73,12 @@ export function BottomNav() {
             <li key={to} className="min-w-0 flex-1" style={{ flex: "1 1 0%", minWidth: 0 }}>
               <Link
                 to={to}
-                className="flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-2xl px-2 py-1 transition-colors"
+                className="flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-2xl px-2 py-1 transition-colors"
                 style={{
-                  // 44px remains functional even on old WebViews that ignore
-                  // Tailwind's generated calc(var(--spacing) * 11) rule.
-                  minHeight: "44px",
+                  // Keep a genuine 48 CSS-pixel touch target in gesture and
+                  // 3-button modes, including old WebViews that ignore
+                  // Tailwind's generated spacing rules.
+                  minHeight: "48px",
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",

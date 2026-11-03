@@ -26,7 +26,7 @@ export function assessGalleryLayout(v: GalleryLayoutEvidence): string {
   if (v.links !== 3) return "MISSING_TABS";
   if (v.navWidth < 100 || v.navHeight < 36) return "NAV_NOT_VISIBLE";
   if (v.navBottom > v.viewportHeight + 3 || v.navBottom < 0) return "NAV_OUTSIDE_VIEWPORT";
-  if (v.minLinkWidth <= 0 || v.minLinkHeight < 40) return "TINY_TAB_TARGET";
+  if (v.minLinkWidth < 48 || v.minLinkHeight < 48) return "TINY_TAB_TARGET";
   if (v.maxLinkBottom > v.navInnerBottom + 3) return "TAB_OVERLAPS_SYSTEM_BAR";
   if (v.minLinkLeft < v.navInnerLeft - 3 ||
       v.maxLinkRight > v.navInnerRight + 3) return "TAB_OVERLAPS_SIDE_CUTOUT";

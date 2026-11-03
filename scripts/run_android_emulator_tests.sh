@@ -35,6 +35,27 @@ adb shell settings put system screen_off_timeout 1800000 || true
 adb shell input keyevent KEYCODE_WAKEUP || true
 adb shell wm dismiss-keyguard || true
 adb shell input keyevent KEYCODE_HOME || true
+# First verify that the disposable emulator can display a *system* UI.
+# On API 29/33 the GPU sometimes gives black gallery screenshots and
+# the system launcher itself repeatedly crashes. A black Settings screen
+# reveals broken virtual display composition independently of this APK.
+# This is diagnostic evidence, not an exemption for app test failures.
+echo "unknown" > emulator-diagnostics/system-baseline.txt
+if adb shell am start -W -a android.settings.SETTINGS > emulator-diagnostics/settings-launch.txt 2>&1; then
+  sleep 3
+  if adb exec-out screencap -p > emulator-diagnostics/system-baseline.png &&
+     java scripts/ValidateScreenshot.java emulator-diagnostics/system-baseline.png > emulator-diagnostics/system-screenshot-result.txt 2>&1; then
+    echo "painted" > emulator-diagnostics/system-baseline.txt
+    echo "Emulator system Settings compositor painted correctly"
+  else
+    echo "unpainted" > emulator-diagnostics/system-baseline.txt
+    echo "WARNING: system Settings screen is also blank, emulator GPU may be unusable"
+  fi
+else
+  echo "unpainted" > emulator-diagnostics/system-baseline.txt
+  echo "WARNING: Android Settings could not launch before app installation"
+fi
+adb shell input keyevent KEYCODE_HOME || true
 # Validate installer/storage state separately, before the Android Gradle
 # instrumentation runner attempts a split-APK install. Android 7 emulators
 # occasionally fail while installing (0 tests), not in app code.

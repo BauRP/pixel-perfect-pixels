@@ -194,7 +194,7 @@ public class AndroidCompatibilitySmokeTest {
         assertFalse("Bottom tabs hidden by IME: " + ui, ui.optBoolean("imeOpen", true));
         assertEquals("Require all 3 tabs: " + ui, 3, ui.optInt("links", -1));
         assertTrue("Tab targets below 40px: " + ui,
-                ui.optDouble("minLinkHeight", 0) >= 40 &&
+                ui.optDouble("minLinkHeight", 0) >= 48 &&
                 ui.optDouble("minLinkWidth", 0) > 0);
         assertTrue("Tab overlaps system bar: " + ui,
                 ui.optDouble("maxLinkBottom", 10000) <=
