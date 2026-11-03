@@ -116,31 +116,6 @@ set_logical_viewport() {
 }
 set_logical_viewport 360 780 compact
 set_logical_viewport 320 480 small_window
-# Check accessibility font scaling on a real Android compositor, not only
-# a simulated CSS viewport. Restore original system setting after the test.
-# Android 8 Google APIs emulator's launcher crashes in a loop if font_scale
-# is edited by ADB after boot (confirmed in API 26 logcat). Do not claim that
-# specific accessibility setting was validated there; still test all other
-# sizes and report the omission explicitly. Newer APIs exercise true scaling.
-if (( $(adb shell getprop ro.build.version.sdk | tr -d '\r') <= 28 )); then
-  echo "SKIP large-text scenario: API 26 system launcher crashes on ADB font scale change"
-else
-  adb shell settings put system font_scale 1.3
-  actual_font_scale="$(adb shell settings get system font_scale | tr -d '\r')"
-if [[ "$actual_font_scale" == "1.3" ]]; then
-  # Android may not notify the old WebView until Activity recreation. A
-  # force-stop only on disposable CI ensures font metrics actually change.
-  adb shell am force-stop "$PACKAGE" || true
-  sleep 2
-  start_app large_text_small_window || true
-else
-  echo "SKIP large-text scenario: emulator rejected font_scale 1.3 ($actual_font_scale)"
-fi
-  if [[ "$original_font_scale" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
-    adb shell settings put system font_scale "$original_font_scale" >/dev/null 2>&1 || true
-    adb shell am force-stop "$PACKAGE" || true
-  fi
-fi
 set_logical_viewport 1024 600 wide_tablet
 set_logical_viewport 780 360 wide
 # Restore native device DPI before rotation/navigation testing. Those tests
@@ -180,6 +155,29 @@ if (( API >= 29 )); then
       echo "SKIP $mode overlay: this Android emulator does not support it"
     fi
   done
+fi
+# Isolate accessibility font-scale changes LAST. On API 29/33, changing
+# font_scale can destabilize the system launcher or chromium compositor.
+# Running it before wide/rotation/nav tests produced cascades of black
+# screenshots unrelated to those independent screen modes.
+if (( API <= 28 )); then
+  echo "SKIP large-text scenario: old emulator launcher crashes on ADB font-scale changes"
+else
+  adb shell wm density 160
+  adb shell wm size 320x480
+  sleep 2
+  adb shell settings put system font_scale 1.3
+  actual_font_scale="$(adb shell settings get system font_scale | tr -d '\r')"
+  if [[ "$actual_font_scale" == "1.3" ]]; then
+    adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+    sleep 2
+    start_app large_text_small_window || true
+  else
+    echo "SKIP large-text scenario: emulator rejected font_scale 1.3 ($actual_font_scale)"
+  fi
+  if [[ "$original_font_scale" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    adb shell settings put system font_scale "$original_font_scale" >/dev/null 2>&1 || true
+  fi
 fi
 echo "APK snapshots: blank=$failedScreenshots wrong_foreground=$wrongForeground"
 if (( failedScreenshots > 0 || wrongForeground > 0 )); then

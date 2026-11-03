@@ -9,6 +9,7 @@ import { mediaAccessCopy } from "@/lib/media-access-copy";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ViewOptionsMenu } from "@/components/ViewOptionsMenu";
 import { useViewPrefs, sortRows } from "@/lib/view-prefs";
+import { resolveAdaptiveGridColumns } from "@/lib/adaptive-grid-columns";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -173,16 +174,32 @@ function FolderGrid({
   albums, filter, columns,
 }: { albums: ScannedAlbum[]; filter: Filter; columns: number }) {
   const t = useT();
-  const dense = columns >= 4;
+  // Persist the user's preferred column count, but never force unreadably
+  // narrow tiles after Android split-screen, rotation, or font scaling.
+  // Start from SSR-safe preference; measure the actual viewport on mount.
+  const [viewportWidth, setViewportWidth] = useState(0);
+  useEffect(() => {
+    const update = () => setViewportWidth(window.visualViewport?.width || window.innerWidth);
+    update();
+    window.addEventListener("resize", update);
+    window.visualViewport?.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.visualViewport?.removeEventListener("resize", update);
+    };
+  }, []);
+  const visibleColumns = resolveAdaptiveGridColumns(columns, viewportWidth);
+  const dense = visibleColumns >= 4;
   return (
     <div
       className="px-4 pt-4 grid adaptive-folder-grid"
+      data-effective-grid-columns={visibleColumns}
       style={{
-        gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-        gap: columns >= 4 ? "0.5rem" : columns === 3 ? "0.625rem" : "0.75rem",
+        gridTemplateColumns: `repeat(${visibleColumns}, minmax(0, 1fr))`,
+        gap: visibleColumns >= 4 ? "0.5rem" : visibleColumns === 3 ? "0.625rem" : "0.75rem",
       }}
     >
-      <NativeAdTile key="ad-slot" columns={columns} />
+      <NativeAdTile key="ad-slot" columns={visibleColumns} />
       {albums.map((f, i) => {
         const previews = f.items.slice(0, 4);
         return (

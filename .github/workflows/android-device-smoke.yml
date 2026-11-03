@@ -34,7 +34,7 @@ jobs:
         run: python3 -m unittest discover -s scripts -p 'test_android_diagnostics.py'
       - run: bun install
       - name: Unit-test actual system navigation geometry
-        run: bunx vitest run src/lib/gallery-geometry.test.ts src/lib/insets-math.test.ts src/lib/native-startup-state.test.ts
+        run: bunx vitest run src/lib/gallery-geometry.test.ts src/lib/insets-math.test.ts src/lib/native-startup-state.test.ts src/lib/adaptive-grid-columns.test.ts
       - name: Verify screenshot classifier on dark, light and blank screens
         run: |
           mkdir -p "$RUNNER_TEMP/nova-screenshot-checker"
@@ -158,14 +158,15 @@ jobs:
           test -s emulator-apks/app-debug-androidTest.apk
           cd emulator-apks
           sha256sum -c sha256.txt
-      - name: Retry corrupted SDK system-image downloads (Android 10/13)
-        if: contains(fromJSON('[29,33]'), matrix.api)
+      - name: Verify and retry emulator SDK images (API 29/33/34)
+        if: contains(fromJSON('[29,33,34]'), matrix.api)
         shell: bash
         run: |
           set -euo pipefail
-          # Google APIs API 29 ZIP failed to unpack in CI before the emulator
-          # was even launched. Distinguish this infrastructure failure from a
-          # black-screen app regression and retry just the verified SDK image.
+          # Google APIs SDK ZIP extraction has failed independently on APIs
+          # 29 and 34 before an emulator could launch. Retry only the
+          # system image, and keep infrastructure failures distinct from
+          # actual black-screen regressions in Nova Gallery.
           package="system-images;android-${{ matrix.api }};google_apis;x86_64"
           image_path="$ANDROID_SDK_ROOT/system-images/android-${{ matrix.api }}/google_apis/x86_64"
           for attempt in 1 2 3; do
