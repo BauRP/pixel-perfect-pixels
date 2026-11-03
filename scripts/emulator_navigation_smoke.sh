@@ -99,10 +99,19 @@ start_app small_window
 # Check accessibility font scaling on a real Android compositor, not only
 # a simulated CSS viewport. Restore original system setting after the test.
 adb shell settings put system font_scale 1.3
-sleep 2
-start_app large_text_small_window
+actual_font_scale="$(adb shell settings get system font_scale | tr -d '\r')"
+if [[ "$actual_font_scale" == "1.3" ]]; then
+  # Android may not notify the old WebView until Activity recreation. A
+  # force-stop only on disposable CI ensures font metrics actually change.
+  adb shell am force-stop "$PACKAGE" || true
+  sleep 2
+  start_app large_text_small_window
+else
+  echo "SKIP large-text scenario: emulator rejected font_scale 1.3 ($actual_font_scale)"
+fi
 if [[ "$original_font_scale" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
   adb shell settings put system font_scale "$original_font_scale" >/dev/null 2>&1 || true
+  adb shell am force-stop "$PACKAGE" || true
 fi
 adb shell wm size 1024x600
 start_app wide_tablet
@@ -127,8 +136,13 @@ if (( API >= 29 )); then
       # requested overlay. Capture actual state for audit.
       adb shell cmd overlay list --user 0 > "emulator-diagnostics/overlay-$mode.txt" 2>&1 || true
       if ! grep -Fq "[x] $overlay" "emulator-diagnostics/overlay-$mode.txt"; then
-        echo "WARN: overlay $mode accepted but not confirmed active"
+        echo "SKIP $mode: requested nav overlay not active, cannot claim mode coverage"
+        continue
       fi
+      # Mode changes can leave old WebView insets cached. Cold-start ensures
+      # that all three gallery tab targets see the newly active OS controls.
+      adb shell am force-stop "$PACKAGE" || true
+      sleep 2
       start_app "$mode"
       adb shell dumpsys window > "emulator-diagnostics/window-$mode.txt" || true
     else
