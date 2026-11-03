@@ -34,6 +34,8 @@ check("Single native insets owner in bundled config",
       r'"SystemBars":\s*\{\s*"insetsHandling":\s*"disable"',
       "android/app/src/main/assets/capacitor.config.json")
 check("Native non-WebView boot fallback",r'showNativeBootFallback\(',"android/app/src/main/java/app/lovable/privacygallery/MainActivity.java")
+check("WebView repaints without local page reload after resize",r'web\.requestLayout\(\);\s*web\.postInvalidate\(\);',"android/app/src/main/java/app/lovable/privacygallery/MainActivity.java")
+check("Android 7+ multi-window insets refreshed",r'void onMultiWindowModeChanged\(boolean\s+\w+,\s*Configuration\s+\w+\)',"android/app/src/main/java/app/lovable/privacygallery/MainActivity.java")
 # Capacitor 4+ constructs the bridge inside super.onCreate.
 # All local plugins must be registered before that point.
 activity = read("android/app/src/main/java/app/lovable/privacygallery/MainActivity.java")

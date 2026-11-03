@@ -338,8 +338,15 @@ public class MainActivity extends BridgeActivity {
     private void refreshSystemAreas() {
         getWindow().getDecorView().post(() -> {
             if (isFinishing() || isDestroyed()) return;
-            if (getBridge() != null && getBridge().getWebView() != null) {
-                ViewCompat.requestApplyInsets(getBridge().getWebView());
+            WebView web = getBridge() == null ? null : getBridge().getWebView();
+            if (web != null) {
+                // Both insets and renderer layout can become stale after
+                // wm-size, density, split-screen, rotation or task resume.
+                // Ask for a NEW layout/paint without reloading the page.
+                // Reloading would discard Safe/gallery navigation state.
+                ViewCompat.requestApplyInsets(web);
+                web.requestLayout();
+                web.postInvalidate();
             } else {
                 ViewCompat.requestApplyInsets(getWindow().getDecorView());
             }
@@ -358,6 +365,24 @@ public class MainActivity extends BridgeActivity {
         super.onConfigurationChanged(configuration);
         refreshSystemAreas();
         if (galleryUiReady && !initialPaintVerified) schedulePaintVerification();
+    }
+
+    @Override
+    public void onMultiWindowModeChanged(boolean inMultiWindowMode,
+                                         Configuration newConfig) {
+        super.onMultiWindowModeChanged(inMultiWindowMode, newConfig);
+        // Some OEM split-screen transitions do not dispatch the usual
+        // orientation callback. Never keep stale side/caption-bar insets.
+        refreshSystemAreas();
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus && !isFinishing() && !isDestroyed()) {
+            // Gesture/3-button mode can change while we are backgrounded.
+            refreshSystemAreas();
+        }
     }
 
     @Override
