@@ -57,6 +57,8 @@ if 'createRoot(mount).render(' not in entry_source:
     raise SystemExit("Standalone Android build must mount via createRoot")
 if 'NativeStartupBoundary' not in entry_source:
     raise SystemExit("Android must have a React-level recovery boundary")
+if 'flushSync(() =>' not in entry_source:
+    raise SystemExit("Android first React commit must be synchronous on legacy WebViews")
 if 'NativeRouterBootMonitor' not in entry_source or 'router.load().then' not in entry_source:
     raise SystemExit("Native startup must track initial router resolution and display a pending route fallback")
 if 'nativeStartupState' not in entry_source or 'data-nova-boot-phase' not in entry_source:

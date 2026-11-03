@@ -3,6 +3,7 @@
 import "./polyfills";
 import "./styles.css";
 import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
 import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from "react";
 import { RouterProvider } from "@tanstack/react-router";
 import { getRouter } from "./router";
@@ -163,14 +164,23 @@ try {
   // logs. The previous build recorded root-committed but never child route.
   void router.load().then(() => boot("router-load-resolved"))
     .catch(() => boot("router-load-rejected"));
-  createRoot(mount).render(
-    <NativeStartupBoundary>
-      <NativeReactCommitMarker />
-      <NativeRouterBootMonitor />
-      <RouterProvider router={router} />
-    </NativeStartupBoundary>,
-  );
   boot("react-render-scheduled");
+  // AOSP API 29/33 logs reveal that asynchronous router.load() resolves
+  // and a sibling commit marker mounts while RouterProvider never paints
+  // its initial route. Force the *first* native React commit synchronously:
+  // this makes the persistent loading UI and error boundary available even
+  // if legacy Chromium stops scheduling concurrent frames. The website and
+  // all subsequent route updates retain React's normal concurrent mode.
+  flushSync(() => {
+    createRoot(mount).render(
+      <NativeStartupBoundary>
+        <NativeReactCommitMarker />
+        <NativeRouterBootMonitor />
+        <RouterProvider router={router} />
+      </NativeStartupBoundary>,
+    );
+  });
+  boot("react-initial-flush-finished");
 } catch (error) {
   boot("react-mount-error");
   console.error("[NovaBoot] React client bootstrap failed", error);
