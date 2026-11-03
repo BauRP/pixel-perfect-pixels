@@ -39,6 +39,9 @@ if 'NativeStandaloneShell : RootShell' not in native_route:
     raise SystemExit("Web SSR and native SPA shells must remain separate")
 if 'hydrated ? <Outlet /> : null' in native_route:
     raise SystemExit("Artificial Android hydration gate can block the real SPA")
+router_source=Path("src/router.tsx").read_text("utf8")
+if 'import.meta.env.VITE_CAPACITOR_BUILD === "1"' not in router_source:
+    raise SystemExit("Android route history must be hash-based before Capacitor bridge is initialized")
 entry_source=Path("src/android-client.tsx").read_text("utf8")
 if 'createRoot(mount).render(' not in entry_source:
     raise SystemExit("Standalone Android build must mount via createRoot")

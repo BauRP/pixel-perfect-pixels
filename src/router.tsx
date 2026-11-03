@@ -26,7 +26,12 @@ import { routeTree } from "./routeTree.gen";
 function pickHistory() {
   if (typeof window === "undefined") return undefined; // SSR: let router default
   try {
-    if (Capacitor.isNativePlatform()) return createHashHistory();
+    // The isolated Android SPA is always packaged at https://localhost.
+    // Capacitor's JS bridge may arrive asynchronously on old WebViews; never
+    // choose browser history on first render merely because it is not ready.
+    // This prevents an offline deep-link/boot route mismatch on reload.
+    if (import.meta.env.VITE_CAPACITOR_BUILD === "1" ||
+        Capacitor.isNativePlatform()) return createHashHistory();
   } catch {
     // Fall through to browser history on any Capacitor detection error.
   }
