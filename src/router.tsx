@@ -38,6 +38,29 @@ function pickHistory() {
   return createBrowserHistory();
 }
 
+/**
+ * A delayed TanStack route must not erase the static Android boot screen
+ * into another all-black viewport. This is deliberately not reported as
+ * gallery-ready: the real AppShell must still mount and prove its geometry.
+ */
+function NativeRoutePending() {
+  return (
+    <div
+      data-nova-route-pending="true"
+      role="status"
+      aria-live="polite"
+      style={{
+        minHeight: "70vh", padding: "calc(40px + env(safe-area-inset-top, 0px)) 20px 40px",
+        background: "#101116", color: "#f5f5f7",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        textAlign: "center", fontFamily: "system-ui, sans-serif", fontSize: "16px",
+      }}
+    >
+      Nova Gallery is loading…
+    </div>
+  );
+}
+
 export const getRouter = () => {
   const queryClient = new QueryClient();
   const history = pickHistory();
@@ -48,6 +71,12 @@ export const getRouter = () => {
     ...(history ? { history } : {}),
     scrollRestoration: true,
     defaultPreloadStaleTime: 0,
+    // Native WebView: render a visible loading boundary when a route takes
+    // longer than expected. It does not certify that any tabs are usable.
+    ...(import.meta.env.VITE_CAPACITOR_BUILD === "1"
+      ? { defaultPendingComponent: NativeRoutePending,
+          defaultPendingMs: 500, defaultPendingMinMs: 700 }
+      : {}),
   });
 
   return router;

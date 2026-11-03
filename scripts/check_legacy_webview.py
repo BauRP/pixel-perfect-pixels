@@ -42,6 +42,8 @@ if 'hydrated ? <Outlet /> : null' in native_route:
 router_source=Path("src/router.tsx").read_text("utf8")
 if 'import.meta.env.VITE_CAPACITOR_BUILD === "1"' not in router_source:
     raise SystemExit("Android route history must be hash-based before Capacitor bridge is initialized")
+if "defaultPendingComponent: NativeRoutePending" not in router_source:
+    raise SystemExit("Native router must render a visible pending state for slow older WebViews")
 entry_source=Path("src/android-client.tsx").read_text("utf8")
 if 'createRoot(mount).render(' not in entry_source:
     raise SystemExit("Standalone Android build must mount via createRoot")
