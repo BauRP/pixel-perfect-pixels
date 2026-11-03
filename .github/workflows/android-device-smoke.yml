@@ -100,6 +100,33 @@ jobs:
           test -s emulator-apks/app-debug-androidTest.apk
           cd emulator-apks
           sha256sum -c sha256.txt
+      - name: Retry corrupted SDK system-image downloads (Android 10/13)
+        if: contains(fromJSON('[29,33]'), matrix.api)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Google APIs API 29 ZIP failed to unpack in CI before the emulator
+          # was even launched. Distinguish this infrastructure failure from a
+          # black-screen app regression and retry just the verified SDK image.
+          package="system-images;android-${{ matrix.api }};google_apis;x86_64"
+          image_path="$ANDROID_SDK_ROOT/system-images/android-${{ matrix.api }}/google_apis/x86_64"
+          for attempt in 1 2 3; do
+            if sdkmanager --install "$package" --channel=0; then
+              if [[ -s "$image_path/system.img" ]] ||
+                 [[ -s "$image_path/system-qemu.img" ]]; then
+                echo "Verified Android API ${{ matrix.api }} emulator image"
+                break
+              fi
+              echo "SDK reported success without a usable system image"
+            fi
+            if (( attempt == 3 )); then
+              echo "::error::Emulator system-image installation failed 3 times before app testing"
+              exit 1
+            fi
+            echo "::warning::Retrying corrupt/interrupted Google SDK image download ($attempt/3)"
+            rm -rf "$image_path"
+            sleep "$((attempt * 8))"
+          done
       - name: Install and run device / navigation tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
