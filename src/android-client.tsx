@@ -3,7 +3,7 @@
 import "./polyfills";
 import "./styles.css";
 import { createRoot } from "react-dom/client";
-import { Component, useEffect, type ErrorInfo, type ReactNode } from "react";
+import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from "react";
 import { RouterProvider } from "@tanstack/react-router";
 import { getRouter } from "./router";
 
@@ -62,15 +62,89 @@ function NativeReactCommitMarker() {
   useEffect(() => boot("react-root-committed"), []);
   return null;
 }
+
+/**
+ * Root-independent startup surface. React can commit while TanStack Router
+ * indefinitely waits for an initial child route on Android 10/13. Until
+ * a real route (or privacy page) has rendered, show an accessible loading
+ * state and, after a bounded delay, a manual retry. No images or vault data
+ * are touched, and this component does not certify gallery readiness.
+ */
+function NativeRouterBootMonitor() {
+  const [status, setStatus] = useState<"quiet" | "loading" | "recovery" | "ready">("quiet");
+  useEffect(() => {
+    let alive = true;
+    const ready = () =>
+      !!document.querySelector("[data-nova-route-content]") &&
+      !!document.querySelector("[data-bottom-nav]") ||
+      !!document.querySelector("[data-nova-privacy-screen]") ||
+      !!document.querySelector("[data-nova-react-recovery]");
+    const check = () => {
+      if (!alive || !ready()) return;
+      boot("route-visible");
+      setStatus("ready");
+      observer.disconnect();
+      clearTimeout(showLoading);
+      clearTimeout(showRecovery);
+    };
+    const observer = new MutationObserver(check);
+    const mount = document.getElementById("root");
+    if (mount) observer.observe(mount, { childList: true, subtree: true });
+    const showLoading = setTimeout(() => {
+      if (alive && !ready()) setStatus("loading");
+    }, 1800);
+    const showRecovery = setTimeout(() => {
+      if (alive && !ready()) {
+        boot("router-route-timeout");
+        setStatus("recovery");
+      }
+    }, 14000);
+    check();
+    return () => {
+      alive = false;
+      observer.disconnect();
+      clearTimeout(showLoading);
+      clearTimeout(showRecovery);
+    };
+  }, []);
+  if (status === "quiet" || status === "ready") return null;
+  return (
+    <div data-nova-router-boot-monitor role="status" aria-live="polite"
+      style={{
+        position: "fixed", inset: 0, zIndex: 80,
+        background: "#101116", color: "#f5f5f7",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        textAlign: "center", flexDirection: "column", gap: 16,
+        padding: "calc(32px + env(safe-area-inset-top, 0px)) 24px calc(32px + env(safe-area-inset-bottom, 0px))",
+        fontFamily: "system-ui, sans-serif",
+      }}>
+      <strong style={{ fontSize: 24 }}>Nova Gallery</strong>
+      <span>{status === "loading" ? "Opening gallery…" :
+        "The gallery is not responding. Your photos and Safe are unchanged."}</span>
+      {status === "recovery" && (
+        <button type="button" onClick={() => window.location.reload()}
+          style={{ minHeight: 48, border: 0, borderRadius: 12, padding: "10px 22px",
+            background: "#2563eb", color: "#ffffff", fontSize: 16 }}>
+          Retry opening gallery
+        </button>
+      )}
+    </div>
+  );
+}
 boot("entry-loaded");
 try {
   const mount = document.getElementById("root");
   if (!mount) throw new Error("Nova Android: #root is missing");
   const router = getRouter();
   boot("router-created");
+  // This exposes a separate, deterministic route-load phase in the emulator
+  // logs. The previous build recorded root-committed but never child route.
+  void router.load().then(() => boot("router-load-resolved"))
+    .catch(() => boot("router-load-rejected"));
   createRoot(mount).render(
     <NativeStartupBoundary>
       <NativeReactCommitMarker />
+      <NativeRouterBootMonitor />
       <RouterProvider router={router} />
     </NativeStartupBoundary>,
   );

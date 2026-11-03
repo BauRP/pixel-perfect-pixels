@@ -40,6 +40,7 @@ function PrivacyScreen() {
 
   return (
     <div
+      data-nova-privacy-screen
       className="fixed inset-0 z-50 flex flex-col"
       style={{
         paddingTop: "var(--app-safe-top)",
