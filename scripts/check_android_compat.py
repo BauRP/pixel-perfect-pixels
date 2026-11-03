@@ -24,6 +24,15 @@ check("CI runs SDK guard",r"python3 scripts/check_android_compat\.py",".github/w
 check("Native insets registered",r"registerPlugin\(SystemInsetsPlugin\.class\)","android/app/src/main/java/app/lovable/privacygallery/MainActivity.java")
 check("Native https origin",r'androidScheme:\s*"https"',"capacitor.config.ts")
 check("Bundled Capacitor origin",r'"androidScheme":\s*"https"',"android/app/src/main/assets/capacitor.config.json")
+# Capacitor 8 defaults to injecting safe-area CSS and padding the WebView's
+# parent. The gallery already applies real WindowInsetsCompat itself, so two
+# listeners cause double offsets and old Chromium lifecycle races.
+check("Single native insets owner in TS config",
+      r'SystemBars:\s*\{\s*insetsHandling:\s*"disable"',
+      "capacitor.config.ts")
+check("Single native insets owner in bundled config",
+      r'"SystemBars":\s*\{\s*"insetsHandling":\s*"disable"',
+      "android/app/src/main/assets/capacitor.config.json")
 check("Native non-WebView boot fallback",r'showNativeBootFallback\(',"android/app/src/main/java/app/lovable/privacygallery/MainActivity.java")
 # Capacitor 4+ constructs the bridge inside super.onCreate.
 # All local plugins must be registered before that point.
