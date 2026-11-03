@@ -7,6 +7,7 @@ PACKAGE=app.lovable.privacygallery
 ACTIVITY="$PACKAGE/.MainActivity"
 mkdir -p emulator-diagnostics
 failedScreenshots=0
+wrongForeground=0
 echo "Android $(adb shell getprop ro.build.version.release | tr -d '\r'), API $(adb shell getprop ro.build.version.sdk | tr -d '\r')"
 adb shell dumpsys webviewupdate | head -25 || true
 adb shell wm size
@@ -38,13 +39,23 @@ start_app() {
     adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity|ResumedActivity' | head -8 || true
     return 1
   fi
-  # A popup belongs to the permission controller, not our gallery; it is
-  # a real smoke-test failure and must not be mislabelled as a process crash.
+  # Check the actual focused window. A launcher, system ANR overlay or media
+  # permission dialog may contain contrasting pixels and fool a screenshot
+  # classifier. Those must not be reported as a rendered gallery.
   local focus
   focus="$(adb shell dumpsys window | grep -m1 'mCurrentFocus=' || true)"
-  if [[ "$focus" == *GrantPermissionsActivity* ]]; then
-    echo "Unexpected Android media permission sheet obscures gallery during $1"
-    return 1
+  if [[ -z "$focus" ]]; then
+    focus="$(adb shell dumpsys activity activities | grep -m1 -E 'mResumedActivity|topResumedActivity' || true)"
+  fi
+  echo "Foreground for $1: $focus" | tee -a emulator-diagnostics/foreground.txt
+  if [[ "$focus" == *mCurrentFocus* || "$focus" == *mResumedActivity* ||
+        "$focus" == *topResumedActivity* ]]; then
+    if [[ "$focus" != *"$PACKAGE"* ]]; then
+      echo "FAIL: $1 shows a different foreground window, not Nova Gallery"
+      wrongForeground=$((wrongForeground + 1))
+    fi
+  else
+    echo "WARN: no readable Android focus record for $1; screenshot still checked"
   fi
   adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' | head -4 || true
   adb shell dumpsys activity top > "emulator-diagnostics/activity-$1.txt" 2>&1 || true
@@ -62,6 +73,10 @@ start_app portrait
 adb shell dumpsys window > emulator-diagnostics/window-portrait.txt || true
 adb shell wm size 360x780
 start_app compact
+adb shell wm size 320x480
+start_app small_window
+adb shell wm size 1024x600
+start_app wide_tablet
 adb shell wm size 780x360
 start_app wide
 adb shell wm size reset
@@ -79,6 +94,12 @@ if (( API >= 29 )); then
     overlay="com.android.internal.systemui.navbar.$mode"
     if adb shell cmd overlay enable "$overlay" >/dev/null 2>&1; then
       echo "Requested navigation overlay: $mode"
+      # A successful command does not guarantee Android activated the
+      # requested overlay. Capture actual state for audit.
+      adb shell cmd overlay list --user 0 > "emulator-diagnostics/overlay-$mode.txt" 2>&1 || true
+      if ! grep -Fq "[x] $overlay" "emulator-diagnostics/overlay-$mode.txt"; then
+        echo "WARN: overlay $mode accepted but not confirmed active"
+      fi
       start_app "$mode"
       adb shell dumpsys window > "emulator-diagnostics/window-$mode.txt" || true
     else
@@ -86,9 +107,9 @@ if (( API >= 29 )); then
     fi
   done
 fi
-echo "APK launch and navigation snapshots analyzed; blank screenshots: $failedScreenshots"
-if (( failedScreenshots > 0 )); then
-  echo "FAIL: $failedScreenshots viewport screenshot(s) look blank; see emulator-diagnostics/"
+echo "APK snapshots: blank=$failedScreenshots wrong_foreground=$wrongForeground"
+if (( failedScreenshots > 0 || wrongForeground > 0 )); then
+  echo "FAIL: $failedScreenshots blank screenshot(s), $wrongForeground non-gallery foreground window(s)"
   exit 1
 fi
 echo "APK launch, compact/wide resize and available navigation modes completed."
