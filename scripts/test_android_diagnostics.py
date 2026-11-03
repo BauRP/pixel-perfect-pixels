@@ -39,6 +39,18 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertEqual(result["diagnosis"], "PASS_WITH_CONFIRMED_PAINT")
         self.assertEqual(classify(log, "script: 1", "")["diagnosis"], "NEEDS_MANUAL_REVIEW")
 
+    def test_route_only_readiness_is_not_a_passing_native_layout(self):
+        summary = classify(
+            "[NovaBoot] entry-loaded\n[NovaBoot] react-root-committed\n"
+            "[NovaBoot] state-waiting-for-layout\n[NovaBoot] router-load-resolved",
+            "Java tests: 1 | native shell smoke: 1 | script: 1", "")
+        self.assertEqual(summary["diagnosis"], "ROUTE_MOUNTED_BUT_NATIVE_LAYOUT_UNVERIFIED")
+        self.assertEqual(summary["boot_phases"]["route_without_safe_layout"], 1)
+
+    def test_route_without_persistent_shell_is_separate(self):
+        summary = classify("[NovaBoot] state-waiting-for-shell", "script: 1", "")
+        self.assertEqual(summary["diagnosis"], "ROUTE_WITHOUT_PERSISTENT_ANDROID_SHELL")
+
     def test_untrusted_system_insets_are_a_failure(self):
         result = classify(
             "[NovaBoot] route-visible\n[NovaLayout] NATIVE_INSETS_PENDING",
