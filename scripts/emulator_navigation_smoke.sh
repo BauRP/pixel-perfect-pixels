@@ -32,37 +32,54 @@ cleanup() {
 }
 trap cleanup EXIT
 start_app() {
-  adb shell am start -W -n "$ACTIVITY"
-  sleep 4
-  if ! adb shell pidof "$PACKAGE" >/dev/null; then
-    echo "Gallery process absent during $1; verify Activity and permission dialog before calling it a crash"
+  # CI instrumentation can kill the app when Play Services' provider dies.
+  # Retry one genuine cold launch, rather than falsely classify a one-off
+  # provider crash as an app layout failure or silently accept the launcher.
+  local attempt focus launched=0
+  for attempt in 1 2; do
+    if ! adb shell am start -W -n "$ACTIVITY"; then
+      echo "ActivityManager launch failed on attempt $attempt for $1"
+    fi
+    sleep 4
+    focus="$(adb shell dumpsys window | grep -m1 'mCurrentFocus=' || true)"
+    if [[ -z "$focus" ]]; then
+      focus="$(adb shell dumpsys activity activities | grep -m1 -E 'mResumedActivity|topResumedActivity' || true)"
+    fi
+    if adb shell pidof "$PACKAGE" >/dev/null 2>&1 &&
+       [[ "$focus" == *"$PACKAGE"* ]]; then
+      launched=1
+      break
+    fi
+    echo "Gallery not foreground after launch $attempt for $1: $focus"
+    if (( attempt == 1 )); then
+      adb shell input keyevent KEYCODE_HOME >/dev/null 2>&1 || true
+      sleep 2
+    fi
+  done
+  echo "Foreground for $1: $focus" | tee -a emulator-diagnostics/foreground.txt
+  if (( launched == 0 )); then
+    echo "FAIL: the gallery process/window did not survive either launch for $1"
+    wrongForeground=$((wrongForeground + 1))
     adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity|ResumedActivity' | head -8 || true
     return 1
-  fi
-  # Check the actual focused window. A launcher, system ANR overlay or media
-  # permission dialog may contain contrasting pixels and fool a screenshot
-  # classifier. Those must not be reported as a rendered gallery.
-  local focus
-  focus="$(adb shell dumpsys window | grep -m1 'mCurrentFocus=' || true)"
-  if [[ -z "$focus" ]]; then
-    focus="$(adb shell dumpsys activity activities | grep -m1 -E 'mResumedActivity|topResumedActivity' || true)"
-  fi
-  echo "Foreground for $1: $focus" | tee -a emulator-diagnostics/foreground.txt
-  if [[ "$focus" == *mCurrentFocus* || "$focus" == *mResumedActivity* ||
-        "$focus" == *topResumedActivity* ]]; then
-    if [[ "$focus" != *"$PACKAGE"* ]]; then
-      echo "FAIL: $1 shows a different foreground window, not Nova Gallery"
-      wrongForeground=$((wrongForeground + 1))
-    fi
-  else
-    echo "WARN: no readable Android focus record for $1; screenshot still checked"
   fi
   adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' | head -4 || true
   adb shell dumpsys activity top > "emulator-diagnostics/activity-$1.txt" 2>&1 || true
   adb shell dumpsys window > "emulator-diagnostics/window-$1.txt" 2>&1 || true
-  adb shell screencap -p "/sdcard/nova-$1.png" >/dev/null 2>&1 || true
-  adb pull "/sdcard/nova-$1.png" "emulator-diagnostics/$1.png" >/dev/null 2>&1 || true
-  if ! java scripts/ValidateScreenshot.java "emulator-diagnostics/$1.png"; then
+  local imageOk=0
+  for attempt in 1 2; do
+    adb shell screencap -p "/sdcard/nova-$1.png" >/dev/null 2>&1 || true
+    adb pull "/sdcard/nova-$1.png" "emulator-diagnostics/$1.png" >/dev/null 2>&1 || true
+    if java scripts/ValidateScreenshot.java "emulator-diagnostics/$1.png"; then
+      imageOk=1
+      break
+    fi
+    if (( attempt == 1 )); then
+      echo "Unpainted screenshot for $1, confirming after a further frame delay"
+      sleep 3
+    fi
+  done
+  if (( imageOk == 0 )); then
     echo "FAIL: actual $1 screenshot has no readable gallery pixels"
     failedScreenshots=$((failedScreenshots + 1))
   fi

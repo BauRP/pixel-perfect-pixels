@@ -79,6 +79,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     let firstFrame = 0;
     let secondFrame = 0;
     let pendingRetry: ReturnType<typeof setTimeout> | undefined;
+    let insetRetryCount = 0;
+    const MAX_INSET_RETRIES = 8;
     const report = () => {
       const shell = document.querySelector("[data-app-shell]");
       const nav = document.querySelector("[data-bottom-nav]");
@@ -109,11 +111,14 @@ export function AppShell({ children }: { children: ReactNode }) {
       signalGalleryUiReady(values);
       // Some OEMs dispatch their first inset measurement after the first
       // painted React frame. Retry a bounded snapshot without spinning.
-      if (!values.nativeInsetsReady) {
+      if (!values.nativeInsetsReady && insetRetryCount < MAX_INSET_RETRIES) {
+        insetRetryCount++;
         pendingRetry = setTimeout(() => {
           refreshSystemInsetsForViewport();
           schedule();
         }, 1200);
+      } else if (values.nativeInsetsReady) {
+        insetRetryCount = 0;
       }
     };
     const schedule = () => {

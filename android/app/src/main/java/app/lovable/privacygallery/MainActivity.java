@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.webkit.WebView;
 import android.util.Log;
 import android.view.Window;
@@ -47,6 +48,8 @@ public class MainActivity extends BridgeActivity {
     private final Runnable nativeBootFallback = this::showNativeBootFallback;
     private FrameLayout bootRecoveryView;
     private boolean softwarePaintRetryAttempted = false;
+    private boolean initialPaintVerified = false;
+    private final long bootStartedAt = SystemClock.elapsedRealtime();
     private final Runnable verifyPaint = this::verifyWindowPaint;
 
     /**
@@ -55,7 +58,11 @@ public class MainActivity extends BridgeActivity {
      * DOM readiness while the Android GPU compositor is solid black/white.
      */
     private void verifyWindowPaint() {
+        // A validly painted launch ends diagnostics permanently for this
+        // Activity. NEVER reload a user-opened black photo or video because
+        // its pixels resemble a blank startup window.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || isFinishing() || isDestroyed()
+                || initialPaintVerified || SystemClock.elapsedRealtime() - bootStartedAt > 45_000L
                 || !galleryUiReady || bootRecoveryView != null || !hasWindowFocus()) return;
         View decor = getWindow().getDecorView();
         if (decor.getWidth() < 100 || decor.getHeight() < 100) return;
@@ -74,7 +81,11 @@ public class MainActivity extends BridgeActivity {
                 try {
                     if (result != PixelCopy.SUCCESS || isFinishing() || isDestroyed()
                             || !galleryUiReady || !hasWindowFocus()) return;
-                    if (RenderedSurfaceProbe.hasUiContrast(sample)) return;
+                    if (RenderedSurfaceProbe.hasUiContrast(sample)) {
+                        initialPaintVerified = true;
+                        Log.i("NovaGalleryBoot", "First gallery compositor frame confirmed");
+                        return;
+                    }
                     Log.e("NovaGalleryBoot", "Confirmed uniform compositor despite React mount");
                     WebView web = getBridge() == null ? null : getBridge().getWebView();
                     if (web != null && !softwarePaintRetryAttempted) {
@@ -88,6 +99,9 @@ public class MainActivity extends BridgeActivity {
                         mainHandler.postDelayed(nativeBootFallback, 18000L);
                         Log.w("NovaGalleryBoot", "One software-compositor retry");
                     } else {
+                        // The DOM can say ready while the compositor is still
+                        // uniformly blank. Make the native retry available.
+                        galleryUiReady = false;
                         showNativeBootFallback();
                     }
                 } finally {
@@ -213,10 +227,20 @@ public class MainActivity extends BridgeActivity {
             return;
         }
         WebView web = getBridge().getWebView();
-        if (web == null) return;
+        if (web == null) {
+            attemptedLocalBootRecovery = true;
+            mainHandler.postDelayed(nativeBootFallback, 2000L);
+            return;
+        }
         String url = web.getUrl();
         if (url == null || !(url.startsWith("https://localhost/") ||
-                url.startsWith("http://localhost/"))) return;
+                url.startsWith("http://localhost/"))) {
+            // Never reload an external URL or an uninitialized WebView. Still
+            // provide user-controlled recovery for a failed local bootstrap.
+            attemptedLocalBootRecovery = true;
+            mainHandler.postDelayed(nativeBootFallback, 2000L);
+            return;
+        }
         // Android 10/13 CI screenshots proved a blank window even after
         // WebView progress reached 100%. Progress alone is not proof React
         // rendered; only the explicit UI-ready handshake can cancel recovery.
@@ -297,14 +321,14 @@ public class MainActivity extends BridgeActivity {
     public void onResume() {
         super.onResume();
         refreshSystemAreas();
-        if (galleryUiReady) schedulePaintVerification();
+        if (galleryUiReady && !initialPaintVerified) schedulePaintVerification();
     }
 
     @Override
     public void onConfigurationChanged(Configuration configuration) {
         super.onConfigurationChanged(configuration);
         refreshSystemAreas();
-        if (galleryUiReady) schedulePaintVerification();
+        if (galleryUiReady && !initialPaintVerified) schedulePaintVerification();
     }
 
     @Override
