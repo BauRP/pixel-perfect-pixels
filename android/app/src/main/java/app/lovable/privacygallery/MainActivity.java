@@ -40,6 +40,7 @@ public class MainActivity extends BridgeActivity {
     private boolean attemptedLocalBootRecovery = false;
     private volatile boolean galleryUiReady = false;
     private volatile JSObject latestUiLayout;
+    private String lastLayoutIssue = "";
 
     public JSObject getLatestUiLayout() {
         return latestUiLayout;
@@ -196,6 +197,19 @@ public class MainActivity extends BridgeActivity {
         mainHandler.post(() -> {
             if (isFinishing() || isDestroyed()) return;
             latestUiLayout = metrics;
+            String issue = metrics == null
+                    ? "MISSING_METRICS" : metrics.optString("layoutIssue", "NO_LAYOUT_VERDICT");
+            if (!issue.equals(lastLayoutIssue)) {
+                Log.i("NovaGalleryBoot", "React navigation evidence: " + issue);
+                lastLayoutIssue = issue;
+            }
+            // A React effect or a native plugin callback is NOT proof that
+            // a safe, visible, tappable gallery was painted. In particular,
+            // incomplete/zero-sized navigation must not cancel the watchdog.
+            boolean valid = "OK".equals(issue) && metrics != null
+                    && metrics.optBoolean("nativeInsetsReady", false)
+                    && metrics.optInt("links", 0) == 3;
+            if (!valid) return;
             boolean firstMount = !galleryUiReady;
             galleryUiReady = true;
             if (firstMount) Log.i("NovaGalleryBoot", "React gallery UI mounted");
@@ -335,6 +349,7 @@ public class MainActivity extends BridgeActivity {
     public void onDestroy() {
         mainHandler.removeCallbacksAndMessages(null);
         latestUiLayout = null;
+        lastLayoutIssue = "";
         bootRecoveryView = null;
         super.onDestroy();
     }

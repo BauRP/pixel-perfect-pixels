@@ -147,7 +147,7 @@ public class AndroidCompatibilitySmokeTest {
             SystemClock.sleep(450L);
         }
         fail("Android API " + Build.VERSION.SDK_INT +
-                " did not report React geometry and measured native insets: " +
+                " did not report validated React navigation and native insets: " +
                 (state.get() == null ? "NO_REACT_SHELL" : state.get().toString()));
         throw new AssertionError("unreachable");
     }

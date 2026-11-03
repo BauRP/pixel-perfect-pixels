@@ -83,48 +83,63 @@ export function AppShell({ children }: { children: ReactNode }) {
     let secondFrame = 0;
     let pendingRetry: ReturnType<typeof setTimeout> | undefined;
     let insetRetryCount = 0;
+    let lastReportedIssue = "";
     const MAX_INSET_RETRIES = 8;
     const report = () => {
       const shell = document.querySelector("[data-app-shell]");
       const nav = document.querySelector("[data-bottom-nav]");
       const content = document.querySelector("[data-app-content]");
       const box = nav?.getBoundingClientRect();
-      if (!shell || !nav || !content || !box || box.width < 100 || box.height < 36) return;
-      const links = Array.from(nav.querySelectorAll("a")).map(a => a.getBoundingClientRect());
-      if (!links.length) return;
-      const css = getComputedStyle(nav);
+      const links = nav
+        ? Array.from(nav.querySelectorAll("a")).map(a => a.getBoundingClientRect())
+        : [];
+      const css = nav ? getComputedStyle(nav) : null;
       const root = document.documentElement;
+      // Even if the frame/tabs are not measurable, report the *reason*.
+      // Previously an early return made every Android 10/13 failure look
+      // identical ("NO_REACT_SHELL") and hid missing/zero-size controls.
       const values: GalleryLayoutEvidence = {
         viewportWidth: window.innerWidth, viewportHeight: window.innerHeight,
-        navBottom: box.bottom, navWidth: box.width, navHeight: box.height,
-        navInnerBottom: box.bottom - (parseFloat(css.paddingBottom) || 0),
-        navInnerLeft: box.left + (parseFloat(css.paddingLeft) || 0),
-        navInnerRight: box.right - (parseFloat(css.paddingRight) || 0),
+        navBottom: box?.bottom ?? -1, navWidth: box?.width ?? 0,
+        navHeight: box?.height ?? 0,
+        navInnerBottom: (box?.bottom ?? -1) - (parseFloat(css?.paddingBottom ?? "0") || 0),
+        navInnerLeft: (box?.left ?? -1) + (parseFloat(css?.paddingLeft ?? "0") || 0),
+        navInnerRight: (box?.right ?? -1) - (parseFloat(css?.paddingRight ?? "0") || 0),
         links: links.length,
-        minLinkWidth: Math.min(...links.map(x => x.width)),
-        minLinkHeight: Math.min(...links.map(x => x.height)),
-        maxLinkBottom: Math.max(...links.map(x => x.bottom)),
-        minLinkLeft: Math.min(...links.map(x => x.left)),
-        maxLinkRight: Math.max(...links.map(x => x.right)),
-        contentTop: content.getBoundingClientRect().top,
+        minLinkWidth: links.length ? Math.min(...links.map(x => x.width)) : 0,
+        minLinkHeight: links.length ? Math.min(...links.map(x => x.height)) : 0,
+        maxLinkBottom: links.length ? Math.max(...links.map(x => x.bottom)) : -1,
+        minLinkLeft: links.length ? Math.min(...links.map(x => x.left)) : -1,
+        maxLinkRight: links.length ? Math.max(...links.map(x => x.right)) : -1,
+        contentTop: content?.getBoundingClientRect().top ?? -1,
         safeTop: parseFloat(getComputedStyle(root).getPropertyValue("--native-safe-top")) || 0,
         nativeInsetsReady: root.dataset.novaInsetsReady === "true",
         imeOpen: root.dataset.imeOpen === "true",
       };
-      const layoutIssue = assessGalleryLayout(values);
+      const layoutIssue = !shell ? "SHELL_MISSING"
+        : !content ? "CONTENT_MISSING"
+        : !nav ? "BOTTOM_NAV_MISSING"
+        : assessGalleryLayout(values);
       if (layoutIssue === "OK") {
         root.dataset.novaBootPhase = "gallery-layout-ready";
+      } else if (layoutIssue !== lastReportedIssue) {
+        // Log once per distinct problem. No photos, IDs, paths or secrets.
+        console.warn("[NovaLayout] " + layoutIssue +
+          " viewport=" + values.viewportWidth + "x" + values.viewportHeight +
+          " nav=" + values.navWidth + "x" + values.navHeight +
+          " insets=" + values.nativeInsetsReady);
       }
+      lastReportedIssue = layoutIssue;
       signalGalleryUiReady({ ...values, layoutIssue });
-      // Some OEMs dispatch their first inset measurement after the first
-      // painted React frame. Retry a bounded snapshot without spinning.
-      if (!values.nativeInsetsReady && insetRetryCount < MAX_INSET_RETRIES) {
+      // Retry BOTH early native insets and not-yet-laid-out navigation.
+      // This is bounded, and real OS events still refresh measurements.
+      if (layoutIssue !== "OK" && insetRetryCount < MAX_INSET_RETRIES) {
         insetRetryCount++;
         pendingRetry = setTimeout(() => {
           refreshSystemInsetsForViewport();
           schedule();
         }, 1200);
-      } else if (values.nativeInsetsReady) {
+      } else if (layoutIssue === "OK") {
         insetRetryCount = 0;
       }
     };
