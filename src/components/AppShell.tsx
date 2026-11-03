@@ -81,6 +81,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     // Old Chromium evaluateJavascript callbacks can stall even if UI mounted.
     let firstFrame = 0;
     let secondFrame = 0;
+    let paintFallbackTimer: ReturnType<typeof setTimeout> | undefined;
     let pendingRetry: ReturnType<typeof setTimeout> | undefined;
     let insetRetryCount = 0;
     let lastReportedIssue = "";
@@ -147,8 +148,23 @@ export function AppShell({ children }: { children: ReactNode }) {
       if (pendingRetry !== undefined) clearTimeout(pendingRetry);
       cancelAnimationFrame(firstFrame);
       cancelAnimationFrame(secondFrame);
+      if (paintFallbackTimer !== undefined) clearTimeout(paintFallbackTimer);
+      // Some legacy WebView compositor failures suspend requestAnimationFrame
+      // even though setTimeout and the Capacitor plugin bridge still work.
+      // Report the actual DOM geometry anyway, so native recovery can choose
+      // an appropriate action rather than guessing NO_REACT_SHELL.
+      paintFallbackTimer = setTimeout(() => {
+        paintFallbackTimer = undefined;
+        report();
+      }, 850);
       firstFrame = requestAnimationFrame(() => {
-        secondFrame = requestAnimationFrame(report);
+        secondFrame = requestAnimationFrame(() => {
+          if (paintFallbackTimer !== undefined) {
+            clearTimeout(paintFallbackTimer);
+            paintFallbackTimer = undefined;
+          }
+          report();
+        });
       });
     };
     schedule();
@@ -158,6 +174,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     window.addEventListener("focus", schedule);
     return () => {
       if (pendingRetry !== undefined) clearTimeout(pendingRetry);
+      if (paintFallbackTimer !== undefined) clearTimeout(paintFallbackTimer);
       cancelAnimationFrame(firstFrame);
       cancelAnimationFrame(secondFrame);
       document.removeEventListener("nova-native-insets", schedule);

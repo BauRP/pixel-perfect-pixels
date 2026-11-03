@@ -51,4 +51,7 @@ if 'NativeStartupBoundary' not in entry_source:
     raise SystemExit("Android must have a React-level recovery boundary")
 if 'react-root-committed' not in entry_source:
     raise SystemExit("Android must distinguish React commit from first paint")
+shell_source=Path("src/components/AppShell.tsx").read_text("utf8")
+if "paintFallbackTimer = setTimeout" not in shell_source:
+    raise SystemExit("Native layout evidence must work when compositor requestAnimationFrame stalls")
 print("OK: standalone Android SPA, native document shell, local polyfills, one module entry, no SSR.")
