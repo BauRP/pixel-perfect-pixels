@@ -64,6 +64,8 @@ public class AndroidCompatibilitySmokeTest {
         assertTrue(BootRecoveryPolicy.trySoftwareFallback(100, false, false));
         assertTrue(BootRecoveryPolicy.trySoftwareFallback(90, false, false));
         assertFalse(BootRecoveryPolicy.trySoftwareFallback(89, false, false));
+        // A diagnostic-only React snapshot must NOT suppress a recovery.
+        // The caller passes true only for validated three-tab geometry.
         assertFalse(BootRecoveryPolicy.trySoftwareFallback(100, true, false));
         assertFalse(BootRecoveryPolicy.trySoftwareFallback(100, false, true));
     }

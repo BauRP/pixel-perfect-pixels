@@ -269,7 +269,10 @@ public class MainActivity extends BridgeActivity {
         // Switch the already-broken local boot to software once, but never
         // change a valid UI, an incomplete network load or a user's media UI.
         if (BootRecoveryPolicy.trySoftwareFallback(
-                progress, latestUiLayout != null, softwarePaintRetryAttempted)) {
+                progress, latestUiLayout != null
+                        && "OK".equals(latestUiLayout.optString("layoutIssue", ""))
+                        && latestUiLayout.optBoolean("nativeInsetsReady", false),
+                softwarePaintRetryAttempted)) {
             softwarePaintRetryAttempted = true;
             web.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
             Log.w("NovaGalleryBoot", "Startup software compositor fallback (no React geometry)");

@@ -9,7 +9,7 @@ public final class BootRecoveryPolicy {
     private BootRecoveryPolicy() {}
 
     public static boolean trySoftwareFallback(
-            int webProgress, boolean hasReactGeometry, boolean alreadyAttempted) {
-        return webProgress >= 90 && !hasReactGeometry && !alreadyAttempted;
+            int webProgress, boolean hasValidatedReactGeometry, boolean alreadyAttempted) {
+        return webProgress >= 90 && !hasValidatedReactGeometry && !alreadyAttempted;
     }
 }
