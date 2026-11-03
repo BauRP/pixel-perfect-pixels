@@ -21,7 +21,7 @@ on_exit() {
   adb shell df -h /data > emulator-diagnostics/disk.txt 2>&1 || true
   adb shell dumpsys package app.lovable.privacygallery > emulator-diagnostics/package.txt 2>&1 || true
   # Preserve the boot errors which are otherwise buried in large logcat.
-  grep -E 'NovaGalleryBoot|AndroidCompatTest|Capacitor/Console.*(Error|Uncaught)|E/chromium|FATAL EXCEPTION|Input dispatching timed out' emulator-diagnostics/logcat.txt     > emulator-diagnostics/boot-errors.txt 2>/dev/null || true
+  grep -E 'NovaGalleryBoot|AndroidCompatTest|Capacitor/Console.*(\[NovaBoot\]|\[NovaLayout\]|Error|Uncaught)|E/chromium|FATAL EXCEPTION|Input dispatching timed out' emulator-diagnostics/logcat.txt     > emulator-diagnostics/boot-errors.txt 2>/dev/null || true
   echo "Java tests: $status_tests | native shell smoke: $status_shell | script: $status" > emulator-diagnostics/result.txt
   python3 scripts/summarize_android_diagnostics.py emulator-diagnostics || true
 }
