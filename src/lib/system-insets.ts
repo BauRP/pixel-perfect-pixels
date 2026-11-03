@@ -2,15 +2,8 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 import { normalizeSystemInsets, fitInsetsToViewport, isMeasuredViewport, isTrustedNativeInsetsSnapshot, type RawSystemInsets } from "./insets-math";
 
 type Insets = RawSystemInsets & { measured?: boolean };
-export type GalleryLayoutEvidence = {
-  viewportWidth: number; viewportHeight: number;
-  navBottom: number; navWidth: number; navHeight: number;
-  navInnerBottom: number; navInnerLeft: number; navInnerRight: number;
-  links: number; minLinkWidth: number; minLinkHeight: number;
-  maxLinkBottom: number; minLinkLeft: number; maxLinkRight: number;
-  contentTop: number; safeTop: number;
-  nativeInsetsReady: boolean; imeOpen: boolean;
-};
+import type { GalleryLayoutEvidence } from "./gallery-geometry";
+export type { GalleryLayoutEvidence } from "./gallery-geometry";
 
 interface SystemInsetsPlugin {
   getInsets(): Promise<Insets>;

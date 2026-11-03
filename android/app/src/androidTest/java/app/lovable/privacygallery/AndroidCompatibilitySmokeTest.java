@@ -164,6 +164,8 @@ public class AndroidCompatibilitySmokeTest {
         assertTrue("Bottom bar outside viewport: " + ui,
                 ui.optDouble("navBottom", 10000) <= height + 3);
         assertTrue("Insets not measured: " + ui, ui.optBoolean("nativeInsetsReady", false));
+        assertEquals("Gallery DOM geometry must satisfy the shared contract: " + ui,
+                "OK", ui.optString("layoutIssue", "NO_GEOMETRY_VERDICT"));
     }
 
     @Test

@@ -5,7 +5,8 @@ import { applyDocumentDirection, ensureLangResolved, useLang } from "@/lib/i18n"
 import { Capacitor } from "@capacitor/core";
 import { useVault } from "@/lib/vault-store";
 import { cssColorToHex } from "@/lib/css-color";
-import { initSystemInsets, updateSystemBarAppearance, signalGalleryUiReady, refreshSystemInsetsForViewport, type GalleryLayoutEvidence } from "@/lib/system-insets";
+import { initSystemInsets, updateSystemBarAppearance, signalGalleryUiReady, refreshSystemInsetsForViewport } from "@/lib/system-insets";
+import { assessGalleryLayout, type GalleryLayoutEvidence } from "@/lib/gallery-geometry";
 
 /**
  * First launch after install: detect the device locale, map it to one of the
@@ -108,7 +109,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         nativeInsetsReady: root.dataset.novaInsetsReady === "true",
         imeOpen: root.dataset.imeOpen === "true",
       };
-      signalGalleryUiReady(values);
+      const layoutIssue = assessGalleryLayout(values);
+      signalGalleryUiReady({ ...values, layoutIssue });
       // Some OEMs dispatch their first inset measurement after the first
       // painted React frame. Retry a bounded snapshot without spinning.
       if (!values.nativeInsetsReady && insetRetryCount < MAX_INSET_RETRIES) {

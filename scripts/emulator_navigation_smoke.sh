@@ -15,10 +15,14 @@ adb shell wm density
 adb shell pm path "$PACKAGE" | grep '^package:' >/dev/null
 original_rotation="$(adb shell settings get system user_rotation | tr -d '\r')"
 original_auto_rotate="$(adb shell settings get system accelerometer_rotation | tr -d '\r')"
+original_font_scale="$(adb shell settings get system font_scale | tr -d '\r')"
 original_nav_overlay="$(adb shell cmd overlay list --user 0 2>/dev/null | grep -E '^\[x\] com.android.internal.systemui.navbar.' | head -1 | sed 's/^\[x\] //' || true)"
 cleanup() {
   adb shell wm size reset >/dev/null 2>&1 || true
   adb shell wm density reset >/dev/null 2>&1 || true
+  if [[ "$original_font_scale" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    adb shell settings put system font_scale "$original_font_scale" >/dev/null 2>&1 || true
+  fi
   # Never leave a modified nav overlay for subsequent emulator tests.
   if [[ -n "$original_nav_overlay" ]]; then
     adb shell cmd overlay enable "$original_nav_overlay" >/dev/null 2>&1 || true
@@ -92,6 +96,14 @@ adb shell wm size 360x780
 start_app compact
 adb shell wm size 320x480
 start_app small_window
+# Check accessibility font scaling on a real Android compositor, not only
+# a simulated CSS viewport. Restore original system setting after the test.
+adb shell settings put system font_scale 1.3
+sleep 2
+start_app large_text_small_window
+if [[ "$original_font_scale" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  adb shell settings put system font_scale "$original_font_scale" >/dev/null 2>&1 || true
+fi
 adb shell wm size 1024x600
 start_app wide_tablet
 adb shell wm size 780x360
