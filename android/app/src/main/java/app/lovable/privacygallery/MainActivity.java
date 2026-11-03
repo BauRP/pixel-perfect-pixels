@@ -28,6 +28,7 @@ import androidx.annotation.Nullable;
 import androidx.core.view.WindowCompat;
 
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.JSObject;
 
 /**
  * Nova Gallery — native shell. Native AdMob ads respect user consent.
@@ -37,6 +38,11 @@ public class MainActivity extends BridgeActivity {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private boolean attemptedLocalBootRecovery = false;
     private volatile boolean galleryUiReady = false;
+    private volatile JSObject latestUiLayout;
+
+    public JSObject getLatestUiLayout() {
+        return latestUiLayout;
+    }
     private final Runnable localBootRecovery = this::recoverStalledLocalBoot;
     private final Runnable nativeBootFallback = this::showNativeBootFallback;
     private FrameLayout bootRecoveryView;
@@ -172,14 +178,16 @@ public class MainActivity extends BridgeActivity {
     }
 
     /** Called by the SystemInsets plugin after the React gallery shell mounts. */
-    public void onGalleryUiReady() {
+    public void onGalleryUiReady(JSObject metrics) {
         mainHandler.post(() -> {
             if (isFinishing() || isDestroyed()) return;
+            latestUiLayout = metrics;
+            boolean firstMount = !galleryUiReady;
             galleryUiReady = true;
-            Log.i("NovaGalleryBoot", "React gallery UI mounted");
+            if (firstMount) Log.i("NovaGalleryBoot", "React gallery UI mounted");
             mainHandler.removeCallbacks(localBootRecovery);
             mainHandler.removeCallbacks(nativeBootFallback);
-            schedulePaintVerification();
+            if (firstMount) schedulePaintVerification();
             if (bootRecoveryView != null) {
                 ViewGroup parent = (ViewGroup) bootRecoveryView.getParent();
                 if (parent != null) parent.removeView(bootRecoveryView);
@@ -302,6 +310,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onDestroy() {
         mainHandler.removeCallbacksAndMessages(null);
+        latestUiLayout = null;
         bootRecoveryView = null;
         super.onDestroy();
     }

@@ -2,10 +2,19 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 import { normalizeSystemInsets, fitInsetsToViewport, isMeasuredViewport, isTrustedNativeInsetsSnapshot, type RawSystemInsets } from "./insets-math";
 
 type Insets = RawSystemInsets & { measured?: boolean };
+export type GalleryLayoutEvidence = {
+  viewportWidth: number; viewportHeight: number;
+  navBottom: number; navWidth: number; navHeight: number;
+  navInnerBottom: number; navInnerLeft: number; navInnerRight: number;
+  links: number; minLinkWidth: number; minLinkHeight: number;
+  maxLinkBottom: number; minLinkLeft: number; maxLinkRight: number;
+  contentTop: number; safeTop: number;
+  nativeInsetsReady: boolean; imeOpen: boolean;
+};
 
 interface SystemInsetsPlugin {
   getInsets(): Promise<Insets>;
-  signalUiReady(): Promise<void>;
+  signalUiReady(options: GalleryLayoutEvidence): Promise<void>;
   setSystemBarAppearance(options: { lightBackground: boolean }): Promise<void>;
   addListener(name: "insetsChanged", cb: (insets: Insets) => void):
     Promise<{ remove: () => Promise<void> }>;
@@ -70,6 +79,7 @@ export function initSystemInsets(): void {
     // the native inset values but report that viewport validation is pending.
     root.dataset.novaInsetsReady =
       isMeasuredViewport(window.innerWidth, window.innerHeight) ? "true" : "pending";
+    document.dispatchEvent(new Event("nova-native-insets"));
   };
   const refresh = () => {
     const versionAtRequest = pushedVersion;
@@ -121,9 +131,9 @@ export async function updateSystemBarAppearance(lightBackground: boolean): Promi
  * Only the mounted gallery UI sends this native handshake.
  * A WebView's loading progress alone cannot certify React has rendered.
  */
-export function signalGalleryUiReady(): void {
+export function signalGalleryUiReady(evidence: GalleryLayoutEvidence): void {
   if (!Capacitor.isNativePlatform()) return;
-  void nativeInsets.signalUiReady().catch((error) => {
+  void nativeInsets.signalUiReady(evidence).catch((error) => {
     console.warn("[gallery] native UI-ready signal failed", error);
   });
 }

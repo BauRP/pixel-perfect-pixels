@@ -5,7 +5,7 @@ import { applyDocumentDirection, ensureLangResolved, useLang } from "@/lib/i18n"
 import { Capacitor } from "@capacitor/core";
 import { useVault } from "@/lib/vault-store";
 import { cssColorToHex } from "@/lib/css-color";
-import { initSystemInsets, updateSystemBarAppearance, signalGalleryUiReady, refreshSystemInsetsForViewport } from "@/lib/system-insets";
+import { initSystemInsets, updateSystemBarAppearance, signalGalleryUiReady, refreshSystemInsetsForViewport, type GalleryLayoutEvidence } from "@/lib/system-insets";
 
 /**
  * First launch after install: detect the device locale, map it to one of the
@@ -74,24 +74,69 @@ export function AppShell({ children }: { children: ReactNode }) {
   useSystemStatusBar();
   useEffect(() => {
     refreshSystemInsetsForViewport();
-    // React effect completion is not equivalent to a *painted* navigation.
-    // Wait for two compositor frames and a measurable nav + shell before
-    // acknowledging the UI to the native Android startup watchdog.
-    let frame1 = 0;
-    let frame2 = 0;
-    frame1 = requestAnimationFrame(() => {
-      frame2 = requestAnimationFrame(() => {
-        const shell = document.querySelector("[data-app-shell]");
-        const nav = document.querySelector("[data-bottom-nav]");
-        const rect = nav?.getBoundingClientRect();
-        if (shell && nav && rect && rect.width >= 100 && rect.height >= 36) {
-          signalGalleryUiReady();
-        }
+    // Real DOM geometry travels through the existing native plugin.
+    // Old Chromium evaluateJavascript callbacks can stall even if UI mounted.
+    let firstFrame = 0;
+    let secondFrame = 0;
+    let pendingRetry: ReturnType<typeof setTimeout> | undefined;
+    const report = () => {
+      const shell = document.querySelector("[data-app-shell]");
+      const nav = document.querySelector("[data-bottom-nav]");
+      const content = document.querySelector("[data-app-content]");
+      const box = nav?.getBoundingClientRect();
+      if (!shell || !nav || !content || !box || box.width < 100 || box.height < 36) return;
+      const links = Array.from(nav.querySelectorAll("a")).map(a => a.getBoundingClientRect());
+      if (!links.length) return;
+      const css = getComputedStyle(nav);
+      const root = document.documentElement;
+      const values: GalleryLayoutEvidence = {
+        viewportWidth: window.innerWidth, viewportHeight: window.innerHeight,
+        navBottom: box.bottom, navWidth: box.width, navHeight: box.height,
+        navInnerBottom: box.bottom - (parseFloat(css.paddingBottom) || 0),
+        navInnerLeft: box.left + (parseFloat(css.paddingLeft) || 0),
+        navInnerRight: box.right - (parseFloat(css.paddingRight) || 0),
+        links: links.length,
+        minLinkWidth: Math.min(...links.map(x => x.width)),
+        minLinkHeight: Math.min(...links.map(x => x.height)),
+        maxLinkBottom: Math.max(...links.map(x => x.bottom)),
+        minLinkLeft: Math.min(...links.map(x => x.left)),
+        maxLinkRight: Math.max(...links.map(x => x.right)),
+        contentTop: content.getBoundingClientRect().top,
+        safeTop: parseFloat(getComputedStyle(root).getPropertyValue("--native-safe-top")) || 0,
+        nativeInsetsReady: root.dataset.novaInsetsReady === "true",
+        imeOpen: root.dataset.imeOpen === "true",
+      };
+      signalGalleryUiReady(values);
+      // Some OEMs dispatch their first inset measurement after the first
+      // painted React frame. Retry a bounded snapshot without spinning.
+      if (!values.nativeInsetsReady) {
+        pendingRetry = setTimeout(() => {
+          refreshSystemInsetsForViewport();
+          schedule();
+        }, 1200);
+      }
+    };
+    const schedule = () => {
+      if (pendingRetry !== undefined) clearTimeout(pendingRetry);
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+      firstFrame = requestAnimationFrame(() => {
+        secondFrame = requestAnimationFrame(report);
       });
-    });
+    };
+    schedule();
+    document.addEventListener("nova-native-insets", schedule);
+    window.addEventListener("resize", schedule);
+    window.addEventListener("orientationchange", schedule);
+    window.addEventListener("focus", schedule);
     return () => {
-      cancelAnimationFrame(frame1);
-      cancelAnimationFrame(frame2);
+      if (pendingRetry !== undefined) clearTimeout(pendingRetry);
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+      document.removeEventListener("nova-native-insets", schedule);
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("orientationchange", schedule);
+      window.removeEventListener("focus", schedule);
     };
   }, []);
   return (

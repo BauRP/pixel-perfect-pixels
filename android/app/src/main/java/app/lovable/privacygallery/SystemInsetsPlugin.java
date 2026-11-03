@@ -128,7 +128,7 @@ public class SystemInsetsPlugin extends Plugin {
             call.reject("Gallery activity is not available");
             return;
         }
-        ((MainActivity) activity).onGalleryUiReady();
+        ((MainActivity) activity).onGalleryUiReady(call.getData());
         call.resolve();
     }
 

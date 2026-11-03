@@ -22,9 +22,6 @@ import androidx.test.rule.GrantPermissionRule;
 
 import org.junit.Rule;
 import org.junit.Test;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import org.junit.runner.RunWith;
 
 import static org.junit.Assert.*;
@@ -135,167 +132,63 @@ public class AndroidCompatibilitySmokeTest {
     }
 
     /**
-     * Activity start and WebView initialization are asynchronous, especially on
-     * Android 10/13 emulator images. A single evaluateJavascript callback may
-     * never arrive while the WebView recreates. Poll the LIVE Capacitor WebView
-     * on the UI thread, and retry transient "NOT_READY"/callback timeouts.
-     * Never classify a timeout as a passed layout test.
+     * Read actual measured React layout over Capacitor's existing native
+     * bridge. This does not rely on evaluateJavascript() callbacks, which can
+     * hang on Android 10/13. Missing UI MUST fail, never pass heuristically.
      */
-    private String awaitWebViewState(String javascript) throws Exception {
-        String last = "NOT_READY";
-        // A wall-clock deadline avoids three separate WebView assertions
-        // consuming minutes while the native local page is still loading.
-        // Allow the single native stall-recovery pass at 25 seconds to occur.
-        final long deadline = SystemClock.elapsedRealtime() + 55_000L;
+    private com.getcapacitor.JSObject awaitNativeLayout() throws Exception {
+        java.util.concurrent.atomic.AtomicReference<com.getcapacitor.JSObject> state =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        long deadline = SystemClock.elapsedRealtime() + 52_000L;
         while (SystemClock.elapsedRealtime() < deadline) {
-            CountDownLatch latch = new CountDownLatch(1);
-            AtomicReference<String> result = new AtomicReference<>("");
-            scenario.getScenario().onActivity(activity -> {
-                WebView web = activity.getBridge() == null
-                        ? null : activity.getBridge().getWebView();
-                if (web == null || !web.isAttachedToWindow()) {
-                    result.set("\"NOT_READY\"");
-                    latch.countDown();
-                    return;
-                }
-                // Don't enqueue JS into an unfinished WebView navigation.
-                // Android 10/13 providers sometimes never invoke callbacks
-                // made at 10% progress even after the page recovers.
-                if (web.getProgress() < 80) {
-                    result.set("\"PAGE_LOADING_" + web.getProgress() + "\"");
-                    latch.countDown();
-                    return;
-                }
-                try {
-                    web.evaluateJavascript(javascript, value -> {
-                        result.set(value == null ? "null" : value);
-                        latch.countDown();
-                    });
-                } catch (RuntimeException error) {
-                    result.set("\"WEBVIEW_REPLACED\"");
-                    latch.countDown();
-                }
-            });
-            if (!latch.await(3, TimeUnit.SECONDS)) {
-                last = "CALLBACK_TIMEOUT";
-                scenario.getScenario().onActivity(activity -> {
-                    WebView web = activity.getBridge() == null
-                            ? null : activity.getBridge().getWebView();
-                    if (web != null) {
-                        android.util.Log.w("AndroidCompatTest",
-                                "WebView JS callback timeout: URL=" + web.getUrl()
-                                + " progress=" + web.getProgress()
-                                + " attached=" + web.isAttachedToWindow()
-                                + " visible=" + web.getVisibility());
-                    }
-                });
-            } else {
-                last = result.get();
-                if (!"\"NOT_READY\"".equals(last) &&
-                        !last.startsWith("\"PAGE_LOADING_") &&
-                        !"\"WEBVIEW_REPLACED\"".equals(last) &&
-                        !"\"NO_NATIVE_INSETS\"".equals(last) &&
-                        !"\"MISSING_INSETS\"".equals(last) &&
-                        !last.startsWith("\"TABS_HIDDEN_IME_") &&
-                        !"null".equals(last) && !last.isEmpty()) {
-                    return last;
-                }
-            }
-            SystemClock.sleep(550L);
+            scenario.getScenario().onActivity(activity -> state.set(activity.getLatestUiLayout()));
+            com.getcapacitor.JSObject layout = state.get();
+            if (layout != null && layout.optBoolean("nativeInsetsReady", false)) return layout;
+            SystemClock.sleep(450L);
         }
-        return last;
-    }
-
-    private String webViewDiagnostic() throws Exception {
-        String js = "(function(){try{return JSON.stringify({" +
-                "url:location.href,ready:document.readyState," +
-                "userAgent:navigator.userAgent,title:document.title," +
-                "bodyText:(document.body&&document.body.innerText||'').slice(0,320)," +
-                "hasNav:!!document.querySelector('[data-bottom-nav]')," +
-                "hasShell:!!document.querySelector('[data-app-shell]')," +
-                "scriptCount:document.scripts.length," +
-                "insetsReady:document.documentElement.dataset.novaInsetsReady||'unknown'," +
-                "hasError:!!document.querySelector('[data-nova-error]')" +
-                "});}catch(e){return 'DIAG_ERROR:'+e.message}})()";
-        return awaitWebViewState(js);
+        fail("Android API " + Build.VERSION.SDK_INT +
+                " did not report React geometry and measured native insets: " +
+                (state.get() == null ? "NO_REACT_SHELL" : state.get().toString()));
+        throw new AssertionError("unreachable");
     }
 
     @Test
     public void webAppSafeAreaVariablesAndNavigationRender() throws Exception {
-        String state = awaitWebViewState(
-            "(function(){var root=document.documentElement;" +
-            "var n=document.querySelector('[data-bottom-nav]');" +
-            "if(!n)return 'NOT_READY';" +
-            "var s=getComputedStyle(root);" +
-            "if(!s.getPropertyValue('--app-safe-top').trim()||" +
-            "!s.getPropertyValue('--app-safe-bottom').trim())return 'MISSING_INSETS';" +
-            "var box=n.getBoundingClientRect();" +
-            "if(box.width<=0||box.height<=0)return 'BAD_NAV_SIZE';" +
-            "if(box.bottom>innerHeight+3)return 'NAV_OUTSIDE_WINDOW';" +
-            "return 'OK';})()"
-        );
-        String details = "\"OK\"".equals(state) ? "" : webViewDiagnostic();
-        assertEquals("Android API " + Build.VERSION.SDK_INT +
-                " navigation/state " + state + "; WebView " + details,
-                "\"OK\"", state);
+        com.getcapacitor.JSObject ui = awaitNativeLayout();
+        double width = ui.optDouble("viewportWidth", -1);
+        double height = ui.optDouble("viewportHeight", -1);
+        assertTrue("WebView viewport not measured: " + ui, width > 100 && height > 100);
+        assertTrue("Bottom navigation not visible: " + ui,
+                ui.optDouble("navWidth", -1) > 0 &&
+                ui.optDouble("navHeight", -1) >= 36);
+        assertTrue("Bottom bar outside viewport: " + ui,
+                ui.optDouble("navBottom", 10000) <= height + 3);
+        assertTrue("Insets not measured: " + ui, ui.optBoolean("nativeInsetsReady", false));
     }
 
     @Test
     public void screenshotSafeAreaAndBottomNavigationArePresent() throws Exception {
-        String state = awaitWebViewState(
-            "(function(){var n=document.querySelector('[data-bottom-nav]');" +
-            "var shell=document.querySelector('[data-app-shell]');" +
-            "var content=document.querySelector('[data-app-content]');" +
-            "if(!n||!shell||!content)return 'NOT_READY';" +
-            "var nav=n.getBoundingClientRect(),body=content.getBoundingClientRect();" +
-            "if(nav.bottom>innerHeight+3||nav.width<=0)return 'NAV_OVERFLOW';" +
-            "var safe=parseFloat(getComputedStyle(document.documentElement)" +
-            ".getPropertyValue('--native-safe-top'))||0;" +
-            "if(body.top<safe-3)return 'STATUS_BAR_OVERLAP';" +
-            "if(!document.documentElement.dataset.novaInsetsReady)return 'NO_NATIVE_INSETS';" +
-            "return 'OK';})()"
-        );
-        String details = "\"OK\"".equals(state) ? "" : webViewDiagnostic();
-        assertEquals("Android API " + Build.VERSION.SDK_INT +
-                " window-safe-area test: " + details, "\"OK\"", state);
+        com.getcapacitor.JSObject ui = awaitNativeLayout();
+        assertTrue("Content overlaps Android status/cutout: " + ui,
+                ui.optDouble("contentTop", -100) >= ui.optDouble("safeTop", 10000) - 3);
+        assertTrue("Navigation outside screen: " + ui,
+                ui.optDouble("navBottom", 10000) <= ui.optDouble("viewportHeight", 0) + 3);
     }
 
-    /**
-     * A fixed bottom bar can fit the viewport while its actual tab hit
-     * targets still overlap Android's gesture strip or three-button region.
-     * Measure rendered CSS geometry, not a guessed navigation mode.
-     */
     @Test
     public void bottomNavigationHitTargetsStayAboveSystemControls() throws Exception {
-        String state = awaitWebViewState(
-            "(function(){var root=document.documentElement;" +
-            "var nav=document.querySelector('[data-bottom-nav]');" +
-            "if(!nav)return 'NOT_READY';" +
-            "var links=nav.querySelectorAll('a');" +
-            "if(links.length!==3)return 'MISSING_TABS';" +
-            "var b=nav.getBoundingClientRect();" +
-            "if(getComputedStyle(nav).display==='none')" +
-            "return 'TABS_HIDDEN_IME_'+(root.dataset.imeOpen||'unknown');" +
-            "var css=getComputedStyle(nav);" +
-            "var paddingBottom=parseFloat(css.paddingBottom)||0;" +
-            "var leftPadding=parseFloat(css.paddingLeft)||0;" +
-            "var rightPadding=parseFloat(css.paddingRight)||0;" +
-            "var minY=b.bottom-paddingBottom;" +
-            "if(links[0].tagName!=='A')return 'WRONG_LINK_ELEMENT';" +
-            "for(var i=0;i<links.length;i++){" +
-            "var r=links[i].getBoundingClientRect();" +
-            "if(r.width<=0||r.height<40)return 'TINY_TAB_'+i+" +
-            "'_'+Math.round(r.width)+'x'+Math.round(r.height);" +
-            "if(r.bottom>minY+3)return 'TAB_OVERLAPS_SYSTEM_BAR';" +
-            "if(r.left<b.left+leftPadding-3||r.right>b.right-rightPadding+3)" +
-            "return 'TAB_OVERLAPS_SIDE_CUTOUT';" +
-            "}" +
-            "if(b.bottom>innerHeight+3)return 'NAV_OUTSIDE_SCREEN';" +
-            "return 'OK';})()"
-        );
-        assertEquals("Android API " + Build.VERSION.SDK_INT +
-                " tab hit targets must stay above measured system bars",
-                "\"OK\"", state);
+        com.getcapacitor.JSObject ui = awaitNativeLayout();
+        assertFalse("Bottom tabs hidden by IME: " + ui, ui.optBoolean("imeOpen", true));
+        assertEquals("Require all 3 tabs: " + ui, 3, ui.optInt("links", -1));
+        assertTrue("Tab targets below 40px: " + ui,
+                ui.optDouble("minLinkHeight", 0) >= 40 &&
+                ui.optDouble("minLinkWidth", 0) > 0);
+        assertTrue("Tab overlaps system bar: " + ui,
+                ui.optDouble("maxLinkBottom", 10000) <=
+                ui.optDouble("navInnerBottom", -1000) + 3);
+        assertTrue("Tab overlaps side cutout: " + ui,
+                ui.optDouble("minLinkLeft", -1000) >= ui.optDouble("navInnerLeft", 1000) - 3 &&
+                ui.optDouble("maxLinkRight", 1000) <= ui.optDouble("navInnerRight", -1000) + 3);
     }
 
     @Test
