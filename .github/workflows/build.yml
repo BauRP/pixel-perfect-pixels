@@ -46,6 +46,12 @@ jobs:
       - name: Run automated unit tests
         run: bunx vitest run
 
+      - name: Verify screenshot evidence classifier across compact and wide screens
+        run: |
+          mkdir -p "$RUNNER_TEMP/nova-screenshot-checker"
+          javac -d "$RUNNER_TEMP/nova-screenshot-checker" scripts/ValidateScreenshot.java scripts/ValidateScreenshotSelfTest.java
+          java -cp "$RUNNER_TEMP/nova-screenshot-checker" ValidateScreenshotSelfTest
+
       - name: Build Web App for Android
         run: bun run build:capacitor
 

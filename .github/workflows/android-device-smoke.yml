@@ -42,6 +42,11 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - run: bun install
+      - name: Verify real-screen classifier before emulator launch
+        run: |
+          mkdir -p "$RUNNER_TEMP/nova-screenshot-checker"
+          javac -d "$RUNNER_TEMP/nova-screenshot-checker" scripts/ValidateScreenshot.java scripts/ValidateScreenshotSelfTest.java
+          java -cp "$RUNNER_TEMP/nova-screenshot-checker" ValidateScreenshotSelfTest
       - run: bun run build:capacitor
       - run: python3 scripts/check_legacy_webview.py
       - name: Build app and Android device tests
