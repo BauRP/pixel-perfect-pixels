@@ -185,6 +185,19 @@ function MeasuredAppFrame({ children }: { children: ReactNode }) {
       });
     };
     schedule();
+    // The child route may become available only after the persistent root
+    // frame was committed. Observe the direct route slot so async route
+    // completion promptly refreshes real geometry, without polling forever.
+    const routeSlot = document.querySelector("[data-app-content]")?.firstElementChild;
+    const routeObserver = new MutationObserver(schedule);
+    if (routeSlot) routeObserver.observe(routeSlot, { childList: true });
+    // Label changes due to locale or font scaling can alter tab dimensions.
+    const nav = document.querySelector("[data-bottom-nav]");
+    let navObserver: ResizeObserver | undefined;
+    if (nav && typeof ResizeObserver !== "undefined") {
+      navObserver = new ResizeObserver(schedule);
+      navObserver.observe(nav);
+    }
     document.addEventListener("nova-native-insets", schedule);
     window.addEventListener("resize", schedule);
     window.addEventListener("orientationchange", schedule);
@@ -194,6 +207,8 @@ function MeasuredAppFrame({ children }: { children: ReactNode }) {
       if (paintFallbackTimer !== undefined) clearTimeout(paintFallbackTimer);
       cancelAnimationFrame(firstFrame);
       cancelAnimationFrame(secondFrame);
+      routeObserver.disconnect();
+      navObserver?.disconnect();
       document.removeEventListener("nova-native-insets", schedule);
       window.removeEventListener("resize", schedule);
       window.removeEventListener("orientationchange", schedule);
