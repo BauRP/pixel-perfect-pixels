@@ -262,6 +262,18 @@ public class MainActivity extends BridgeActivity {
         attemptedLocalBootRecovery = true;
         Log.w("NovaGalleryBoot", "One-time blank gallery recovery: progress="
                 + progress + " url=" + url);
+        // On API 29/33 the page sometimes reaches 100% but never paints or
+        // sends a single React layout snapshot. Our earlier software-renderer
+        // retry lived only in verifyWindowPaint(), which is gated on
+        // galleryUiReady, so it was unreachable for precisely these failures.
+        // Switch the already-broken local boot to software once, but never
+        // change a valid UI, an incomplete network load or a user's media UI.
+        if (BootRecoveryPolicy.trySoftwareFallback(
+                progress, latestUiLayout != null, softwarePaintRetryAttempted)) {
+            softwarePaintRetryAttempted = true;
+            web.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+            Log.w("NovaGalleryBoot", "Startup software compositor fallback (no React geometry)");
+        }
         web.stopLoading();
         web.reload();
         // Only one automatic reload. If the renderer stays blank, native

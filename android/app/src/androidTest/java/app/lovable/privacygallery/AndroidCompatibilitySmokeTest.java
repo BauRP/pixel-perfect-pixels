@@ -60,6 +60,15 @@ public class AndroidCompatibilitySmokeTest {
     }
 
     @Test
+    public void softwareFallbackIsOnlyForUnresponsiveLocalStartup() {
+        assertTrue(BootRecoveryPolicy.trySoftwareFallback(100, false, false));
+        assertTrue(BootRecoveryPolicy.trySoftwareFallback(90, false, false));
+        assertFalse(BootRecoveryPolicy.trySoftwareFallback(89, false, false));
+        assertFalse(BootRecoveryPolicy.trySoftwareFallback(100, true, false));
+        assertFalse(BootRecoveryPolicy.trySoftwareFallback(100, false, true));
+    }
+
+    @Test
     public void compositorProbeRejectsSolidBlackAndWhiteWindows() {
         Bitmap bitmap = Bitmap.createBitmap(320, 600, Bitmap.Config.ARGB_8888);
         try {
