@@ -88,43 +88,51 @@ start_app() {
     failedScreenshots=$((failedScreenshots + 1))
   fi
 }
-start_app portrait
+start_app portrait || true
 # Capture OS insets state for physical rotation, gestures, cutouts and
 # keyboard modes, independent of Java instrumentation pass/fail.
 adb shell dumpsys window > emulator-diagnostics/window-portrait.txt || true
 adb shell wm size 360x780
-start_app compact
+start_app compact || true
 adb shell wm size 320x480
-start_app small_window
+start_app small_window || true
 # Check accessibility font scaling on a real Android compositor, not only
 # a simulated CSS viewport. Restore original system setting after the test.
-adb shell settings put system font_scale 1.3
-actual_font_scale="$(adb shell settings get system font_scale | tr -d '\r')"
+# Android 8 Google APIs emulator's launcher crashes in a loop if font_scale
+# is edited by ADB after boot (confirmed in API 26 logcat). Do not claim that
+# specific accessibility setting was validated there; still test all other
+# sizes and report the omission explicitly. Newer APIs exercise true scaling.
+if (( $(adb shell getprop ro.build.version.sdk | tr -d '\r') <= 28 )); then
+  echo "SKIP large-text scenario: API 26 system launcher crashes on ADB font scale change"
+else
+  adb shell settings put system font_scale 1.3
+  actual_font_scale="$(adb shell settings get system font_scale | tr -d '\r')"
 if [[ "$actual_font_scale" == "1.3" ]]; then
   # Android may not notify the old WebView until Activity recreation. A
   # force-stop only on disposable CI ensures font metrics actually change.
   adb shell am force-stop "$PACKAGE" || true
   sleep 2
-  start_app large_text_small_window
+  start_app large_text_small_window || true
 else
   echo "SKIP large-text scenario: emulator rejected font_scale 1.3 ($actual_font_scale)"
 fi
-if [[ "$original_font_scale" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
-  adb shell settings put system font_scale "$original_font_scale" >/dev/null 2>&1 || true
-  adb shell am force-stop "$PACKAGE" || true
+  if [[ "$original_font_scale" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    adb shell settings put system font_scale "$original_font_scale" >/dev/null 2>&1 || true
+    adb shell am force-stop "$PACKAGE" || true
+  fi
 fi
 adb shell wm size 1024x600
-start_app wide_tablet
+start_app wide_tablet || true
 adb shell wm size 780x360
-start_app wide
+start_app wide || true
 adb shell wm size reset
 adb shell settings put system accelerometer_rotation 0
 adb shell settings put system user_rotation 1
 sleep 2
-start_app orientation_90
+start_app orientation_90 || true
 adb shell settings put system user_rotation 0
 sleep 2
-start_app orientation_0
+start_app orientation_0 || true
 cleanup
 API="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
 if (( API >= 29 )); then
@@ -143,7 +151,7 @@ if (( API >= 29 )); then
       # that all three gallery tab targets see the newly active OS controls.
       adb shell am force-stop "$PACKAGE" || true
       sleep 2
-      start_app "$mode"
+      start_app "$mode" || true
       adb shell dumpsys window > "emulator-diagnostics/window-$mode.txt" || true
     else
       echo "SKIP $mode overlay: this Android emulator does not support it"

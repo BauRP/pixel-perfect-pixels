@@ -56,9 +56,14 @@ export function initSystemInsets(): void {
     // Include viewport dimensions when deciding whether to recompute.
     const key = values.join(":") + ":" + keyboard +
       ":" + window.innerWidth + ":" + window.innerHeight;
-    if (key === last) return;
-    last = key;
     const root = document.documentElement;
+    const ready = isMeasuredViewport(window.innerWidth, window.innerHeight)
+      ? "true" : "pending";
+    // A discarded early native snapshot may flip readiness to pending even
+    // if the physical bar dimensions are identical. Do NOT stop there:
+    // otherwise React never sees 'true' again and CI reports NO_REACT_SHELL.
+    if (key === last && root.dataset.novaInsetsReady === ready) return;
+    last = key;
     ["top", "bottom", "left", "right"].forEach((name, n) =>
       root.style.setProperty(`--native-safe-${name}`, `${values[n]}px`));
     // Chrome 69 cannot divide CSS custom-property lengths inside calc().
@@ -70,8 +75,7 @@ export function initSystemInsets(): void {
     // private data or user photo metadata is involved.
     // A zero-sized WebView can occur before its first real frame. Preserve
     // the native inset values but report that viewport validation is pending.
-    root.dataset.novaInsetsReady =
-      isMeasuredViewport(window.innerWidth, window.innerHeight) ? "true" : "pending";
+    root.dataset.novaInsetsReady = ready;
     document.dispatchEvent(new Event("nova-native-insets"));
   };
   const refresh = () => {

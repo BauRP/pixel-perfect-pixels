@@ -59,6 +59,8 @@ function useSystemStatusBar() {
     };
     // The theme class is applied in an effect; wait one frame so it is set.
     const frame = requestAnimationFrame(() => void sync());
+    // OS bar appearance is synchronized on theme mutations, not on every
+    // viewport measurement. This avoids a continuous native resize loop.
     const observer = new MutationObserver(() => void sync());
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
     return () => {
