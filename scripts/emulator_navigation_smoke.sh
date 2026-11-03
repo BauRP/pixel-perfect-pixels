@@ -16,6 +16,9 @@ adb shell pm path "$PACKAGE" | grep '^package:' >/dev/null
 original_rotation="$(adb shell settings get system user_rotation | tr -d '\r')"
 original_auto_rotate="$(adb shell settings get system accelerometer_rotation | tr -d '\r')"
 original_font_scale="$(adb shell settings get system font_scale | tr -d '\r')"
+original_wm_density="$(adb shell wm density | tail -1 | tr -d '\r')"
+original_wm_size="$(adb shell wm size | tail -1 | tr -d '\r')"
+echo "Original emulator display: $original_wm_size; $original_wm_density" | tee emulator-diagnostics/display-baseline.txt
 original_nav_overlay="$(adb shell cmd overlay list --user 0 2>/dev/null | grep -E '^\[x\] com.android.internal.systemui.navbar.' | head -1 | sed 's/^\[x\] //' || true)"
 cleanup() {
   adb shell wm size reset >/dev/null 2>&1 || true
@@ -92,10 +95,27 @@ start_app portrait || true
 # Capture OS insets state for physical rotation, gestures, cutouts and
 # keyboard modes, independent of Java instrumentation pass/fail.
 adb shell dumpsys window > emulator-diagnostics/window-portrait.txt || true
-adb shell wm size 360x780
-start_app compact || true
-adb shell wm size 320x480
-start_app small_window || true
+
+# IMPORTANT: 'wm size 320x480' sets PHYSICAL pixels, not Android dp.
+# The old smoke kept Pixel 2's ~420dpi, producing only 122-140 CSS pixels,
+# a width below three 48dp touch targets. It also repeatedly crashed the
+# emulator launcher and exhausted Chromium's graphics buffer. For actual
+# compact/wide window tests, change BOTH size and density so the WebView
+# receives the intended viewport in logical dp. The user's display is never
+# modified: this script only runs on disposable GitHub emulators and the
+# cleanup trap restores both settings.
+set_logical_viewport() {
+  local width="$1" height="$2" label="$3"
+  adb shell wm density 160
+  adb shell wm size "${width}x${height}"
+  sleep 2
+  echo "$label: requested ${width}x${height}dp at 160dpi" | tee -a emulator-diagnostics/layout-sizes.txt
+  adb shell wm density | tee -a emulator-diagnostics/layout-sizes.txt
+  adb shell wm size | tee -a emulator-diagnostics/layout-sizes.txt
+  start_app "$label" || true
+}
+set_logical_viewport 360 780 compact
+set_logical_viewport 320 480 small_window
 # Check accessibility font scaling on a real Android compositor, not only
 # a simulated CSS viewport. Restore original system setting after the test.
 # Android 8 Google APIs emulator's launcher crashes in a loop if font_scale
@@ -121,11 +141,14 @@ fi
     adb shell am force-stop "$PACKAGE" || true
   fi
 fi
-adb shell wm size 1024x600
-start_app wide_tablet || true
-adb shell wm size 780x360
-start_app wide || true
+set_logical_viewport 1024 600 wide_tablet
+set_logical_viewport 780 360 wide
+# Restore native device DPI before rotation/navigation testing. Those tests
+# must measure genuine OS status and gesture-bar dimensions, not 160dpi.
 adb shell wm size reset
+adb shell wm density reset
+sleep 2
+start_app restored_native_density || true
 adb shell settings put system accelerometer_rotation 0
 adb shell settings put system user_rotation 1
 sleep 2
