@@ -30,4 +30,16 @@ if "System.import" in html or "$tsr" in html or "window.__TSR" in html:
     raise SystemExit("TanStack server hydrate stream leaked into Android APK")
 if "https://fonts.googleapis.com" in html:
     raise SystemExit("Android runtime must not fetch external fonts")
-print("OK: standalone Android SPA, local polyfills, one module entry, no SSR.")
+# This is not a TanStack Start hydrated document. Guard against accidentally
+# reintroducing <html> inside the Vite createRoot('#root') Android entry.
+native_route=Path("src/routes/__root.tsx").read_text("utf8")
+if 'shellComponent: import.meta.env.VITE_CAPACITOR_BUILD === "1"' not in native_route:
+    raise SystemExit("Android client must not render the web <html> shell inside #root")
+if 'NativeStandaloneShell : RootShell' not in native_route:
+    raise SystemExit("Web SSR and native SPA shells must remain separate")
+if 'hydrated ? <Outlet /> : null' in native_route:
+    raise SystemExit("Artificial Android hydration gate can block the real SPA")
+entry_source=Path("src/android-client.tsx").read_text("utf8")
+if 'createRoot(mount).render(' not in entry_source:
+    raise SystemExit("Standalone Android build must mount via createRoot")
+print("OK: standalone Android SPA, native document shell, local polyfills, one module entry, no SSR.")

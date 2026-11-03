@@ -110,6 +110,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         imeOpen: root.dataset.imeOpen === "true",
       };
       const layoutIssue = assessGalleryLayout(values);
+      if (layoutIssue === "OK") {
+        root.dataset.novaBootPhase = "gallery-layout-ready";
+      }
       signalGalleryUiReady({ ...values, layoutIssue });
       // Some OEMs dispatch their first inset measurement after the first
       // painted React frame. Retry a bounded snapshot without spinning.

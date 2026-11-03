@@ -7,7 +7,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -100,7 +100,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       // fallbacks are used without blocking on Google's remote font CSS.
     ],
   }),
-  shellComponent: RootShell,
+  shellComponent: import.meta.env.VITE_CAPACITOR_BUILD === "1"
+    ? NativeStandaloneShell : RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,
   errorComponent: ErrorComponent,
@@ -169,6 +170,16 @@ const BOOTSTRAP_ERROR_HANDLER = `
 })();
 `;
 
+/**
+ * TanStack Start owns <html>/<head>/<body> ONLY on the web SSR server.
+ * Capacitor is built as a standalone index.html and mounted with createRoot()
+ * into #root. Rendering another <html> inside #root is invalid DOM nesting
+ * and prevents the route tree from mounting reliably on older WebViews.
+ */
+function NativeStandaloneShell({ children }: { children: ReactNode }) {
+  return <>{children}</>;
+}
+
 function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="en" dir="ltr">
@@ -188,31 +199,10 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
-  // Capacitor-only client-render gate.
-  //
-  // The Capacitor build runs a Vite/TanStack SPA prerender in Node that
-  // produces `dist/client/index.html` with a fully rendered React tree.
-  // Inside the Android WebView we then hydrate that same tree, but many
-  // things legitimately differ between prerender-time and runtime:
-  //   - `useT()` reads the saved language from `localStorage`
-  //   - `Capacitor.isNativePlatform()` is false during prerender, true in-app
-  //   - persisted stores (vault, sort prefs, photo flags) rehydrate from
-  //     `localStorage`
-  //   - the router history switches from browser → hash on native
-  // Any of these causes React error #418 "Hydration failed" on startup.
-  //
-  // Fix: in Capacitor builds, both the prerender and the first client render
-  // return `null` for the app subtree, so the hydration diff is empty. Once
-  // `useEffect` fires (client only), we flip `hydrated` and render the real
-  // <Outlet />. This turns the Capacitor bundle into a pure client-rendered
-  // SPA without affecting the web/SSR build (where VITE_CAPACITOR_BUILD is
-  // empty and the app renders synchronously with full SSR/SEO).
-  const isCapacitor = import.meta.env.VITE_CAPACITOR_BUILD === "1";
-  const [hydrated, setHydrated] = useState(!isCapacitor);
-  useEffect(() => {
-    if (isCapacitor) setHydrated(true);
-  }, [isCapacitor]);
-
+  // The Android Vite entry uses createRoot(), not hydrateRoot(). Unlike
+  // TanStack Start SSR on the website, the native shell has no server tree
+  // to reconcile. Delaying <Outlet /> behind an artificial hydration gate
+  // can leave older Chromium versions on an empty window indefinitely.
   // Single global hardware back-button listener (Android/Capacitor).
   useEffect(() => {
     initSystemInsets();
@@ -222,7 +212,7 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      {hydrated ? <Outlet /> : null}
+      <Outlet />
     </QueryClientProvider>
   );
 }
