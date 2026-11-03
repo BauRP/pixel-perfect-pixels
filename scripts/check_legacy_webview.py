@@ -47,4 +47,8 @@ if "defaultPendingComponent: NativeRoutePending" not in router_source:
 entry_source=Path("src/android-client.tsx").read_text("utf8")
 if 'createRoot(mount).render(' not in entry_source:
     raise SystemExit("Standalone Android build must mount via createRoot")
+if 'NativeStartupBoundary' not in entry_source:
+    raise SystemExit("Android must have a React-level recovery boundary")
+if 'react-root-committed' not in entry_source:
+    raise SystemExit("Android must distinguish React commit from first paint")
 print("OK: standalone Android SPA, native document shell, local polyfills, one module entry, no SSR.")
