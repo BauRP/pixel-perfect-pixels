@@ -59,6 +59,8 @@ if 'NativeStartupBoundary' not in entry_source:
     raise SystemExit("Android must have a React-level recovery boundary")
 if 'NativeRouterBootMonitor' not in entry_source or 'router.load().then' not in entry_source:
     raise SystemExit("Native startup must track initial router resolution and display a pending route fallback")
+if 'nativeStartupState' not in entry_source or 'data-nova-boot-phase' not in entry_source:
+    raise SystemExit("Do not certify Android route before measured native layout is ready")
 if 'react-root-committed' not in entry_source:
     raise SystemExit("Android must distinguish React commit from first paint")
 shell_source=Path("src/components/AppShell.tsx").read_text("utf8")

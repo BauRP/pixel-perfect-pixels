@@ -25,6 +25,9 @@ def classify(log: str, result: str, foreground: str) -> dict:
         "react_root_committed": "[NovaBoot] react-root-committed",
         "router_timeout": "[NovaBoot] router-route-timeout",
         "route_visible": "[NovaBoot] route-visible",
+        "route_without_safe_layout": "[NovaBoot] state-waiting-for-layout",
+        "route_without_shell": "[NovaBoot] state-waiting-for-shell",
+        "route_not_rendered": "[NovaBoot] state-waiting-for-route",
         "layout_ready": "React navigation evidence: OK",
         "react_mounted": "React gallery UI mounted",
         "first_frame": "First gallery compositor frame confirmed",
@@ -36,6 +39,10 @@ def classify(log: str, result: str, foreground: str) -> dict:
         diagnosis = "ROUTER_LOAD_REJECTED"
     elif app_crashes:
         diagnosis = "GALLERY_PROCESS_CRASH"
+    elif phases["route_without_shell"] and not phases["react_mounted"]:
+        diagnosis = "ROUTE_WITHOUT_PERSISTENT_ANDROID_SHELL"
+    elif phases["route_without_safe_layout"] and not phases["react_mounted"]:
+        diagnosis = "ROUTE_MOUNTED_BUT_NATIVE_LAYOUT_UNVERIFIED"
     elif phases["react_root_committed"] and not phases["route_visible"]:
         diagnosis = "ROUTE_NOT_VISIBLE_AFTER_REACT_COMMIT"
     elif phases["react_mounted"] and not phases["first_frame"]:

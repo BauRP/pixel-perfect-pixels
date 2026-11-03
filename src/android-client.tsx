@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from "react";
 import { RouterProvider } from "@tanstack/react-router";
 import { getRouter } from "./router";
+import { nativeStartupState } from "./lib/native-startup-state";
 
 // A lightweight phase marker lets native regression reports identify where
 // startup stalled. It contains no photo, account, or other user information.
@@ -74,13 +75,23 @@ function NativeRouterBootMonitor() {
   const [status, setStatus] = useState<"quiet" | "loading" | "recovery" | "ready">("quiet");
   useEffect(() => {
     let alive = true;
-    const ready = () =>
-      !!document.querySelector("[data-nova-route-content]") &&
-      !!document.querySelector("[data-bottom-nav]") ||
-      !!document.querySelector("[data-nova-privacy-screen]") ||
-      !!document.querySelector("[data-nova-react-recovery]");
+    let lastReason = "";
+    const inspect = () => nativeStartupState({
+      isPrivacy: !!document.querySelector("[data-nova-privacy-screen]"),
+      isErrorRecovery: !!document.querySelector("[data-nova-react-recovery]"),
+      hasGalleryContent: !!document.querySelector("[data-nova-route-content]"),
+      hasShell: !!document.querySelector("[data-app-shell]"),
+      hasBottomTabs: !!document.querySelector("[data-bottom-nav]"),
+      layoutPhase: document.documentElement.dataset.novaBootPhase ?? "",
+    });
     const check = () => {
-      if (!alive || !ready()) return;
+      if (!alive) return;
+      const state = inspect();
+      if (state !== lastReason) {
+        console.info("[NovaBoot] state-" + state);
+        lastReason = state;
+      }
+      if (state !== "ready" && state !== "error-recovery") return;
       boot("route-visible");
       setStatus("ready");
       observer.disconnect();
@@ -90,11 +101,21 @@ function NativeRouterBootMonitor() {
     const observer = new MutationObserver(check);
     const mount = document.getElementById("root");
     if (mount) observer.observe(mount, { childList: true, subtree: true });
+    // AppShell sets this marker after Android geometry and tabs are verified.
+    // The marker is not a DOM child mutation, so listen explicitly as well.
+    const rootObserver = new MutationObserver(check);
+    rootObserver.observe(document.documentElement, {
+      attributes: true, attributeFilter: ["data-nova-boot-phase"],
+    });
     const showLoading = setTimeout(() => {
-      if (alive && !ready()) setStatus("loading");
+      if (alive && inspect() !== "ready" && inspect() !== "error-recovery")
+        setStatus("loading");
     }, 1800);
     const showRecovery = setTimeout(() => {
-      if (alive && !ready()) {
+      if (alive && inspect() !== "ready" && inspect() !== "error-recovery") {
+        // Route may exist but be unusable: never stamp the route as ready
+        // just because a detached/tab-less tree was created.
+        console.warn("[NovaBoot] startup-timeout=" + inspect());
         boot("router-route-timeout");
         setStatus("recovery");
       }
@@ -103,6 +124,7 @@ function NativeRouterBootMonitor() {
     return () => {
       alive = false;
       observer.disconnect();
+      rootObserver.disconnect();
       clearTimeout(showLoading);
       clearTimeout(showRecovery);
     };
