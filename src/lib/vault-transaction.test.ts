@@ -37,8 +37,11 @@ describe("Safe metadata corruption protection", () => {
   it("refuses malformed metadata rather than overwriting the Safe index", async () => {
     const { parseVaultMetadata } = await import("./vault-transaction");
     const defaults = { folders: [] as unknown[], unlocked: false };
-    for(const raw of ["{", "null", "[]", '{"folders":{}}',
-      '{"folders":[{"id":"a","files":"broken"}]}', '{"crypto":"broken"}']) {
+    for(const raw of ["{", "null", "[]", "{}", '{"theme":"light"}',
+      '{"folders":{}}', '{"folders":[{"id":"a","files":"broken"}]}',
+      '{"folders":[{"files":[]}]}',
+      '{"folders":[{"id":"a","files":[]},{"id":"a","files":[]}]}',
+      '{"crypto":"broken"}']) {
       expect(() => parseVaultMetadata(raw, defaults)).toThrow();
     }
   });

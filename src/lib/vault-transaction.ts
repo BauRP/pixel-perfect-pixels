@@ -21,12 +21,22 @@ export function parseVaultMetadata<T extends { folders: unknown[]; unlocked: boo
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
     throw new Error("Invalid Safe metadata");
   const fields = parsed as Record<string, unknown>;
-  if ("folders" in fields && !Array.isArray(fields.folders))
-    throw new Error("Invalid Safe folder index");
-  if (Array.isArray(fields.folders) &&
-      fields.folders.some(f => typeof f !== "object" || f === null ||
-        !Array.isArray((f as { files?: unknown }).files)))
+  // Every persisted Safe record produced by this app contains a folders
+  // array, including an intentionally empty Safe. A truncated but valid JSON
+  // object ("{}" or only theme preferences) is NOT evidence that existing
+  // encrypted files were removed. Refuse writes instead of replacing the
+  // missing index with an empty one from the defaults.
+  if (!Array.isArray(fields.folders))
+    throw new Error("Missing or invalid Safe folder index");
+  if (fields.folders.some(f =>
+      typeof f !== "object" || f === null || Array.isArray(f) ||
+      typeof (f as { id?: unknown }).id !== "string" ||
+      !(f as { id: string }).id ||
+      !Array.isArray((f as { files?: unknown }).files)))
     throw new Error("Invalid Safe folder contents");
+  const folderIds = fields.folders.map(f => (f as { id: string }).id);
+  if (new Set(folderIds).size !== folderIds.length)
+    throw new Error("Duplicate Safe folder identifiers");
   if (fields.crypto !== undefined && fields.crypto !== null &&
       (typeof fields.crypto !== "object" || Array.isArray(fields.crypto)))
     throw new Error("Invalid Safe crypto metadata");

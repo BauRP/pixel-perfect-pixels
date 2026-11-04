@@ -97,6 +97,13 @@ function MeasuredAppFrame({ children }: { children: ReactNode }) {
     let pendingRetry: ReturnType<typeof setTimeout> | undefined;
     let insetRetryCount = 0;
     let lastReportedIssue = "";
+    // Independently timed geometry reports cannot be starved by resize,
+    // mutation or inset events. On older WebViews those events can arrive
+    // faster than requestAnimationFrame (and reset the debounced timer).
+    // Stop after a bounded number of checks or immediately on a safe layout.
+    let watchdog: ReturnType<typeof setInterval> | undefined;
+    let watchdogChecks = 0;
+    const MAX_WATCHDOG_CHECKS = 30;
     const MAX_INSET_RETRIES = 8;
     const report = () => {
       const shell = document.querySelector("[data-app-shell]");
@@ -140,6 +147,10 @@ function MeasuredAppFrame({ children }: { children: ReactNode }) {
           : assessGalleryLayout(values);
       if (layoutIssue === "OK") {
         root.dataset.novaBootPhase = "gallery-layout-ready";
+        if (watchdog !== undefined) {
+          clearInterval(watchdog);
+          watchdog = undefined;
+        }
       } else if (layoutIssue !== lastReportedIssue) {
         // Log once per distinct problem. No photos, IDs, paths or secrets.
         console.warn("[NovaLayout] " + layoutIssue +
@@ -162,6 +173,20 @@ function MeasuredAppFrame({ children }: { children: ReactNode }) {
       }
     };
     const schedule = () => {
+      // Do not postpone this timer when the nav keeps resizing, even if
+      // requestAnimationFrame is suspended by the WebView compositor.
+      if (watchdog === undefined) {
+        watchdogChecks = 0;
+        watchdog = setInterval(() => {
+          if (document.visibilityState === "hidden") return;
+          report();
+          watchdogChecks++;
+          if (watchdogChecks >= MAX_WATCHDOG_CHECKS && watchdog !== undefined) {
+            clearInterval(watchdog);
+            watchdog = undefined;
+          }
+        }, 1500);
+      }
       if (pendingRetry !== undefined) clearTimeout(pendingRetry);
       cancelAnimationFrame(firstFrame);
       cancelAnimationFrame(secondFrame);
@@ -203,6 +228,7 @@ function MeasuredAppFrame({ children }: { children: ReactNode }) {
     window.addEventListener("orientationchange", schedule);
     window.addEventListener("focus", schedule);
     return () => {
+      if (watchdog !== undefined) clearInterval(watchdog);
       if (pendingRetry !== undefined) clearTimeout(pendingRetry);
       if (paintFallbackTimer !== undefined) clearTimeout(paintFallbackTimer);
       cancelAnimationFrame(firstFrame);
