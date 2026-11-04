@@ -24,3 +24,22 @@ describe("encrypted Safe metadata transactions", () => {
     expect(persist).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("Safe metadata corruption protection", () => {
+  it("preserves a legacy optional-field record without restoring unlocked state", async () => {
+    const { parseVaultMetadata } = await import("./vault-transaction");
+    const defaults = { folders: [] as {id:string; files:unknown[]}[], unlocked: false, theme: "dark" };
+    const value = parseVaultMetadata('{"folders":[{"id":"a","files":[]}],"unlocked":true}', defaults);
+    expect(value.folders).toHaveLength(1);
+    expect(value.unlocked).toBe(false);
+    expect(value.theme).toBe("dark");
+  });
+  it("refuses malformed metadata rather than overwriting the Safe index", async () => {
+    const { parseVaultMetadata } = await import("./vault-transaction");
+    const defaults = { folders: [] as unknown[], unlocked: false };
+    for(const raw of ["{", "null", "[]", '{"folders":{}}',
+      '{"folders":[{"id":"a","files":"broken"}]}', '{"crypto":"broken"}']) {
+      expect(() => parseVaultMetadata(raw, defaults)).toThrow();
+    }
+  });
+});

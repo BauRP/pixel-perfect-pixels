@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { commitStateAfterPersistence } from "./vault-transaction";
+import { commitStateAfterPersistence, parseVaultMetadata } from "./vault-transaction";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { isNative, ensurePrivateVaultDir } from "./native-vault";
 import {
@@ -72,6 +72,8 @@ const DEFAULT: State = {
 
 let state: State = DEFAULT;
 let hydrated = false;
+// Preserve any unreadable encrypted Safe index instead of overwriting it.
+let hydrationError: Error | null = null;
 let listeners: (() => void)[] = [];
 
 // Unwrapped AES-GCM file key — RAM only, never persisted, wiped on lock().
@@ -88,14 +90,18 @@ function hydrate() {
   hydrated = true;
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) state = { ...DEFAULT, ...JSON.parse(raw), unlocked: false };
-  } catch {}
+    if (raw) state = parseVaultMetadata(raw, DEFAULT);
+  } catch {
+    // No raw metadata or private filenames in the diagnostic message.
+    hydrationError = new Error("Safe metadata could not be read; changes are blocked to protect your files");
+  }
 }
 function emit() { listeners.forEach((l) => l()); }
 function set(mut: (s: State) => State) {
   // Always load existing metadata even when the first action happens
   // before any React component subscribes to the store.
   hydrate();
+  if (hydrationError) throw hydrationError;
   // An Android WebView can reject localStorage writes (quota, I/O, browser
   // profile trouble). Never publish a mutation unless its metadata was
   // durably persisted. Otherwise deletion can erase ciphertext while the
@@ -207,6 +213,7 @@ export const vault = {
   ): Promise<void> => {
     hydrate();
     const importKey = liveFileKey;
+    if (hydrationError) throw hydrationError;
     if (!importKey) throw new Error("Vault is locked");
     if (!state.folders.some((f) => f.id === folderId))
       throw new Error("Vault folder no longer exists");
