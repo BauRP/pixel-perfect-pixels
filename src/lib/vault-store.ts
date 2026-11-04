@@ -103,6 +103,13 @@ function set(mut: (s: State) => State) {
   state = commitStateAfterPersistence(state, mut, persist);
   emit();
 }
+function setTransient(mut: (s: State) => State) {
+  // Only the unlocked flag is changed. It is deliberately NEVER saved
+  // to disk; locking must work even when localStorage is unavailable.
+  hydrate();
+  state = mut(state);
+  emit();
+}
 
 export function useVault<T>(sel: (s: State) => T): T {
   return useSyncExternalStore(
@@ -199,7 +206,8 @@ export const vault = {
     meta?: { origPath?: string }[],
   ): Promise<void> => {
     hydrate();
-    if (!liveFileKey) throw new Error("Vault is locked");
+    const importKey = liveFileKey;
+    if (!importKey) throw new Error("Vault is locked");
     if (!state.folders.some((f) => f.id === folderId))
       throw new Error("Vault folder no longer exists");
     if (isNative()) await ensureNativeVaultDir(folderId);
@@ -209,7 +217,7 @@ export const vault = {
       for (let i = 0; i < files.length; i++) {
       const f = files[i];
       const buf = await f.arrayBuffer();
-      const { iv, cipher } = await encryptBytes(buf, liveFileKey);
+      const { iv, cipher } = await encryptBytes(buf, importKey);
       const id = crypto.randomUUID();
       let blobPath: string | undefined;
       let inlineCipher: string | undefined = cipher;
@@ -233,6 +241,10 @@ export const vault = {
         ...(meta?.[i]?.origPath ? { origPath: meta[i]!.origPath } : {}),
       });
       }
+      // Import may outlive a screen lock or password reset. Never commit
+      // ciphertext from an operation that started with another RAM key.
+      if (liveFileKey !== importKey || !state.unlocked)
+        throw new Error("Vault was locked during import");
       // Folder deletion may have happened while we were encrypting or
       // awaiting the native filesystem. Do not orphan encrypted blobs.
       if (!state.folders.some((f) => f.id === folderId))
@@ -251,6 +263,7 @@ export const vault = {
     }
   },
   deleteFile: (folderId: string, fileId: string) => {
+    hydrate();
     const target = state.folders
       .find((f) => f.id === folderId)?.files.find((x) => x.id === fileId);
     if (!target) return;
@@ -278,8 +291,16 @@ export const vault = {
     hydrate();
     if (state.crypto) throw new Error("Password already set — use changePassword");
     const { secrets, fileKey } = await initVaultSecrets(password);
+    // If the new verifier/wrapped key cannot be persisted, do not leave
+    // the Safe "unlocked" with an unpersisted password setup.
+    const previousKey = liveFileKey;
     liveFileKey = fileKey;
-    set((s) => ({ ...s, crypto: secrets, unlocked: true }));
+    try {
+      set((s) => ({ ...s, crypto: secrets, unlocked: true }));
+    } catch (error) {
+      liveFileKey = previousKey;
+      throw error;
+    }
   },
   /** Change password — re-wraps the file key without re-encrypting files. */
   changePassword: async (oldPassword: string, newPassword: string): Promise<boolean> => {
@@ -297,13 +318,20 @@ export const vault = {
     const key = await unlockVault(password, state.crypto);
     if (!key) return false;
     liveFileKey = key;
-    set((s) => ({ ...s, unlocked: true }));
+    setTransient((s) => ({ ...s, unlocked: true }));
     return true;
   },
   /** Sync check — true when the in-memory file key is available. */
   isUnlocked: (): boolean => liveFileKey !== null && state.unlocked,
-  unlock: () => set((s) => ({ ...s, unlocked: true })),
-  lock: () => { liveFileKey = null; set((s) => ({ ...s, unlocked: false })); },
+  unlock: () => {
+    // Never resurrect unlock state when the encryption key is absent.
+    if (liveFileKey) setTransient((s) => ({ ...s, unlocked: true }));
+  },
+  lock: () => {
+    // Locking clears the only RAM key without requiring a disk write.
+    liveFileKey = null;
+    setTransient((s) => ({ ...s, unlocked: false }));
+  },
 
   // ── preferences ────────────────────────────────────────────
   setBiometrics: (b: boolean) => set((s) => ({ ...s, biometricsEnabled: b })),
