@@ -7,9 +7,22 @@
   <title>Nova Gallery</title>
   <script data-nova-boot-error="1">
   (function () {
+    function hasLiveGallery() {
+      var root = document.documentElement;
+      // The native bridge separately validates the actual tappable tabs.
+      // Avoid adding a fatal overlay when React has already rendered a
+      // route, even if Android system insets are temporarily pending.
+      return !!document.querySelector('[data-nova-route-content]') ||
+        !!document.querySelector('[data-nova-privacy-screen]') ||
+        !!document.querySelector('[data-nova-react-recovery]') ||
+        (root && root.dataset.novaBootPhase === 'gallery-layout-ready');
+    }
     function show(message) {
       var node = document.getElementById('root');
-      if (!node || document.querySelector('[data-nova-error]')) return;
+      // The startup handler is only for startup failures. On some older
+      // WebViews a later ad/permission error triggered it and obscured a
+      // usable gallery, which looked like a black-screen app regression.
+      if (!node || hasLiveGallery() || document.querySelector('[data-nova-error]')) return;
       var el = document.createElement('div');
       el.setAttribute('data-nova-error','1');
       el.style.cssText='padding:48px 20px;min-height:55vh;background:#101116;color:white;font:16px sans-serif;text-align:center';
@@ -22,15 +35,23 @@
       el.appendChild(retry);
       node.appendChild(el);
     }
-    window.addEventListener('error',function (e) {show(e.message || e.error && e.error.message);});
-    window.addEventListener('unhandledrejection',function (e) {show(e.reason && e.reason.message);});
+    window.addEventListener('error',function (e) {
+      // A resource loading error has no e.message. Do not turn a failed
+      // thumbnail or optional native advertisement into a fatal app error.
+      if (e && e.message) show(e.message);
+    });
+    window.addEventListener('unhandledrejection',function (e) {
+      // Async failures after the React route starts are owned by the
+      // component/plugin error boundaries, not the boot safety fallback.
+      if (!hasLiveGallery()) show(e && e.reason && e.reason.message);
+    });
     // Some WebViews stall silently during boot without throwing an exception.
     // Do not leave the user with a permanently blank screen.
     // Arm from parser execution, not window.load. Some old Android WebViews
     // wait forever for a module import and never dispatch load at all.
     // Users must see a retry action rather than a black, noninteractive UI.
     setTimeout(function(){
-      if(!document.querySelector('[data-bottom-nav]') &&
+      if(!hasLiveGallery() &&
          !document.querySelector('[data-nova-error]')){
         show('The gallery did not finish loading.');
       }

@@ -30,6 +30,10 @@ if "System.import" in html or "$tsr" in html or "window.__TSR" in html:
     raise SystemExit("TanStack server hydrate stream leaked into Android APK")
 if "https://fonts.googleapis.com" in html:
     raise SystemExit("Android runtime must not fetch external fonts")
+if "hasLiveGallery()" not in html or "if (!node || hasLiveGallery()" not in html:
+    raise SystemExit("Android startup handler must not cover a running gallery")
+if "if (e && e.message)" not in html:
+    raise SystemExit("Resource-loading errors must not be treated as fatal boot errors")
 # This is not a TanStack Start hydrated document. Guard against accidentally
 # reintroducing <html> inside the Vite createRoot('#root') Android entry.
 native_route=Path("src/routes/__root.tsx").read_text("utf8")
