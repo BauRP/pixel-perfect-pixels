@@ -35,3 +35,11 @@ describe("Native boot overlay must not hide an already visible gallery", () => {
     expect(shouldShow("error-recovery")).toBe(false);
   });
 });
+
+describe("Native boot monitor loading overlay transitions", () => {
+  it("releases the loading overlay while OS insets measurements settle", async () => {
+    const { shouldShowBlockingBootOverlay } = await import("./native-startup-state");
+    const timeline = ["waiting-for-route", "waiting-for-shell", "waiting-for-layout", "ready"] as const;
+    expect(timeline.map(shouldShowBlockingBootOverlay)).toEqual([true, true, false, false]);
+  });
+});

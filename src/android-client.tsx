@@ -99,6 +99,14 @@ function NativeRouterBootMonitor() {
         console.info("[NovaBoot] state-" + state);
         lastReason = state;
       }
+      // If the loading overlay appeared before the async child route, remove
+      // it as soon as there is a real gallery shell, even if native
+      // WindowInsets are still pending. Otherwise the overlay stays opaque
+      // and the OS compositor check reports a black screen.
+      if (state === "waiting-for-layout") {
+        setStatus("quiet");
+        return;
+      }
       if (state !== "ready" && state !== "error-recovery") return;
       // Preserve AppShell's authoritative "gallery-layout-ready" marker:
       // overwriting it with "route-visible" made later health checks regress.
