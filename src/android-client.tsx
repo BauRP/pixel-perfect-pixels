@@ -7,7 +7,7 @@ import { flushSync } from "react-dom";
 import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from "react";
 import { RouterProvider } from "@tanstack/react-router";
 import { getRouter } from "./router";
-import { nativeStartupState } from "./lib/native-startup-state";
+import { nativeStartupState, shouldShowBlockingBootOverlay } from "./lib/native-startup-state";
 
 // A lightweight phase marker lets native regression reports identify where
 // startup stalled. It contains no photo, account, or other user information.
@@ -77,6 +77,7 @@ function NativeRouterBootMonitor() {
   useEffect(() => {
     let alive = true;
     let lastReason = "";
+    let routeReported = false;
     const inspect = () => nativeStartupState({
       isPrivacy: !!document.querySelector("[data-nova-privacy-screen]"),
       isErrorRecovery: !!document.querySelector("[data-nova-react-recovery]"),
@@ -88,14 +89,23 @@ function NativeRouterBootMonitor() {
     const check = () => {
       if (!alive) return;
       const state = inspect();
+      // A route-loading Promise is not proof that any UI is painted.
+      // Report true route completion only when its React DOM is present.
+      if (!routeReported && document.querySelector("[data-nova-route-content]")) {
+        routeReported = true;
+        console.info("[NovaBoot] router-load-resolved");
+      }
       if (state !== lastReason) {
         console.info("[NovaBoot] state-" + state);
         lastReason = state;
       }
       if (state !== "ready" && state !== "error-recovery") return;
-      boot("route-visible");
+      // Preserve AppShell's authoritative "gallery-layout-ready" marker:
+      // overwriting it with "route-visible" made later health checks regress.
+      console.info("[NovaBoot] route-visible");
       setStatus("ready");
       observer.disconnect();
+      rootObserver.disconnect();
       clearTimeout(showLoading);
       clearTimeout(showRecovery);
     };
@@ -109,13 +119,11 @@ function NativeRouterBootMonitor() {
       attributes: true, attributeFilter: ["data-nova-boot-phase"],
     });
     const showLoading = setTimeout(() => {
-      if (alive && inspect() !== "ready" && inspect() !== "error-recovery")
+      if (alive && shouldShowBlockingBootOverlay(inspect()))
         setStatus("loading");
     }, 1800);
     const showRecovery = setTimeout(() => {
-      if (alive && inspect() !== "ready" && inspect() !== "error-recovery") {
-        // Route may exist but be unusable: never stamp the route as ready
-        // just because a detached/tab-less tree was created.
+      if (alive && shouldShowBlockingBootOverlay(inspect())) {
         console.warn("[NovaBoot] startup-timeout=" + inspect());
         boot("router-route-timeout");
         setStatus("recovery");
@@ -160,10 +168,9 @@ try {
   if (!mount) throw new Error("Nova Android: #root is missing");
   const router = getRouter();
   boot("router-created");
-  // This exposes a separate, deterministic route-load phase in the emulator
-  // logs. The previous build recorded root-committed but never child route.
-  void router.load().then(() => boot("router-load-resolved"))
-    .catch(() => boot("router-load-rejected"));
+  // RouterProvider owns initial navigation. Calling router.load() here
+  // concurrently caused "route resolved" reports with no child route on
+  // old Android WebViews. The monitor reports actual DOM commits instead.
   boot("react-render-scheduled");
   // AOSP API 29/33 logs reveal that asynchronous router.load() resolves
   // and a sibling commit marker mounts while RouterProvider never paints

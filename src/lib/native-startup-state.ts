@@ -22,3 +22,12 @@ export function nativeStartupState(snapshot: StartupSnapshot):
   if (snapshot.layoutPhase !== "gallery-layout-ready") return "waiting-for-layout";
   return "ready";
 }
+
+/** Do not obscure a live gallery merely because the OS has not yet
+ * delivered its first insets snapshot. Native watchdog tests geometry
+ * independently; the full-screen recovery is reserved for a missing route. */
+export function shouldShowBlockingBootOverlay(
+  state: ReturnType<typeof nativeStartupState>,
+): boolean {
+  return state === "waiting-for-route" || state === "waiting-for-shell";
+}

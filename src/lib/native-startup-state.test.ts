@@ -24,3 +24,14 @@ describe("Android offline startup readiness", () => {
       layoutPhase: "" })).toBe("error-recovery");
   });
 });
+
+describe("Native boot overlay must not hide an already visible gallery", () => {
+  it("blocks only when the route or shell is missing", async () => {
+    const { shouldShowBlockingBootOverlay: shouldShow } = await import("./native-startup-state");
+    expect(shouldShow("waiting-for-route")).toBe(true);
+    expect(shouldShow("waiting-for-shell")).toBe(true);
+    expect(shouldShow("waiting-for-layout")).toBe(false);
+    expect(shouldShow("ready")).toBe(false);
+    expect(shouldShow("error-recovery")).toBe(false);
+  });
+});

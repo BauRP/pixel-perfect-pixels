@@ -59,9 +59,11 @@ if 'NativeStartupBoundary' not in entry_source:
     raise SystemExit("Android must have a React-level recovery boundary")
 if 'flushSync(() =>' not in entry_source:
     raise SystemExit("Android first React commit must be synchronous on legacy WebViews")
-if 'NativeRouterBootMonitor' not in entry_source or 'router.load().then' not in entry_source:
-    raise SystemExit("Native startup must track initial router resolution and display a pending route fallback")
-if 'nativeStartupState' not in entry_source or 'data-nova-boot-phase' not in entry_source:
+if 'NativeRouterBootMonitor' not in entry_source:
+    raise SystemExit("Android must provide an offline pending route fallback")
+if 'void router.load().then' in entry_source:
+    raise SystemExit("RouterProvider must exclusively own initial route load")
+if 'nativeStartupState' not in entry_source or 'data-nova-boot-phase' not in entry_source or 'shouldShowBlockingBootOverlay' not in entry_source:
     raise SystemExit("Do not certify Android route before measured native layout is ready")
 if 'react-root-committed' not in entry_source:
     raise SystemExit("Android must distinguish React commit from first paint")
