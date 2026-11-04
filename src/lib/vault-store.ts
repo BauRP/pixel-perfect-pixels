@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { commitStateAfterPersistence } from "./vault-transaction";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { isNative, ensurePrivateVaultDir } from "./native-vault";
 import {
@@ -76,9 +77,9 @@ let listeners: (() => void)[] = [];
 // Unwrapped AES-GCM file key — RAM only, never persisted, wiped on lock().
 let liveFileKey: CryptoKey | null = null;
 
-function persist() {
+function persist(next: State) {
   if (typeof window === "undefined") return;
-  const { unlocked: _u, ...rest } = state;
+  const { unlocked: _u, ...rest } = next;
   void _u;
   localStorage.setItem(KEY, JSON.stringify(rest));
 }
@@ -92,8 +93,14 @@ function hydrate() {
 }
 function emit() { listeners.forEach((l) => l()); }
 function set(mut: (s: State) => State) {
-  state = mut(state);
-  persist();
+  // Always load existing metadata even when the first action happens
+  // before any React component subscribes to the store.
+  hydrate();
+  // An Android WebView can reject localStorage writes (quota, I/O, browser
+  // profile trouble). Never publish a mutation unless its metadata was
+  // durably persisted. Otherwise deletion can erase ciphertext while the
+  // old index still references it after a restart.
+  state = commitStateAfterPersistence(state, mut, persist);
   emit();
 }
 
@@ -173,9 +180,13 @@ export const vault = {
     return id;
   },
   deleteFolder: (id: string) => {
+    hydrate();
     const folder = state.folders.find((f) => f.id === id);
-    if (folder) void removeFolderBlobs(folder);
+    if (!folder) return;
+    // Commit the index first. On a storage failure the ciphertext remains
+    // untouched and accessible, rather than permanently lost.
     set((s) => ({ ...s, folders: s.folders.filter((f) => f.id !== id) }));
+    void removeFolderBlobs(folder);
   },
   renameFolder: (id: string, name: string) => set((s) => ({
     ...s, folders: s.folders.map((f) => f.id === id ? { ...f, name } : f),
@@ -189,9 +200,13 @@ export const vault = {
   ): Promise<void> => {
     hydrate();
     if (!liveFileKey) throw new Error("Vault is locked");
+    if (!state.folders.some((f) => f.id === folderId))
+      throw new Error("Vault folder no longer exists");
     if (isNative()) await ensureNativeVaultDir(folderId);
     const encrypted: EncryptedFile[] = [];
-    for (let i = 0; i < files.length; i++) {
+    const writtenBlobs: string[] = [];
+    try {
+      for (let i = 0; i < files.length; i++) {
       const f = files[i];
       const buf = await f.arrayBuffer();
       const { iv, cipher } = await encryptBytes(buf, liveFileKey);
@@ -203,6 +218,7 @@ export const vault = {
         // instead of being kept inline, so large media never bloats the
         // metadata store and never touches public storage.
         blobPath = await writeBlob(folderId, id, cipher);
+        writtenBlobs.push(blobPath);
         inlineCipher = undefined;
       }
       encrypted.push({
@@ -216,24 +232,35 @@ export const vault = {
         ...(blobPath ? { blobPath } : {}),
         ...(meta?.[i]?.origPath ? { origPath: meta[i]!.origPath } : {}),
       });
+      }
+      // Folder deletion may have happened while we were encrypting or
+      // awaiting the native filesystem. Do not orphan encrypted blobs.
+      if (!state.folders.some((f) => f.id === folderId))
+        throw new Error("Vault folder was removed during import");
+      set((s) => ({
+        ...s,
+        folders: s.folders.map((f) =>
+          f.id === folderId ? { ...f, files: [...encrypted, ...f.files] } : f,
+        ),
+      }));
+    } catch (error) {
+      // No metadata commit happened: safe to remove only this attempted
+      // import's newly written ciphertext. Existing Safe files untouched.
+      for (const blobPath of writtenBlobs) await removeBlob(blobPath);
+      throw error;
     }
-    set((s) => ({
-      ...s,
-      folders: s.folders.map((f) =>
-        f.id === folderId ? { ...f, files: [...encrypted, ...f.files] } : f,
-      ),
-    }));
   },
   deleteFile: (folderId: string, fileId: string) => {
     const target = state.folders
       .find((f) => f.id === folderId)?.files.find((x) => x.id === fileId);
-    if (target?.blobPath) void removeBlob(target.blobPath);
+    if (!target) return;
     set((s) => ({
       ...s,
       folders: s.folders.map((f) =>
         f.id === folderId ? { ...f, files: f.files.filter((x) => x.id !== fileId) } : f,
       ),
     }));
+    if (target.blobPath) void removeBlob(target.blobPath);
   },
   /** Decrypt an encrypted file into a Blob for viewing. Requires unlock. */
   decryptFile: async (file: EncryptedFile): Promise<Blob> => {

@@ -34,7 +34,7 @@ jobs:
         run: python3 -m unittest discover -s scripts -p 'test_android_diagnostics.py'
       - run: bun install
       - name: Unit-test actual system navigation geometry
-        run: bunx vitest run src/lib/gallery-geometry.test.ts src/lib/insets-math.test.ts src/lib/native-startup-state.test.ts src/lib/adaptive-grid-columns.test.ts
+        run: bunx vitest run src/lib/gallery-geometry.test.ts src/lib/insets-math.test.ts src/lib/native-startup-state.test.ts src/lib/adaptive-grid-columns.test.ts src/lib/vault-transaction.test.ts
       - name: Verify screenshot classifier on dark, light and blank screens
         run: |
           mkdir -p "$RUNNER_TEMP/nova-screenshot-checker"
