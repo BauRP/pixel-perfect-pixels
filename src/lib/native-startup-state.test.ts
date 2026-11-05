@@ -43,3 +43,12 @@ describe("Native boot monitor loading overlay transitions", () => {
     expect(timeline.map(shouldShowBlockingBootOverlay)).toEqual([true, true, false, false]);
   });
 });
+
+describe("Android layout recovery avoids hiding an already rendered route", () => {
+  it("offers a nonblocking retry only for an unverified layout", async () => {
+    const { shouldOfferLayoutRetry } = await import("./native-startup-state");
+    expect(shouldOfferLayoutRetry("waiting-for-layout")).toBe(true);
+    for (const state of ["ready", "waiting-for-route", "waiting-for-shell", "error-recovery"] as const)
+      expect(shouldOfferLayoutRetry(state)).toBe(false);
+  });
+});

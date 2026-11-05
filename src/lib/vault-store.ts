@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { commitStateAfterPersistence, parseVaultMetadata, isSafeVaultId, isSafeVaultBlobPath } from "./vault-transaction";
 import { createSecureId } from "./secure-id";
+import { isSafeOperationCurrent } from "./vault-lifecycle";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { isNative, ensurePrivateVaultDir } from "./native-vault";
 import {
@@ -79,6 +80,9 @@ let listeners: (() => void)[] = [];
 
 // Unwrapped AES-GCM file key — RAM only, never persisted, wiped on lock().
 let liveFileKey: CryptoKey | null = null;
+// Any lock, unlock or password update invalidates pending async operations.
+// Never allow a completed PBKDF2/decrypt request to reopen a locked Safe.
+let keyEpoch = 0;
 
 function persist(next: State) {
   if (typeof window === "undefined") return;
@@ -215,6 +219,7 @@ export const vault = {
   ): Promise<void> => {
     hydrate();
     const importKey = liveFileKey;
+    const importEpoch = keyEpoch;
     if (hydrationError) throw hydrationError;
     if (!importKey) throw new Error("Vault is locked");
     if (!state.folders.some((f) => f.id === folderId))
@@ -252,7 +257,8 @@ export const vault = {
       }
       // Import may outlive a screen lock or password reset. Never commit
       // ciphertext from an operation that started with another RAM key.
-      if (liveFileKey !== importKey || !state.unlocked)
+      if (!isSafeOperationCurrent(importEpoch, keyEpoch) ||
+          liveFileKey !== importKey || !state.unlocked)
         throw new Error("Vault was locked during import");
       // Folder deletion may have happened while we were encrypting or
       // awaiting the native filesystem. Do not orphan encrypted blobs.
@@ -286,10 +292,18 @@ export const vault = {
   },
   /** Decrypt an encrypted file into a Blob for viewing. Requires unlock. */
   decryptFile: async (file: EncryptedFile): Promise<Blob> => {
-    if (!liveFileKey) throw new Error("Vault is locked");
+    const key = liveFileKey;
+    const epoch = keyEpoch;
+    if (!key || !state.unlocked) throw new Error("Vault is locked");
     const cipher = file.blobPath ? await readBlob(file.blobPath) : file.cipher;
     if (!cipher) throw new Error("Encrypted data missing");
-    const plain = await decryptBytes(file.iv, cipher, liveFileKey);
+    if (!isSafeOperationCurrent(epoch, keyEpoch) || liveFileKey !== key ||
+        !state.unlocked) throw new Error("Vault was locked during preview");
+    const plain = await decryptBytes(file.iv, cipher, key);
+    // A PIN lock while a slow video decrypt is in progress must not deliver
+    // decrypted media to a screen that is no longer authorized to show it.
+    if (!isSafeOperationCurrent(epoch, keyEpoch) || liveFileKey !== key ||
+        !state.unlocked) throw new Error("Vault was locked during preview");
     return new Blob([plain], { type: file.type });
   },
 
@@ -298,14 +312,19 @@ export const vault = {
   /** Initial password setup — creates the vault crypto material. */
   setInitialPassword: async (password: string): Promise<void> => {
     hydrate();
+    if (hydrationError) throw hydrationError;
     if (state.crypto) throw new Error("Password already set — use changePassword");
+    const startingEpoch = keyEpoch;
     const { secrets, fileKey } = await initVaultSecrets(password);
+    if (!isSafeOperationCurrent(startingEpoch, keyEpoch) || state.crypto)
+      throw new Error("Safe changed while setting the password");
     // If the new verifier/wrapped key cannot be persisted, do not leave
     // the Safe "unlocked" with an unpersisted password setup.
     const previousKey = liveFileKey;
     liveFileKey = fileKey;
     try {
       set((s) => ({ ...s, crypto: secrets, unlocked: true }));
+      keyEpoch++;
     } catch (error) {
       liveFileKey = previousKey;
       throw error;
@@ -314,19 +333,29 @@ export const vault = {
   /** Change password — re-wraps the file key without re-encrypting files. */
   changePassword: async (oldPassword: string, newPassword: string): Promise<boolean> => {
     hydrate();
-    if (!state.crypto) return false;
-    const next = await rewrapWithNewPassword(oldPassword, newPassword, state.crypto);
-    if (!next) return false;
+    if (hydrationError) throw hydrationError;
+    const originalCrypto = state.crypto;
+    const epoch = keyEpoch;
+    if (!originalCrypto) return false;
+    const next = await rewrapWithNewPassword(oldPassword, newPassword, originalCrypto);
+    if (!next || !isSafeOperationCurrent(epoch, keyEpoch, originalCrypto, state.crypto))
+      return false;
     set((s) => ({ ...s, crypto: next }));
+    keyEpoch++;
     return true;
   },
   /** Verify password + unlock the vault. Returns true on success. */
   verifyPassword: async (password: string): Promise<boolean> => {
     hydrate();
-    if (!state.crypto) return false;
-    const key = await unlockVault(password, state.crypto);
-    if (!key) return false;
+    if (hydrationError) throw hydrationError;
+    const originalCrypto = state.crypto;
+    const epoch = keyEpoch;
+    if (!originalCrypto) return false;
+    const key = await unlockVault(password, originalCrypto);
+    if (!key || !isSafeOperationCurrent(epoch, keyEpoch, originalCrypto, state.crypto))
+      return false;
     liveFileKey = key;
+    keyEpoch++;
     setTransient((s) => ({ ...s, unlocked: true }));
     return true;
   },
@@ -337,7 +366,8 @@ export const vault = {
     if (liveFileKey) setTransient((s) => ({ ...s, unlocked: true }));
   },
   lock: () => {
-    // Locking clears the only RAM key without requiring a disk write.
+    // Locking invalidates *all* pending crypto operations, including unlock.
+    keyEpoch++;
     liveFileKey = null;
     setTransient((s) => ({ ...s, unlocked: false }));
   },

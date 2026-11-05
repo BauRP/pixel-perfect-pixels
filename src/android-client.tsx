@@ -7,7 +7,7 @@ import { flushSync } from "react-dom";
 import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from "react";
 import { RouterProvider } from "@tanstack/react-router";
 import { getRouter } from "./router";
-import { nativeStartupState, shouldShowBlockingBootOverlay } from "./lib/native-startup-state";
+import { nativeStartupState, shouldShowBlockingBootOverlay, shouldOfferLayoutRetry } from "./lib/native-startup-state";
 
 // A lightweight phase marker lets native regression reports identify where
 // startup stalled. It contains no photo, account, or other user information.
@@ -73,7 +73,7 @@ function NativeReactCommitMarker() {
  * are touched, and this component does not certify gallery readiness.
  */
 function NativeRouterBootMonitor() {
-  const [status, setStatus] = useState<"quiet" | "loading" | "recovery" | "ready">("quiet");
+  const [status, setStatus] = useState<"quiet" | "loading" | "recovery" | "layout-recovery" | "ready">("quiet");
   useEffect(() => {
     let alive = true;
     let lastReason = "";
@@ -104,7 +104,9 @@ function NativeRouterBootMonitor() {
       // WindowInsets are still pending. Otherwise the overlay stays opaque
       // and the OS compositor check reports a black screen.
       if (state === "waiting-for-layout") {
-        setStatus("quiet");
+        // Keep a user-triggered retry visible after timeout, without hiding
+        // the DOM for a gallery that is merely waiting for system insets.
+        setStatus(prev => prev === "layout-recovery" ? prev : "quiet");
         return;
       }
       if (state !== "ready" && state !== "error-recovery") return;
@@ -131,8 +133,14 @@ function NativeRouterBootMonitor() {
         setStatus("loading");
     }, 1800);
     const showRecovery = setTimeout(() => {
-      if (alive && shouldShowBlockingBootOverlay(inspect())) {
-        console.warn("[NovaBoot] startup-timeout=" + inspect());
+      if (!alive) return;
+      const snapshot = inspect();
+      if (shouldOfferLayoutRetry(snapshot)) {
+        console.warn("[NovaBoot] native-layout-timeout");
+        // A visible route must never be replaced by an opaque screen.
+        setStatus("layout-recovery");
+      } else if (shouldShowBlockingBootOverlay(snapshot)) {
+        console.warn("[NovaBoot] startup-timeout=" + snapshot);
         boot("router-route-timeout");
         setStatus("recovery");
       }
@@ -147,6 +155,24 @@ function NativeRouterBootMonitor() {
     };
   }, []);
   if (status === "quiet" || status === "ready") return null;
+  if (status === "layout-recovery") {
+    return (
+      <div data-nova-layout-recovery role="alert"
+        style={{
+          position: "fixed", zIndex: 80, top: "calc(12px + env(safe-area-inset-top, 0px))",
+          left: 12, right: 12, padding: 12, borderRadius: 12,
+          background: "#202532", color: "#ffffff", textAlign: "center",
+          fontFamily: "system-ui, sans-serif", boxShadow: "0 2px 12px #0008",
+        }}>
+        <span>Gallery layout did not finish loading.</span>
+        <button type="button" onClick={() => window.location.reload()}
+          style={{ marginLeft: 12, minHeight: 44, padding: "8px 12px",
+            border: 0, borderRadius: 8, color: "white", background: "#2563eb" }}>
+          Retry
+        </button>
+      </div>
+    );
+  }
   return (
     <div data-nova-router-boot-monitor role="status" aria-live="polite"
       style={{

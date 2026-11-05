@@ -23,6 +23,14 @@ export function nativeStartupState(snapshot: StartupSnapshot):
   return "ready";
 }
 
+/** A route can have DOM nodes but still fail native Android geometry. After
+ * the startup timeout offer a NONBLOCKING retry, not a fullscreen overlay. */
+export function shouldOfferLayoutRetry(
+  state: ReturnType<typeof nativeStartupState>,
+): boolean {
+  return state === "waiting-for-layout";
+}
+
 /** Do not obscure a live gallery merely because the OS has not yet
  * delivered its first insets snapshot. Native watchdog tests geometry
  * independently; the full-screen recovery is reserved for a missing route. */

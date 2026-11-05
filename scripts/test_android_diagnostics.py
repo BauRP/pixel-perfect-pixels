@@ -68,6 +68,26 @@ class DiagnosticsTests(unittest.TestCase):
             "script: 1", "")
         self.assertEqual(result["diagnosis"], "UNVALIDATED_SYSTEM_BAR_OR_NAV_GEOMETRY")
         self.assertIn("NATIVE_INSETS_PENDING", result["layout_issue_types"])
+    
+    def test_post_resize_system_control_detects_emulator_compositor_fault(self):
+        summary = classify("[NovaBoot] state-waiting-for-layout",
+                           "Java tests: 1 | native shell smoke: 1 | script: 1", "",
+                           "painted", "unpainted")
+        self.assertEqual(summary["diagnosis"], "SYSTEM_COMPOSITOR_UNRELIABLE_AFTER_RESIZE")
+        self.assertEqual(summary["system_after_resize"], "unpainted")
+        self.assertEqual(classify("[NovaBoot] state-waiting-for-layout", "script: 1",
+                                  "", "painted", "painted")["diagnosis"],
+                         "ROUTE_MOUNTED_BUT_NATIVE_LAYOUT_UNVERIFIED")
+    
+    def test_post_resize_system_control_detects_emulator_compositor_fault(self):
+        summary = classify("[NovaBoot] state-waiting-for-layout",
+                           "Java tests: 1 | native shell smoke: 1 | script: 1", "",
+                           "painted", "unpainted")
+        self.assertEqual(summary["diagnosis"], "SYSTEM_COMPOSITOR_UNRELIABLE_AFTER_RESIZE")
+        self.assertEqual(summary["system_after_resize"], "unpainted")
+        self.assertEqual(classify("[NovaBoot] state-waiting-for-layout", "script: 1",
+                                  "", "painted", "painted")["diagnosis"],
+                         "ROUTE_MOUNTED_BUT_NATIVE_LAYOUT_UNVERIFIED")
 
 
 if __name__ == "__main__":

@@ -8,7 +8,8 @@ import sys
 APP = "app.lovable.privacygallery"
 
 
-def classify(log: str, result: str, foreground: str, baseline: str = "") -> dict:
+def classify(log: str, result: str, foreground: str, baseline: str = "",
+             post_resize: str = "") -> dict:
     # AndroidRuntime names its failing process on the line AFTER FATAL.
     # Most of the Android 10/13 "fatal" reports were actually Google's
     # emulator Launcher, not Nova Gallery. Keep those distinct.
@@ -37,6 +38,8 @@ def classify(log: str, result: str, foreground: str, baseline: str = "") -> dict
 
     if baseline.strip() == "unpainted":
         diagnosis = "SYSTEM_COMPOSITOR_UNRELIABLE"
+    elif post_resize.strip() == "unpainted" and "script: 1" in result:
+        diagnosis = "SYSTEM_COMPOSITOR_UNRELIABLE_AFTER_RESIZE"
     elif phases["router_load_rejected"]:
         diagnosis = "ROUTER_LOAD_REJECTED"
     elif app_crashes:
@@ -77,6 +80,7 @@ def classify(log: str, result: str, foreground: str, baseline: str = "") -> dict
             r"Killing .*app\.lovable\.privacygallery.*depends on provider.*google", log)),
         "wrong_foreground": "FAIL: " in foreground,
         "system_baseline": baseline.strip() or "not_collected",
+        "system_after_resize": post_resize.strip() or "not_collected",
     }
 
 
@@ -87,8 +91,11 @@ def main() -> None:
         path = root / name
         return path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
 
+    # If Settings itself stops painting after a viewport resize, preserve
+    # that evidence without silently treating the broken APK test as passed.
+    post_resize = read("system-health-compact.txt") or read("system-health-large_text_small_window.txt")
     state = classify(read("logcat.txt"), read("result.txt"), read("foreground.txt"),
-                     read("system-baseline.txt"))
+                     read("system-baseline.txt"), post_resize)
     root.mkdir(parents=True, exist_ok=True)
     (root / "classification.json").write_text(
         json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")

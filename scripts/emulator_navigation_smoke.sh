@@ -38,6 +38,23 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+capture_system_after_blank_gallery() {
+  local label="$1"
+  # A painted Settings screenshot before testing does NOT prove the emulator
+  # GPU survived a later wm-size/density/font change. Compare at precisely
+  # the failing display configuration. Still fail the gallery smoke.
+  local result="unpainted"
+  if adb shell am start -W -a android.settings.SETTINGS       > "emulator-diagnostics/system-health-$label-launch.txt" 2>&1; then
+    sleep 2
+    if adb exec-out screencap -p         > "emulator-diagnostics/system-health-$label.png" &&
+       java scripts/ValidateScreenshot.java         "emulator-diagnostics/system-health-$label.png"         > "emulator-diagnostics/system-health-$label-check.txt" 2>&1; then
+      result="painted"
+    fi
+  fi
+  echo "$result" > "emulator-diagnostics/system-health-$label.txt"
+  echo "System compositor at $label: $result (independent of gallery failure)"
+  adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
+}
 start_app() {
   # CI instrumentation can kill the app when Play Services' provider dies.
   # Retry one genuine cold launch, rather than falsely classify a one-off
@@ -89,6 +106,10 @@ start_app() {
   if (( imageOk == 0 )); then
     echo "FAIL: actual $1 screenshot has no readable gallery pixels"
     failedScreenshots=$((failedScreenshots + 1))
+    case "$1" in
+      portrait|compact|large_text_small_window)
+        capture_system_after_blank_gallery "$1" ;;
+    esac
   fi
 }
 start_app portrait || true
