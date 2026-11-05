@@ -60,6 +60,17 @@ public class AndroidCompatibilitySmokeTest {
     }
 
     @Test
+    public void earlySoftwareCompositorOnlyTargetsBrokenEmulatorApis() {
+        assertTrue(BootRecoveryPolicy.preferSoftwareRendererOnEmulator(29, true));
+        assertTrue(BootRecoveryPolicy.preferSoftwareRendererOnEmulator(33, true));
+        for (int sdk : new int[]{24, 26, 28, 30, 31, 32, 34, 35, 36, 37}) {
+            assertFalse(BootRecoveryPolicy.preferSoftwareRendererOnEmulator(sdk, true));
+        }
+        assertFalse(BootRecoveryPolicy.preferSoftwareRendererOnEmulator(29, false));
+        assertFalse(BootRecoveryPolicy.preferSoftwareRendererOnEmulator(33, false));
+    }
+
+    @Test
     public void softwareFallbackIsOnlyForUnresponsiveLocalStartup() {
         assertTrue(BootRecoveryPolicy.trySoftwareFallback(100, false, false));
         assertTrue(BootRecoveryPolicy.trySoftwareFallback(90, false, false));

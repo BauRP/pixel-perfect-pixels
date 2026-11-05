@@ -284,6 +284,14 @@ public class MainActivity extends BridgeActivity {
         mainHandler.postDelayed(nativeBootFallback, 20000L);
     }
 
+    private static boolean isEmulatorRuntime() {
+        String hardware = Build.HARDWARE == null ? "" : Build.HARDWARE.toLowerCase(java.util.Locale.ROOT);
+        String fingerprint = Build.FINGERPRINT == null ? "" : Build.FINGERPRINT.toLowerCase(java.util.Locale.ROOT);
+        String model = Build.MODEL == null ? "" : Build.MODEL.toLowerCase(java.util.Locale.ROOT);
+        return hardware.contains("ranchu") || hardware.contains("goldfish")
+                || fingerprint.startsWith("generic") || model.contains("emulator");
+    }
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         // Capacitor 4+ (including 8): ALL local plugins MUST be registered
@@ -295,6 +303,15 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SystemInsetsPlugin.class);
         super.onCreate(savedInstanceState);
 
+        if (BootRecoveryPolicy.preferSoftwareRendererOnEmulator(
+                Build.VERSION.SDK_INT, isEmulatorRuntime()) && getBridge() != null) {
+            WebView web = getBridge().getWebView();
+            if (web != null) {
+                web.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+                softwarePaintRetryAttempted = true;
+                Log.i("NovaGalleryBoot", "Emulator-only early software WebView compositor");
+            }
+        }
         applyTransparentStatusBar();
         // A stuck blank WebView needs one bounded recovery even at 100% load
         // progress. React's native UI-ready handshake cancels this watchdog.

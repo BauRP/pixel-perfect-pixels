@@ -102,6 +102,13 @@ function hydrate() {
   }
 }
 function emit() { listeners.forEach((l) => l()); }
+/** The PIN screen is not the security boundary: operations against encrypted
+ * disk data must independently enforce the in-memory file key. */
+function requireUnlockedSafe(): void {
+  hydrate();
+  if (hydrationError) throw hydrationError;
+  if (!state.unlocked || !liveFileKey) throw new Error("Vault is locked");
+}
 function set(mut: (s: State) => State) {
   // Always load existing metadata even when the first action happens
   // before any React component subscribes to the store.
@@ -190,6 +197,7 @@ async function removeFolderBlobs(folder: VaultFolder): Promise<void> {
 export const vault = {
   // ── folders ────────────────────────────────────────────────
   createFolder: (name: string): string => {
+    requireUnlockedSafe();
     const id = createSecureId();
     set((s) => ({ ...s, folders: [...s.folders, { id, name, createdAt: Date.now(), files: [] }] }));
     // Provision the private, .nomedia-guarded directory for this folder
@@ -199,7 +207,7 @@ export const vault = {
     return id;
   },
   deleteFolder: (id: string) => {
-    hydrate();
+    requireUnlockedSafe();
     const folder = state.folders.find((f) => f.id === id);
     if (!folder) return;
     // Commit the index first. On a storage failure the ciphertext remains
@@ -207,9 +215,12 @@ export const vault = {
     set((s) => ({ ...s, folders: s.folders.filter((f) => f.id !== id) }));
     void removeFolderBlobs(folder);
   },
-  renameFolder: (id: string, name: string) => set((s) => ({
-    ...s, folders: s.folders.map((f) => f.id === id ? { ...f, name } : f),
-  })),
+  renameFolder: (id: string, name: string) => {
+    requireUnlockedSafe();
+    set((s) => ({
+      ...s, folders: s.folders.map((f) => f.id === id ? { ...f, name } : f),
+    }));
+  },
 
   // ── files (always encrypted at rest) ────────────────────────
   addFiles: async (
@@ -221,7 +232,7 @@ export const vault = {
     const importKey = liveFileKey;
     const importEpoch = keyEpoch;
     if (hydrationError) throw hydrationError;
-    if (!importKey) throw new Error("Vault is locked");
+    if (!importKey || !state.unlocked) throw new Error("Vault is locked");
     if (!state.folders.some((f) => f.id === folderId))
       throw new Error("Vault folder no longer exists");
     if (isNative()) await ensureNativeVaultDir(folderId);
@@ -278,7 +289,7 @@ export const vault = {
     }
   },
   deleteFile: (folderId: string, fileId: string) => {
-    hydrate();
+    requireUnlockedSafe();
     const target = state.folders
       .find((f) => f.id === folderId)?.files.find((x) => x.id === fileId);
     if (!target) return;
