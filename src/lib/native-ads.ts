@@ -135,6 +135,33 @@ let foreground = true;
 let screenActive = 0; // number of mounted ad slots (0 or 1)
 let started = false;
 let canRequestAds = false;
+let bootReadyObserver: MutationObserver | null = null;
+
+// Ad requests must not compete with the first React/WebView paint. Preserve
+// consent setup immediately; defer only the optional native ad allocation.
+function hasMeasuredGalleryLayout(): boolean {
+  return typeof document !== "undefined" &&
+    document.documentElement.dataset.novaBootPhase === "gallery-layout-ready";
+}
+function watchGalleryLayout() {
+  if (bootReadyObserver || typeof MutationObserver === "undefined" ||
+      typeof document === "undefined") return;
+  const root = document.documentElement;
+  bootReadyObserver = new MutationObserver(() => {
+    if (!hasMeasuredGalleryLayout()) return;
+    bootReadyObserver?.disconnect();
+    bootReadyObserver = null;
+    void requestAd();
+  });
+  bootReadyObserver.observe(root, {
+    attributes: true, attributeFilter: ["data-nova-boot-phase"],
+  });
+  if (hasMeasuredGalleryLayout()) {
+    bootReadyObserver.disconnect();
+    bootReadyObserver = null;
+    void requestAd();
+  }
+}
 
 function clearRetry() {
   if (retryTimer !== null) clearTimeout(retryTimer);
@@ -235,6 +262,10 @@ function onAdFailed(noFill: boolean, detail = "") {
 
 async function requestAd(): Promise<void> {
   if (!isNativeAdSupported() || requestInFlight || !eligible()) return;
+  if (!hasMeasuredGalleryLayout()) {
+    watchGalleryLayout();
+    return;
+  }
   if (!canRequestAds) {
     // Never request (or retry) while consent forbids it; consentUpdated resumes us.
     clearRetry();

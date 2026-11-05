@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
-import { commitStateAfterPersistence, parseVaultMetadata } from "./vault-transaction";
+import { commitStateAfterPersistence, parseVaultMetadata, isSafeVaultId, isSafeVaultBlobPath } from "./vault-transaction";
+import { createSecureId } from "./secure-id";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { isNative, ensurePrivateVaultDir } from "./native-vault";
 import {
@@ -159,17 +160,18 @@ async function writeBlob(folderId: string, id: string, cipherB64: string): Promi
 }
 
 async function readBlob(path: string): Promise<string> {
+  if (!isSafeVaultBlobPath(path)) throw new Error("Unsafe Safe encrypted file path");
   const res = await Filesystem.readFile({ path, directory: Directory.Data });
   return typeof res.data === "string" ? res.data : await (res.data as Blob).text();
 }
 
 async function removeBlob(path?: string): Promise<void> {
-  if (!path || !isNative()) return;
+  if (!isSafeVaultBlobPath(path) || !isNative()) return;
   try { await Filesystem.deleteFile({ path, directory: Directory.Data }); } catch {}
 }
 
 async function removeFolderBlobs(folder: VaultFolder): Promise<void> {
-  if (!isNative()) return;
+  if (!isNative() || !isSafeVaultId(folder.id)) return;
   try {
     await Filesystem.rmdir({
       path: `${VAULT_DIR}/${folder.id}`,
@@ -184,7 +186,7 @@ async function removeFolderBlobs(folder: VaultFolder): Promise<void> {
 export const vault = {
   // ── folders ────────────────────────────────────────────────
   createFolder: (name: string): string => {
-    const id = crypto.randomUUID();
+    const id = createSecureId();
     set((s) => ({ ...s, folders: [...s.folders, { id, name, createdAt: Date.now(), files: [] }] }));
     // Provision the private, .nomedia-guarded directory for this folder
     // right away so ANY user-created folder is vault-backed, not just a
@@ -225,7 +227,7 @@ export const vault = {
       const f = files[i];
       const buf = await f.arrayBuffer();
       const { iv, cipher } = await encryptBytes(buf, importKey);
-      const id = crypto.randomUUID();
+      const id = createSecureId();
       let blobPath: string | undefined;
       let inlineCipher: string | undefined = cipher;
       if (isNative()) {

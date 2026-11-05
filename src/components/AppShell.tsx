@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, type ReactNode } from "react";
 import { BottomNav } from "./BottomNav";
 import { useApplyTheme } from "@/lib/theme";
 import { applyDocumentDirection, ensureLangResolved, useLang } from "@/lib/i18n";
@@ -83,11 +83,18 @@ export function AppShell({
   return <MeasuredAppFrame>{children}</MeasuredAppFrame>;
 }
 
+// Native layout measurements must not wait for GPU paint: on some old
+// Chromium WebViews passive effects stall even after the DOM is committed.
+// Keep regular passive effects for the SSR/web application.
+const useNativeLayoutEffect =
+  import.meta.env.VITE_CAPACITOR_BUILD === "1" ? useLayoutEffect : useEffect;
+
 function MeasuredAppFrame({ children }: { children: ReactNode }) {
   useApplyTheme();
   useResolvedLanguage();
   useSystemStatusBar();
-  useEffect(() => {
+  useNativeLayoutEffect(() => {
+    initSystemInsets();
     refreshSystemInsetsForViewport();
     // Real DOM geometry travels through the existing native plugin.
     // Old Chromium evaluateJavascript callbacks can stall even if UI mounted.

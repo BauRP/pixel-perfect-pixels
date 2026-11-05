@@ -1,7 +1,10 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { Images, Lock, Settings as SettingsIcon } from "lucide-react";
 import { useT } from "@/lib/i18n";
+
+const useNavMeasureEffect =
+  import.meta.env.VITE_CAPACITOR_BUILD === "1" ? useLayoutEffect : useEffect;
 
 export function BottomNav() {
   const t = useT();
@@ -10,7 +13,7 @@ export function BottomNav() {
 
   // Reserve precisely the nav's actual content height, not a fixed guess.
   // Handles font scaling, rotation, narrow/wide screens and different labels.
-  useEffect(() => {
+  useNavMeasureEffect(() => {
     const el = navRef.current;
     if (!el) return;
     const setHeight = () => {

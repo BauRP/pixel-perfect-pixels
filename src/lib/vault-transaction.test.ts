@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { commitStateAfterPersistence } from "./vault-transaction";
+import { commitStateAfterPersistence, isSafeVaultId, isSafeVaultBlobPath } from "./vault-transaction";
 
 describe("encrypted Safe metadata transactions", () => {
   it("persists the next metadata before reporting committed state", () => {
@@ -44,5 +44,36 @@ describe("Safe metadata corruption protection", () => {
       '{"crypto":"broken"}']) {
       expect(() => parseVaultMetadata(raw, defaults)).toThrow();
     }
+  });
+});
+
+describe("Safe file path confinement and metadata integrity", () => {
+  it("accepts old and UUID identifiers but rejects traversal", () => {
+    for (const s of ["safe", "1ff6a582-6f26-4ed4-b5af-75e9001b9abe", "folder_1"])
+      expect(isSafeVaultId(s)).toBe(true);
+    for (const s of ["", ".", "..", "../tmp", "/tmp", "folder/file", "a\\b", "a".repeat(129)])
+      expect(isSafeVaultId(s)).toBe(false);
+  });
+  it("only accepts encrypted blob paths within the private Safe root", () => {
+    expect(isSafeVaultBlobPath("nova_vault/folder_1/file-1.enc")).toBe(true);
+    for (const s of ["../other.xml", "nova_vault/../other.xml",
+      "nova_vault/folder/../../other.xml", "/nova_vault/a/b.enc",
+      "nova_vault/a/b.jpg", "nova_vault/a/b.enc/extra"])
+      expect(isSafeVaultBlobPath(s)).toBe(false);
+  });
+  it("does not accept truncated encrypted-file records as an empty Safe", async () => {
+    const { parseVaultMetadata } = await import("./vault-transaction");
+    const defaults = { folders: [] as unknown[], crypto: null, unlocked: false };
+    const file = { id: "file1", name: "photo", iv: "b64", cipher: "payload" };
+    for (const broken of [
+      { ...file, id: "../prefs" }, { ...file, iv: "" },
+      { ...file, cipher: undefined }, { ...file, blobPath: "../other.xml" },
+    ]) {
+      expect(() => parseVaultMetadata(JSON.stringify({
+        folders: [{ id: "folder1", files: [broken] }], crypto: null,
+      }), defaults)).toThrow();
+    }
+    expect(() => parseVaultMetadata('{"folders":[{"id":"../other","files":[]}]}', defaults)).toThrow();
+    expect(parseVaultMetadata('{"folders":[],"crypto":null}', defaults).folders).toEqual([]);
   });
 });
