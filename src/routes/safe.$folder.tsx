@@ -128,7 +128,9 @@ function SafeFolderView() {
           await vault.addFiles(folder.id, [file], [{ origPath: it.path }]);
           secured.push(it);
         } catch (e) {
-          console.warn("[Vault] secure move failed", it.name, e);
+          // Private filenames and native exception messages may include personal
+          // paths; log a non-identifying counter/status only.
+          console.warn("[Vault] one selected item could not be secured");
         }
       }
       if (secured.length === 0) throw new Error(t("no_readable_files"));

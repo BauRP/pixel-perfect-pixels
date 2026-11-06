@@ -53,6 +53,15 @@ describe("encrypted Safe PIN recovery", () => {
     expect(uiValue()).toBe("5678");
   });
 
+  it("rejects an old PIN even when the AES file key remains unlocked in RAM", async () => {
+    const { ui, secured } = controls({ uiPassword: "1234", cryptoPassword: "5678" });
+    expect(await secured.verifyPassword("5678")).toBe(true);
+    expect(secured.isUnlocked()).toBe(true);
+    expect(await unlockSafeWithPin("1234", ui, secured)).toBe(false);
+    expect(ui.lock).toHaveBeenCalled();
+    expect(secured.setInitialPassword).not.toHaveBeenCalled();
+  });
+
   it("never unlocks existing ciphertext on an old or incorrect UI PIN", async () => {
     const { ui, secured } = controls({ cryptoPassword: "5678" });
     expect(await unlockSafeWithPin("1234", ui, secured)).toBe(false);

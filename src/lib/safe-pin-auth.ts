@@ -59,7 +59,9 @@ export async function unlockSafeWithPin(
       throw error;
     }
   }
-  if (uiAccepted && secured.isUnlocked()) return true;
+  // A RAM-unlocked file key does not authorize an OLD UI PIN after a
+  // password change. Verify the entered PIN against the CURRENT wrapped
+  // AES key every time, even when a different session already unlocked it.
   const keyAccepted = await secured.verifyPassword(pin);
   if (!keyAccepted) {
     ui.lock();
