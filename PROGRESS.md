@@ -1,0 +1,280 @@
+# PROGRESS.md — Nova Gallery: постоянный технический журнал
+
+> **Главный вход в проект для следующего ChatGPT.** Читать этот файл **первым**; после него открывать только изменённые файлы и указанные ниже узлы. Этот журнал не является доказательством прохождения тестов: доказательствами остаются конкретные коммиты, GitHub Actions, журналы и снимки экрана.
+>
+> **Дата сверки:** 2026-11-06 (Asia/Almaty). **Репозиторий:** [BauRP/pixel-perfect-pixels](https://github.com/BauRP/pixel-perfect-pixels). **Рабочая ветка:** [`chatgpt/nova-gallery-android7-17-fixes-20261031`](https://github.com/BauRP/pixel-perfect-pixels/tree/chatgpt/nova-gallery-android7-17-fixes-20261031). **Не изменять `main`.**
+>
+> **Последний проверенный КОДОВЫЙ коммит перед созданием журнала:** [`db77e5e4f8b0ede5699f8b897b740b6ad2019fbd`](https://github.com/BauRP/pixel-perfect-pixels/commit/db77e5e4f8b0ede5699f8b897b740b6ad2019fbd). Коммит, создающий/обновляющий сам `PROGRESS.md`, будет новее: сравнивать будущий HEAD с этим базовым кодовым коммитом и коммитами после него. Изменение только этого журнала не означает изменение поведения APK.
+
+## 0. Быстрый старт: 90 секунд вместо повторного аудита
+
+| Вопрос | Подтверждённое состояние на 2026-11-06 |
+|---|---|
+| Приложение | **Nova Gallery**, Android-галерея фотографий/видео с локальным зашифрованным «Сейфом». Application ID: `app.lovable.privacygallery`. |
+| Стек | React 19, TypeScript, TanStack Router/Start, Vite 8, Tailwind 4, Capacitor 8; native Java/plugins, Gradle, Bun, Vitest. |
+| SDK В КОДЕ | `android/variables.gradle`: **min 24 / compile 36 / target 36**. Android 17 (API 37) проверяется отдельным временным CI-проектом, **не является production target 37**. |
+| Текущая стадия | Исправление Android-совместимости, навигационных отступов, начальной отрисовки, защита данных «Сейфа». Другие функции не объявлять готовыми без аудита. |
+| Историческая общая оценка | **91,9%** по шести направлениям совместимости, это приблизительная ранее установленная оценка, **не сертификация** всех Android и не степень реализации всех пожеланий по галерее. |
+| Последний пакет | `db77e5e`: запрет опасных операций «Сейфа» при блокировке; тесты асинхронной блокировки; ранний software renderer **только эмулятор** Android API 29/33. |
+| Проверки этого кода | [APK + unit SUCCESS](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/42131180553); [Android 17 API37 compile SUCCESS](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/42131180497); [эмуляторы FAILURE](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/42131180502). |
+| Реальные проблемы | API **29/33**: повторяющиеся пустые/чёрные снимки и отсутствие подтверждённой UI-геометрии. API **34**: тесты Java прошли, но shell-smoke не увидел приложение на переднем плане; причина **не установлена**. |
+| Положительные эмуляторы | В последнем прогоне API **24, 26, 36** прошли. API 34 **не прошёл последний прогон**, даже если проходил в предыдущих. |
+| Следующее действие | Сопоставить логи/артефакты API29,33,34 на `db77e5e`, изолировать **реальную** причину несовпадения React DOM / нативного рендеринга / системного foreground и исправить её, сохранив проверки на честный видимый UI. |
+| Открыть в первую очередь | `src/android-client.tsx`; `src/routes/__root.tsx`; `src/router.tsx`; `src/components/AppShell.tsx`; `src/lib/system-insets.ts`; `android/app/src/main/java/app/lovable/privacygallery/MainActivity.java`; `scripts/run_android_emulator_tests.sh`; `scripts/emulator_navigation_smoke.sh`. |
+| После исправления Android | Проверка сквозного Safe (не терять/не раскрывать данные); затем независимые задачи галереи, UX, рекламы/UMP и обсуждавшегося офлайн-ИИ. |
+
+**Строго различать:** `SUCCESS` в APK build ≠ приложение работает на API29/33; успешная компиляция API37 ≠ пройден runtime API37. `React rendered / JS loaded` ≠ на экране видна галерея. При ошибке эмулятора тест **остаётся красным** даже если системный лаунчер тоже нестабилен. Не повышать проценты за неподтверждённое.
+
+## 1. Правила работы и происхождение требований
+
+### 1.1 Жёсткие решения пользователя (утверждены)
+
+1. Работать **только** с `BauRP/pixel-perfect-pixels` в `chatgpt/nova-gallery-android7-17-fixes-20261031`. Без разрешения **не менять `main`**, не выполнять force push, rebase/amend уже опубликованной истории (проект синхронизирован с Lovable, см. `AGENTS.md`).
+2. Android **7–17 (API 24–37)**: корректно учитывать **трёхкнопочную и системную жестовую навигацию**, статус-бар, вырезы камер, поворот, изменение размеров окна, физические размеры/плотности, системные отступы. «Жесты» здесь прежде всего **режим системной навигации Android**, не разрешение придумывать новые свайпы внутри галереи.
+3. Не перекрывать статус-бар/вырезы/нижнюю панель Android, не размещать интерактивные кнопки под системным управлением. Подстройка должна происходить автоматически по настоящим измерениям ОС, включая смену режима навигации; учитывать клавиатуру.
+4. Приоритеты: критические зависания/чёрный экран, риск потери данных, безопасность, отсутствующие функции; крупные пакеты вместо множества мелких; тесты и полная APK-сборка после пакета; при блокере перейти к независимой задаче.
+5. Проценты менять **только при проверенной работе**, показывать каждое направление, прирост и общую оценку. Не делать 100% на основании заглушек, успешной компиляции, описаний или допущений.
+6. Не включать в незавершённую **программную** часть установку APK/ручную проверку на устройстве владельца. Такие пользовательские действия описывать отдельно; автоматизированные проверки кода и APK выполнять самостоятельно.
+7. **Не запускать часовое автоматическое продолжение**; пользователь даёт команду продолжать сам.
+8. С этого момента после **каждого крупного пакета** обновлять **этот же** `PROGRESS.md` непосредственно в согласованной ветке; фиксировать реальные SHA, тесты, новую задачу. Никаких секретов/персональных данных.
+
+### 1.2 Источники и уровни уверенности
+
+- **[USER]** — прямо установлено владельцем приложения в переписке; нельзя менять без новой команды.
+- **[CODE]** — реализовано в актуальных файлах на `db77e5e`; это **не доказательство**, что поведение на всех устройствах корректно и именно так было отдельно утверждено.
+- **[CI]** — конкретный вывод GitHub Actions для указанного коммита; не обобщать на другие версии APK.
+- **[DISCUSSION]** — идея/план из прошлого обсуждения, **не подтверждённая как законченная функция**.
+- **[HYPOTHESIS]** — расследование; недостаточно для объявления причины доказанной.
+
+**Важно про исходные ТЗ:** подробное самостоятельное формальное ТЗ, определяющее все кнопки и жесты «от и до», **в текущем дереве не найдено**. `ARCHITECTURE.md` и `ANDROID_COMPATIBILITY.md` — имеющиеся технические ориентиры. Ранее обсуждался сравнительный PDF/аудит функциональности, но его содержимое не подтверждено этим срезом репозитория; не приписывать ему требования без доступа к самому PDF. Не превращать реализованное или предложенное в «утверждённое» автоматически.
+
+### 1.3 Реализованное поведение [CODE], сохранять без оснований на удаление
+
+| Подсистема | Нынешнее поведение / ограничения | Где проверить |
+|---|---|---|
+| Галерея | Домашний экран группирует доступные медиа по папкам; вход в альбом, фото/видео, фильтр all/photo/video, сортировка, выбор элементов, просмотр, действия share/delete, обработка прав доступа. | `src/routes/index.tsx`; `src/routes/gallery.$folder.tsx`; `src/lib/device-scan.ts` |
+| Сетка | Параметры 2/3/4 колонки, поля created/name/size/modified, asc/desc; настройки разделены для folders/media. По коду defaults: **folders 2 колонки**, **media 3**, created desc. В разных размерах возможна адаптивная верхняя граница. | `src/lib/view-prefs.ts`; `src/lib/adaptive-grid-columns.ts`; `src/components/ViewOptionsMenu.tsx` |
+| Просмотрщик/редактор | Просмотр фото/видео; операции изображения включают поворот, отражение, яркость, контраст, рисование поверх; фильтры none/vintage/bw/compress, сохранение отредактированного изображения через native bridge. **Это базовый редактор, не доказательство полноценного ИИ.** | `src/routes/gallery.$folder.tsx`; `src/lib/native-vault.ts`; `SecureVaultPlugin.java` |
+| «Сейф» | PIN/пароль, папки create/rename/delete, перенос медиа в зашифрованное внутреннее хранилище, просмотр/расшифровка, возврат медиа, защита удалений, сброс ключа при lock; расшифровка AES-GCM. | `src/routes/safe.*.tsx`; `SafePinGate.tsx`; `vault-store.ts`; `crypto.ts` |
+| Настройки | Выбор языка (файлы 17 локализаций), тема, параметр биометрии, изменение 4-цифрового PIN/пароля, информация хранилища, политика конфиденциальности и, при необходимости, UMP privacy options. **Наличие переключателя биометрии не равно подтверждённому native-биометрическому unlock.** | `src/routes/settings.tsx`; `src/lib/i18n.ts`; `vault-store.ts` |
+| Начальная тема/опции [CODE] | `vault-store.ts`: theme **dark**; biometricsEnabled **false**; unlocked **false** (не сохранять). Не брать другие значения из устаревшего `ARCHITECTURE.md`. | `src/lib/vault-store.ts` |
+| Системная навигация | Нижние вкладки **Галерея / Сейф / Настройки**, высота навигации измеряется по DOM; live native WindowInsetsCompat, изменения IME/rotation/resize/gestures/three-buttons. | `BottomNav.tsx`; `AppShell.tsx`; `SystemInsetsPlugin.java` |
+| Реклама | Один Google AdMob **Native Advanced** в первом слоте галереи; UMP consent, отдельные test/prod IDs, backoff без цикла на consent, ожидание готовности layout до ad request. **Не отключать рекламные функции ради обхода зависания.** | `NativeAdTile.tsx`; `native-ads.ts`; `NativeAdsPlugin.java`; `backoff.ts`; `AGENTS.md` |
+| Языки | Файлы `ar, de, en, es, fr, hi, id, it, ja, kk, ko, pl, pt, ru, tr, vi, zh`. В `AGENTS.md` закреплён LTR layout; Arabic RTL только для текстовых листьев/полей, не зеркалить всю компоновку. | `src/lib/locales/*.ts`; `src/lib/i18n.ts` |
+| Хранилище | Локальный Android MediaStore + защищённая директория приложения, без серверных аккаунтов/галерейного облака. Реклама/consent могут обращаться к Google; выражение «полностью офлайн» относится к **основным операциям с медиа**, не к SDK рекламы. | `ARCHITECTURE.md`, `device-scan.ts`, `SecureVaultPlugin.java` |
+
+**Не считать утверждёнными законченными функциями:** корзину с восстановлением, избранное, архив, полноценные пользовательские альбомы, распознавание EXIF/поиск/дубликаты, денойз/апскейл/удаление объектов, если они существуют лишь в прошлом списке предложений, но не подтверждены кодом/тестами. В прошлых обсуждениях **[DISCUSSION]** владелец выбирал офлайн-обработку фото моделями среднего размера (семейство Real-ESRGAN, MI-GAN). Конкретные версии/размеры/интеграция и готовность требуют отдельной сверки; не смешивать с текущим шестинаправленным процентом Android.
+
+## 2. Паспорт кода, SDK и сборки
+
+- **Веб:** `src/routes` (файловые маршруты), `src/router.tsx`, `src/routes/__root.tsx`; React 19, TanStack Start/Router, Tailwind CSS v4, UI primitives `src/components/ui`. Серверная веб-ветка использует SSR/Start; Android использует отдельно собираемую SPA.
+- **Android SPA:** `src/android-client.tsx`; `vite.android.config.ts`; `android-index.html`; `scripts/finalize_android_bundle.mjs`; `capacitor.config.ts`; `src/polyfills.ts`. Сборка `CAPACITOR_BUILD=1`; Android hash-history. `src/routeTree.gen.ts` генерируется, **не редактировать руками**.
+- **Android native:** `android/app/src/main/java/app/lovable/privacygallery/{MainActivity,SecureVaultPlugin,SystemInsetsPlugin,NativeAdsPlugin,BootRecoveryPolicy,RenderedSurfaceProbe}.java`.
+- **Истинная производственная SDK-конфигурация:** `android/variables.gradle` = **minSdkVersion 24**, **compileSdkVersion 36**, **targetSdkVersion 36**; `android/app/build.gradle` и `android/build.gradle` — параметры Android Gradle. `README.md` содержит **противоречивые/устаревшие** утверждения об SDK 37; `ARCHITECTURE.md` местами описывает ещё более старые настройки SDK/маршрутов/дефолтов. **Сначала проверять исходники, а не копировать эти описания.**
+- **Android 17 API37:** `.github/workflows/android-api37-probe.yml` временно устанавливает `platforms;android-37.0` и AGP 9.2/Gradle 9.4.1 **только в CI checkout**; production остаётся SDK36. Успешная сборка API37 не подтверждает запуск на API37.
+- **Приватность:** Android filesDir/`nova_vault` + `.nomedia`, метаданные `vault.store.v3` в localStorage, AES-256-GCM и PBKDF2-SHA-256; PIN/ключи не включать в журнал. Отдельный PIN UI-gate `pin-store.ts`, криптографическая защита — `vault-store.ts`/`crypto.ts`.
+- **Релиз:** GitHub build workflow в рабочей ветке собирает **debug APK с тестовой рекламой**; release с подписанием/production ads предназначен для `main` при наличии secrets. **Не переводить сборку в `main` только ради release**, пользователь запретил.
+- **Синхронизация с Lovable:** `AGENTS.md` предупреждает: не переписывать опубликованные коммиты; новое изменение — новый fast-forward коммит.
+
+## 3. Карта исходников: открывать по конкретной задаче
+
+### 3.1 Старт и системные отступы
+
+| Файл (точный путь) | Назначение / ключевые точки | Смежные узлы / ловушки |
+|---|---|---|
+| `src/android-client.tsx` | `NativeStartupBoundary`, `NativeRouterBootMonitor`, последовательность `[NovaBoot]`, `flushSync` первого React commit, маршрутизатор, recovery UI. | `src/lib/native-startup-state.ts`. Не считать router-load/React root готовой галереей; *layout-ready* зависит от нативной геометрии. |
+| `src/router.tsx` | `getRouter()`, Android hash history, `NativeRoutePending`. | `src/routeTree.gen.ts`, `src/routes/__root.tsx`. Параллельный ручной `router.load()` уже вызывал конфликт; не возвращать без обоснования. |
+| `src/routes/__root.tsx` | Главный persistent Android shell, `RootComponent`/`NativeStandaloneShell`, ошибки роутера, bootstrap polyfills. | `src/components/AppShell.tsx`. Android должен иметь один shell, privacy отдельно; не плодить nested fixed frames. |
+| `src/components/AppShell.tsx` | `MeasuredAppFrame`, `useNativeLayoutEffect`, `report()` собирает реальные границы 3 tab links, `signalGalleryUiReady`, ограниченные таймеры/наблюдатели. | `src/lib/gallery-geometry.ts`, `system-insets.ts`, `BottomNav.tsx`. Избегать resize/MutationObserver циклов и вечно сбрасываемых watchdog. |
+| `src/components/BottomNav.tsx` | Вкладки `/`, `/safe`, `/settings`; измеряет высоту меню, не накладывает его на системную навигацию. | `src/styles.css` CSS vars `--app-measured-nav-height`, `--app-safe-*`. Минимальный touch target 48 CSS px; проверять маленькие окна. |
+| `src/lib/system-insets.ts` | `initSystemInsets()`, `refreshSystemInsetsForViewport()`, `updateSystemBarAppearance()`, `signalGalleryUiReady()`. | `SystemInsetsPlugin.java`, `insets-math.ts`. Не интерпретировать ранний нулевой snapshot как подтверждённые нулевые insets. |
+| `src/lib/insets-math.ts` | `normalizeSystemInsets`, `fitInsetsToViewport`, `isTrustedNativeInsetsSnapshot`, `scrollContentBottomReserve`. | `src/lib/insets-math.test.ts`. Избегать двойного нижнего отступа: высота BottomNav уже включает нижнюю системную область. |
+| `src/lib/gallery-geometry.ts` | Тип `GalleryLayoutEvidence` и `assessGalleryLayout()`; решает `OK` или конкретную ошибку геометрии. | `src/lib/gallery-geometry.test.ts` и native smoke. Нельзя ослаблять критерии только ради зелёного CI. |
+| `src/lib/native-startup-state.ts` | `nativeStartupState`, `shouldShowBlockingBootOverlay`, `shouldOfferLayoutRetry`. | `src/lib/native-startup-state.test.ts`. Видимый route + неготовые insets не должен закрываться чёрной плашкой. |
+| `android/app/src/main/java/app/lovable/privacygallery/MainActivity.java` | Регистрация native-плагинов **до `super.onCreate`**, WebView boot/recovery, compositing fallback, WindowCompat edge-to-edge, onResume/rotation/focus. | `BootRecoveryPolicy.java`, `RenderedSurfaceProbe.java`, `SystemInsetsPlugin.java`. Последний эксперимент: ранний software rendering **только на Android-эмуляторах API29/33**. Не переносить на реальные телефоны без данных. |
+| `android/app/src/main/java/app/lovable/privacygallery/SystemInsetsPlugin.java` | `getInsets`, `signalUiReady`, `setSystemBarAppearance`; Android WindowInsetsCompat → JS + метрики в MainActivity. | `src/lib/system-insets.ts`, Android Java instrumentation. |
+| `android/app/src/main/java/app/lovable/privacygallery/BootRecoveryPolicy.java` | `trySoftwareFallback` и `preferSoftwareRendererOnEmulator`. | Android instrumentation тесты и MainActivity. Не добавлять бесконечные reload/fallback. |
+| `android/app/src/main/java/app/lovable/privacygallery/RenderedSurfaceProbe.java` | Проверка фактически различимого нарисованного кадра вместо статуса загрузки. | `MainActivity.java`, Java tests. |
+
+### 3.2 Галерея, медиа, интерфейс
+
+| Файл | Что реализовано / менять здесь | Зависимости и проверки |
+|---|---|---|
+| `src/routes/index.tsx` | Список папок, фильтры, сортировка, вход, привязка к scan, первая рекламная карточка. | `device-scan.ts`, `ViewOptionsMenu.tsx`, `NativeAdTile.tsx`. |
+| `src/routes/gallery.$folder.tsx` | Альбом, список медиа, выделение, публикация/удаление, просмотр фото/видео, редактор/сохранение, `VirtualizedGrid`, `MediaViewer`. | `device-scan.ts`, `photo-flags.ts`, `thumbnails.ts`, `native-vault.ts`. Большой файл: точечно изучать нужную функцию. |
+| `src/lib/device-scan.ts` | `runNativeScan`/`walkNative`, разрешения, группировка, `deviceScan`, локальный web picker, данные `ScannedItem`/`ScannedAlbum`. | `SecureVaultPlugin.java`, `native-vault.ts`. Различать отсутствие разрешения и пустую галерею; не блокировать UI тяжёлым сканированием. |
+| `src/lib/thumbnails.ts` | `getThumb()`, локальный thumbnail/poster для изображений/видео, кэш/URL. | `device-scan.ts`, viewer; беречь память/медиа-декодеры. |
+| `src/lib/view-prefs.ts` | `getPrefs`/`setPrefs`, separate folders/media defaults, сортировка, 2/3/4 columns. | `ViewOptionsMenu.tsx`, `adaptive-grid-columns.ts` и их тесты. |
+| `src/lib/adaptive-grid-columns.ts` | `resolveAdaptiveGridColumns()` для реальной ширины. | `adaptive-grid-columns.test.ts`, экраны/oversize labels. |
+| `src/lib/photo-flags.ts` | Локальные отметки защиты от удаления, переименование отображаемого имени. | UI галереи; не путать отметку с крипто-«Сейфом». |
+| `src/lib/back-handler.ts` | `initBackHandler` и `useBackHandler` — native Android back и стек модальных закрытий. | Маршруты/просмотрщик. Не ломать системный back. |
+| `src/components/ViewOptionsMenu.tsx` | Меню сортировки/сеток. | `view-prefs.ts`. |
+| `src/routes/settings.tsx` | Языки, темы, параметры безопасности/4-цифрового пароля, privacy/UMP. | `i18n.ts`, `vault-store.ts`, `native-ads.ts`; возможность конфликта с PIN lock. |
+| `src/lib/i18n.ts`; `src/lib/locales/*.ts` | 17 локализаций, текстовый RTL только там, где нужно. | `AGENTS.md`; совместимость размера шрифтов. |
+| `src/styles.css` | CSS design tokens, темы, safe-area/custom vars. | `AppShell.tsx`, `BottomNav.tsx`; избегать одновременного двойного padding. |
+
+### 3.3 «Сейф», безопасность и транзакции
+
+| Файл | Важные функции / формат | Связи / нерешённые проверки |
+|---|---|---|
+| `src/lib/vault-store.ts` | `vault.createFolder/deleteFolder/renameFolder/addFiles/deleteFile/decryptFile/setInitialPassword/changePassword/verifyPassword/lock`. `useVault`; private blob read/write; `keyEpoch` аннулирует незавершённые операции. | `crypto.ts`, `vault-transaction.ts`, `native-vault.ts`, `vault-lifecycle.ts`. Не переупорядочивать «сначала persist index, потом delete blob» без proof. |
+| `src/lib/vault-transaction.ts` | `commitStateAfterPersistence`, `parseVaultMetadata`, `isSafeVaultId`, `isSafeVaultBlobPath`. | `vault-transaction.test.ts`. При повреждении индекса блокировать запись, не заменять пустым массивом. |
+| `src/lib/vault-lifecycle.ts` | `isSafeOperationCurrent`, epoch + identity. | `vault-lifecycle.test.ts`, `vault-store.concurrent.test.ts`. Не давать медленной PBKDF2-разблокировке отменять более поздний lock. |
+| `src/lib/secure-id.ts` | `createSecureId`, `uuidV4FromBytes`; CSPRNG UUID для WebView без `crypto.randomUUID`. | `secure-id.test.ts`. Не заменять на `Math.random()`. |
+| `src/lib/crypto.ts` | `initVaultSecrets`, `unlockVault`, `rewrapWithNewPassword`, `encryptBytes`, `decryptBytes`; AES-256-GCM, PBKDF2; в индексе соль, IV, wrapped key, verifier, **не пароль**. | `vault-store.ts`. Не утверждать аппаратный Android Keystore без доказательства (WebCrypto может быть программным). |
+| `src/lib/pin-store.ts` | UI PIN gate и session state; `safePin.lock` / `safePin.verify`. | `SafePinGate.tsx`, `vault-store.ts`. Двойной механизм: UI PIN и настоящий ключ шифрования должны синхронно блокироваться. |
+| `src/components/SafePinGate.tsx` | Набор PIN, first setup, verify, ошибки. | `pin-store.ts` и `vault-store.ts`. Особо проверить rollback, если одно из двух сохранений падает. |
+| `src/routes/safe.index.tsx` | Защищённый домашний экран папок, долгие нажатия, создание/удаление/переименование. | `SafePinGate.tsx`; `vault-store.ts`. |
+| `src/routes/safe.$folder.tsx` | Импорт, decrypt-to-view, restore, удалить/переименовать, gallery picker. | `device-scan.ts`; `SecureVaultPlugin.java`; `vault-store.ts`. Не удалять оригинал до подтверждённого шифрованного сохранения. |
+| `src/lib/native-vault.ts` | `SecureVault` bridge, `deleteOriginals`, `restoreToPublic`, `shareNative`, `saveEditedImage`, `setWallpaperSafely`. | `SecureVaultPlugin.java`. Android permissions и MediaStore результат обязателен. |
+| `android/app/src/main/java/app/lovable/privacygallery/SecureVaultPlugin.java` | Media permission API levels, MediaStore scan/delete/restore/share/wallpaper/save. | `native-vault.ts`, `device-scan.ts`. Проверять rollback и отсутствие удаления других файлов. |
+
+**Метаданные [CODE]:** `vault.store.v3` в `localStorage`; `folders[]` → `files[]` (id, name, size, type, addedAt, iv, optional cipher/blobPath/origPath), `crypto` (salt/iterations/wrappedKey/wrapIv/verifier/verifierIv), `theme`, `biometricsEnabled`. `unlocked` только RAM. Native ciphertext хранится в `nova_vault/<folder-id>/<file-id>.enc` под приватной директорией приложения, `.nomedia`. Успех сохранения индекса обязателен до удаления файла. Не выводить содержимое фото, PIN, CryptoKey, путь к чужим данным в CI.
+
+### 3.4 Реклама и внешние компоненты
+
+| Файл | Ответственность / ограничения |
+|---|---|
+| `src/lib/native-ads.ts` | Ad state machine, `requestAd`, `activateNativeAdSlot`, `onConsent`, net/backoff, layout-ready gating. Consent pending/required **не ошибка сети**. |
+| `src/components/NativeAdTile.tsx` | Один slot первого элемента, size/bounds, react ↔ native overlay. |
+| `android/app/src/main/java/app/lovable/privacygallery/NativeAdsPlugin.java` | Native Advanced render, Google Ads SDK, UMP, connectivity callbacks, test vs release IDs по `BuildConfig.USE_TEST_ADS`, не по runtime DEBUG. |
+| `src/lib/backoff.ts` + `backoff.test.ts` | Периоды повторов рекламы. Не вводить несколько параллельных ad schedulers. |
+| `src/routes/privacy.tsx` | Политика конфиденциальности внутри приложения. |
+| `AGENTS.md` | Ограничения Lovable, LTR/Arabic, реклама/UMP и схема IDs. |
+
+## 4. Готовность: история оценок, не сертификат
+
+Значения перенесены из последнего согласованного отчёта; **прирост за документационный пакет 0,0**. Это шесть направлений **Android-совместимости**, не полное количество функций Nova Gallery.
+
+| Направление | Базовый % | Прирост после последней полностью проверенной работы | Что реализовано | Что остаётся / блокер / проверка |
+|---|---:|---:|---|---|
+| Три системные кнопки | **93,2%** | +0,0 п.п. | Native WindowInsets, высота BottomNav, 48px touch targets, Android overlays в CI. | API29/33 screenshots; API34 foreground failure. Тест реального tap+OS area при 3 buttons. |
+| Системная навигация жестами | **91,2%** | +0,0 | Смена Android overlays, повторное получение insets, без навязывания custom swipe. | API29/33 чёрный кадр; проверить mode actually active + кадры после смены. |
+| Статус-бар и вырезы | **95,1%** | +0,0 | WindowInsetsCompat, статусные цвета, no fullscreen/no-limits флаги. | Подтверждение реальной геометрии на проблемных emulator/OEM/cutout. |
+| Автоподстройка системной навигации | **90,9%** | +0,0 | Реакции focus/resize/rotation/IME, native live snapshots, CSS measured nav reserve. | Ненадёжные старые WebView frame events; повторить переходы и accessibility layout. |
+| Разные размеры экрана | **96,5%** | +0,0 | 320×480 / 360×780 / 1024×600 / 780×360 логические размеры, media grids; viewport fitting. | На API29/33 после `wm size/density` белые кадры; нельзя считать прошедшими. |
+| Android 7–17 | **84,7%** | +0,0 | SDK24 минимум, SPA compat/polyfills, работающие API24/26/36; отдельная API37 compile. | API29/33 Android 10/13 FAIL; API34 Android14 FAIL; API37 runtime НЕ проверен; full 14 API matrix по `workflow_dispatch`. |
+
+**Историческая общая оценка = округлённое среднее шести: 91,9%.** При пересчёте сохранять те же направления и веса, или явно зафиксировать новую методику. Не повышать только потому, что добавлены тесты/документация или ограниченный emulator-only workaround. Отдельная готовность AI/photo enhancement, корзины и других обсуждавшихся функций **не вычислялась** — не проставлять выдуманный процент.
+
+## 5. Реестр проблем и диагнозов
+
+| ID / тяжесть | Проявление и воспроизводимость | Доказательство / гипотеза | Предпринятое, статус |
+|---|---|---|---|
+| **BOOT-29 / CRITICAL** | API29 (Android 10), Google APIs и AOSP: после запуска / смены плотности и размера снимки бывают полностью пустыми; иногда React root/route-loading логируется без видимого интерфейса. | [CI `db77e5e`](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/42131180502), jobs «Android API29» и «AOSP differential API29». Settings compositor **нарисован** даже после неудачного compact → «только сломан эмулятор» **не доказано**. | Уже пробовали hash router, flushSync, boot monitors, native layout/paint validation, watchdog/reload, emulator-only early software layer. **ОТКРЫТО**; не выдавать обходы за фикс. |
+| **BOOT-33 / CRITICAL** | API33 (Android 13): route иногда есть, но нет кадра, после resize/wide/large font повторяющиеся blank frames. | [тот же CI](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/42131180502) Google и AOSP API33; логи `Failed to find ColorBuffer`, иногда bridge errors; Settings painted даже на сбойном размере. | Renderer option `swiftshader`, `-feature -Vulkan` и early software layer только emulator. **ОТКРЫТО**. Нужна причинная проверка native vs DOM vs GPU/Surface. |
+| **BOOT-34 / HIGH, NEW** | Последний API34 (Android 14) прогон: instrumentation **success**, но shell smoke сообщает 11 раз «gallery process/window did not survive either launch» и **wrong foreground**. | [CI `db77e5e`](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/42131180502) job Android API34; это не то же самое, что API29/33 blank screenshots. | **ОТКРЫТО**. Перепроверить `mCurrentFocus` / `topResumedActivity`, actual package PID, foreground, ActivityManager, logcat/crash; не считать автоматически app crash. Предыдущие API34 были зелёными. |
+| **BOOT-READY / HIGH** | Отчёты `router-load-resolved`, `react-root-committed` могут появляться без смонтированного/видимого галерейного UI. | Java instrumentation требует `GalleryLayoutEvidence`, screenshot classifier требует реально различимые пиксели. | Частично диагностировано; `AppShell` signal и `RenderedSurfaceProbe`. **ОТКРЫТО в API29/33**. Не ослаблять тесты на видимый кадр. |
+| **BOOT-SYSTEM / MEDIUM** | При смене размера/плотности системный launcher/graphics buffer иногда нестабилен. | AOSP/GApps сравнения и system Settings screenshot до и после сбоя. | Добавлено `system-health-compact.txt` / `system-health-large_text_small_window.txt` в CI. **Гипотеза частичного влияния эмулятора**, не исчерпывающее объяснение. |
+| **SDK-37 / HIGH** | Android 17 API37 нельзя считать поддержанным на runtime лишь по Gradle. | `android-api37-probe.yml` SUCCESS compile for `db77e5e`, production still target/compile 36. | **ОТКРЫТА runtime-валидация**; не переносить временные Gradle изменения в production без отдельного тестирования и оценки совместимости Capacitor. |
+| **SAFE-INDEX / HIGH** | Риск потери индекса и ссылки на cipher, если JSON повреждён или localStorage quota/write отказал. | `vault-transaction.test.ts` + unit CI. | `commitStateAfterPersistence`, `parseVaultMetadata` блокируют небезопасную запись; **защита реализована и unit-проверена**. Полевую сохранность данных отдельно проверять на сценариях. |
+| **SAFE-ASYNC / HIGH** | Замок закрыт, но ожидающий PBKDF2/decrypt/import мог завершиться позднее. | `vault-lifecycle.test.ts`, `vault-store.concurrent.test.ts` + unit CI. | `keyEpoch`, проверка crypto identity и lock; **реализовано и unit-проверено**. Регрессионный manual crypto/file тест возможен отдельно; не снижает программную оценку только из-за телефона. |
+| **SAFE-MUTATE / HIGH** | Мутации папок/файлов через API модуля даже в заблокированном состоянии. | `vault-store.concurrent.test.ts`. | `requireUnlockedSafe` на create/delete/rename/file delete, `addFiles` и decrypt. **Исправлено в `db77e5e`; unit SUCCESS**. |
+| **SAFE-PATH / HIGH** | Риск traversal, некорректных ID и metadata после повреждения. | `vault-transaction.test.ts`. | `isSafeVaultId`/`isSafeVaultBlobPath`, проверка соответствия blobPath, duplicate IDs, key presence. **Проверено unit**; не удалять safeguard. |
+| **SAFE-IMPORT / HIGH** | Не удалять исходник раньше безопасного commit шифрованного файла; при lock/folder delete/import fail — rollback. | Код `vault-store.ts` / `safe.$folder.tsx` / native plugin; историю фиксировали предыдущие пакеты. | Защиты реализованы, но полный аппаратный сценарий «сохранил → рестарт → расшифровал → восстановил» не удостоверен всеми устройствами. **Проверять направленно**, не заявлять безусловное отсутствие потери данных. |
+| **ADS/UMP / MEDIUM** | Реклама не должна стартовать до готовности UI/консента, блокировать отрисовку, бесконечно повторять запросы. | `native-ads.ts` + `backoff.test.ts`, Java plugin. | Запрос после `gallery-layout-ready`; UMP-gate и backoff. **Рантайм на API29/33 не подтверждён из-за boot failure**. |
+| **DOC-DRIFT / MEDIUM** | `README.md` и большой `ARCHITECTURE.md` местами описывают SDK37 production, старые значения по умолчанию, прежние схемы build. | Реальные `android/variables.gradle`/`package.json`, `vault-store.ts`. | **ОТКРЫТА задача на синхронизацию документации** после стабилизации; источник истины — проверенный код и этот journal, без слепого копирования docs. |
+
+## 6. Проверки, команды, статусы и артефакты
+
+### 6.1 Команды (из реально используемых workflows)
+
+```bash
+# В корне репозитория; среда с Bun/Node/Android SDK/Java
+bun install
+bunx vitest run
+python3 -m unittest discover -s scripts -p 'test_android_diagnostics.py'
+python3 scripts/check_legacy_webview.py
+python3 scripts/check_android_compat.py
+bash -n scripts/emulator_navigation_smoke.sh
+bash -n scripts/run_android_emulator_tests.sh
+bun run build:capacitor
+cd android
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace --no-daemon
+```
+
+Эмуляторы запускаются **в GitHub Actions**, см. `.github/workflows/android-device-smoke.yml` и `scripts/run_android_emulator_tests.sh`. Для ручного запуска полной матрицы использовать `workflow_dispatch` (API 24–37); push по ветке гоняет API 24,26,29,33,34,36 плюс AOSP 29,33. У каждой версии APK проверяются hash, Java instrumentation, скриншоты реального foreground, resize/rotation и доступные режимы навигации. SDK37 временная компиляция — отдельный workflow.
+
+### 6.2 Фактическая матрица **последнего кодового SHA `db77e5e`**
+
+| Проверка | Состояние | GitHub evidence |
+|---|---|---|
+| Unit `bunx vitest run`, скриншотный classifier, Android web bundle / compatibility checks | **SUCCESS** | [Build Android APK #42131180553](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/42131180553) |
+| Полная debug APK сборка | **SUCCESS** | тот же run; artifact `app-debug-apk` (срок хранения ограничен). |
+| Android 17 API37 isolated compile APK (+ test APK), production SDK без изменения | **SUCCESS compile only** | [#42131180497](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/42131180497) |
+| Эмуляторная сборка одинаковых app/debugAndroidTest APK, sha256 | **SUCCESS** | [#42131180502](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/42131180502), job «Build and validate the single emulator APK pair». |
+| API24 (Android7) | **SUCCESS** | тот же run, job «Android API24 device smoke». |
+| API26 (Android8) | **SUCCESS** | тот же run, job «Android API26 device smoke». |
+| API29 (Android10), Google | **FAILURE: 3 Java layout failures + 6 blank screenshots** | тот же run, API29 job. |
+| API29 (Android10), AOSP | **FAILURE: 3 Java layout failures + 6 blank screenshots** | тот же run, AOSP API29 job. |
+| API33 (Android13), Google | **FAILURE: 10 blank screenshots; layout not confirmed** | тот же run, API33 job. |
+| API33 (Android13), AOSP | **FAILURE: last large-text small-window blank + instrumentation unsuccessful** | тот же run, AOSP API33 job. |
+| API34 (Android14), Google | **FAILURE: 11 wrong-foreground reports**, хотя native instrumentation SUCCESS | тот же run, API34 job. |
+| API36 (Android16) | **SUCCESS** | тот же run, API36 job. |
+| API37 Android17 runtime / прочие промежуточные API25/27/28/30/31/32/35 на текущем SHA | **НЕ ПРОВЕРЕНЫ полным runtime-прогоном** | Требуется ручной workflow_dispatch по мере доступности SDK images. |
+| Установка APK на телефон владельца | **НЕ ВЫПОЛНЯЛАСЬ ассистентом** | В отдельной пользовательской проверке; **не процент незавершённого программирования**. |
+
+**Предыдущие контрольные точки:** `bfb4517`: [APK success](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/41959893382), [API37 compile success](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/41959893595), [emulators fail](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/41959893300). `9f3e849`: [APK success](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/42130278630), [API37 compile success](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/42130278726), [emulator cancelled by newer commit](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/42130278813): **отменено ≠ успешно**.
+
+### 6.3 Где брать подробные доказательства
+
+1. Открыть Actions run → конкретный job → step `Install and run device / navigation tests` или `Run the same tests on AOSP`.
+2. Скачать из Actions соответствующий artifact `nova-emulator-logs-api-29/33/34` либо `nova-aosp-control-api-29/33`, если ещё не истёк retention. Внутри: `logcat.txt`, `classification.json`, `system-baseline.txt`, `system-health-*.txt`, `instrumentation.txt`, `portrait.png`, `compact.png`, `large_text_small_window.png`, `foreground.txt`, `window-*.txt`, `activities.txt` и другие.
+3. `scripts/summarize_android_diagnostics.py` различает `ROUTE_MOUNTED_BUT_NATIVE_LAYOUT_UNVERIFIED`, `SYSTEM_COMPOSITOR_UNRELIABLE_AFTER_RESIZE`, launcher crashes и app crashes. Проверки `scripts/test_android_diagnostics.py` покрывают классификатор. **Не выдавать «NEEDS_MANUAL_REVIEW» за успех.**
+4. Artifact retention **1–3 дня**; после истечения для нового run не полагаться на исчезнувшие файлы, собирать новые логи, но исходную историю успешности сохранить здесь.
+
+## 7. Компактная история реальных изменений
+
+| Когда | SHA | Изменение и затронутые узлы | Результат / следующий смысл |
+|---|---|---|---|
+| До 2026-11-04 | `10fdf3d` | `vault-store.ts` / `vault-transaction.ts`: защита повреждённого индекса, отказ перезаписывать Safe при malformed JSON/failed write; тесты. | APK и API37 compile были зелёными, API29/33 runtime не были закрыты. |
+| 2026-11-04 | [`c5e41a6`](https://github.com/BauRP/pixel-perfect-pixels/commit/c5e41a601dfd0349eafbaaaad12d13004f366780) | `AppShell.tsx` ограниченный независимый watchdog измерений; `vault-transaction.ts` неполные папки/дубликаты; tests. | Unit/APK green, emulator FAIL. |
+| 2026-11-05 | [`bfb4517`](https://github.com/BauRP/pixel-perfect-pixels/commit/bfb4517b55d75bb95923a481eb693b8bbf993236) | Ранние layout measurements, отложенное ad request, Safe path confinement, UUID для старых WebView; восемь файлов. | Unit/APK/API37 compile green, emulator FAIL. |
+| 2026-11-06 | [`47f16e7`](https://github.com/BauRP/pixel-perfect-pixels/commit/47f16e72544020798be1cc03a9bfded116999278), затем [`9f3e849`](https://github.com/BauRP/pixel-perfect-pixels/commit/9f3e849e33213a14ed76f09b8337afc88cb03ba9) | Safe crypto epoch/дешифрование после lock, неполноэкранная retry-панель, system Settings screenshot после resize, diagnostics tests; вторым коммитом устранён дубликат Python test. | На `9f3e849` APK/API37 compile green; emulator workflow cancelled newer push. |
+| 2026-11-06 | [`db77e5e`](https://github.com/BauRP/pixel-perfect-pixels/commit/db77e5e4f8b0ede5699f8b897b740b6ad2019fbd) | `vault-store.ts` проверяет unlock при мутациях; `vault-store.concurrent.test.ts` проверяет реальные async races; `MainActivity.java`/`BootRecoveryPolicy.java` early software renderer **только emulator API29/33**; `AndroidCompatibilitySmokeTest.java` доп. Java test. | **APK SUCCESS**, **API37 compile SUCCESS**, **emulator FAILURE** на API29/33/34; успешные API24/26/36. |
+| 2026-11-06 | коммит `PROGRESS.md` (см. GitHub history) | Создан постоянный документ контекста, без изменения исходников. | Проверить file existence в этой ветке. **Не засчитывать в readiness как новую функцию.** |
+
+Обновляя этот список, хранить **крупные проверенные этапы**, а не каждый косметический коммит. Для каждого следующего пакета добавить SHA кода, список функций, проваленные и успешные проверки **для именно этого SHA**, изменение % и текущую задачу.
+
+## 8. Очередь разработки с независимыми ветвями
+
+| Приоритет | Задача и объём | Файлы | Definition of done |
+|---|---|---|---|
+| **P0** | Root cause API29/33: почему route/JS загружены, а WebView не даёт видимый UI. Изолировать native software layer, Surface/ColorBuffer, состояние lifecycle, full-screen loading overlay, размеры/WindowInsets; сравнить AOSP и Google. | `MainActivity.java`, `BootRecoveryPolicy.java`, `android-client.tsx`, `AppShell.tsx`, `SystemInsetsPlugin.java`, `emulator_navigation_smoke.sh`. | На одинаковом APK **native instrumentation + реальные скриншоты** API29 и 33 без blank после portrait, compact, resize, rotation, nav modes; другие успешные API не регрессируют. |
+| **P0/P1** | API34 wrong foreground: установить именно foreground и жизненный цикл, проверить, не ошибается ли shell probe. | `emulator_navigation_smoke.sh`, `run_android_emulator_tests.sh`, `MainActivity.java`. | Repro диагностирован, проверка app PID/window соответствует UI, без обхода foreground проверки; API34 SUCCESS. |
+| **P1** | Сделать надёжную сквозную проверку «Сейфа» на реальных функциях storage: импорт → шифрование → индексация → restart → unlock → preview → restore; lock/revoke/fail/quota. | `vault-store.ts`, `vault-transaction.ts`, `SafePinGate.tsx`, `safe.$folder.tsx`, `SecureVaultPlugin.java`, тесты. | Автоматические позитивные и failure-path тесты, no data loss/secret disclosure. Проверку на телефоне отдельно, не как процент незавершённого кода. |
+| **P1** | API37 runtime (Android17) + пропущенные API25/27/28/30/31/32/35; проверить систему cutouts/nav/IME, SDK production migration только после доказательств. | `android-api37-probe.yml`, `android-device-smoke.yml`, `android/variables.gradle`. | Доступный full-matrix CI, runtime pass; compile-only не достаточно. |
+| **P2 независимая** | Аудит остальных галерейных функций, UX, accessibility, storage, video decode; сверить фактический UI с документом требований/сравнительным PDF, если доступен. | `index.tsx`, `gallery.$folder.tsx`, `settings.tsx`, `device-scan.ts`, `ViewOptionsMenu.tsx`. | Реальный код, unit/Android build, обоснованные статусы, не имитации. |
+| **P2 независимая** | Реклама/UMP consent, native ad lifecycle, холодный запуск, разные сети без бесконечных retry и без блокировки основной галереи. | `native-ads.ts`, `NativeAdTile.tsx`, `NativeAdsPlugin.java`, `backoff.test.ts`. | Unit + инструментальные/соответствующие runtime подтверждения; main features не зависят от ad SDK. |
+| **P2 документация** | Обновить устаревшие SDK claims и дефолты в `README.md` / `ARCHITECTURE.md` после окончательного подтверждения конфигурации. | Указанные docs, `android/variables.gradle`, `package.json`. | Документация согласована с actual code, без скрытой SDK миграции. |
+| **P3 по подтверждённому ТЗ** | Офлайн-ИИ фотографии, корзина/избранное/альбомы и другие обсуждавшиеся улучшения. Не предполагать финальные спецификации или проценты. | После проверки требований и наличия/отсутствия реализации. | Только реальное поведение, заявленный размер/оффлайн-режим, автоматические тесты и APK. |
+
+Если P0 заблокирован CI-инфраструктурой, перейти к P1 или независимой P2, **не изменяя “FAILURE” на “PASS”**.
+
+## 9. Протокол обновления этого файла (обязателен)
+
+1. Перед работой прочитать **§0, §5–§8, §10**; проверить `git rev-parse HEAD` / GitHub branch head, SHA последнего кодового коммита и run IDs. Если HEAD новее, прочитать только `git diff <last-reviewed-code-sha>..HEAD --name-only` и связанный код. Особенность: коммит этого журнала сам по себе **не меняет программную готовность**.
+2. Проверить `AGENTS.md` и ограничения ветки; если последующие коммиты меняли `AGENTS.md`, открыть именно новые ограничения.
+3. Для каждой крупной логической группы: source changes → unit/diagnostic tests → APK build → Android runtime при необходимости → фиксация отчёта по конкретному SHA. Если нет результата какого-то шага, писать **«не проверено»** и точную причину.
+4. Если CI обнаружил баг, исправить его и повторно проверить на НОВОМ SHA. CI jobs могут автоматически отменяться при следующем push из-за `cancel-in-progress: true`; **не штамповать документы/частые коммиты во время критического emulator run** без необходимости.
+5. Обновить в этом же `PROGRESS.md`: HEAD source SHA, дату, конкретные исправления, тесты/ID, ошибки, прирост/общий процент и точную next step. Сохранить в **эту рабочую ветку** без force push, не создавая `PROGRESS2.md` и не переключая `main`.
+6. Проверить GitHub file content после записи. Не сохранять пароли, токены, secrets, личные файлы, photo paths из логов.
+
+## 10. С чего продолжить в следующем чате
+
+**Первое действие:** перейти к [рабочей ветке](https://github.com/BauRP/pixel-perfect-pixels/tree/chatgpt/nova-gallery-android7-17-fixes-20261031), прочитать **этот файл**, проверить HEAD против исходного `db77e5e` и последующих коммитов. Если изменился только `PROGRESS.md`, повторно читать весь проект **не надо**. Посмотреть [emulator run #42131180502](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/42131180502) и его пять неудачных jobs (AOSP29, Google29, Google33, AOSP33, Google34); по возможности скачать последние `nova-emulator-logs-*`, `nova-aosp-control-*`.
+
+**Точная первая кодовая задача:** вычленить две разные неисправности:
+1. API29/33 (и AOSP): native window/Settings **painted** при ряде пустых галерейных кадров; нельзя объявить причиной исключительно слабость эмулятора. Сопоставить `logcat.txt` и `instrumentation.txt` с метками `[NovaBoot]`/`[NovaLayout]`, `system-health-compact.txt`, `window-compact.txt`, `activities.txt`. Проверить последовательность `MainActivity.onCreate` → WebView setup/surface → `NativeRouterBootMonitor` → `MeasuredAppFrame.report` → `SystemInsetsPlugin.signalUiReady` → native compositor proof. Отдельно проверить действие раннего `LAYER_TYPE_SOFTWARE` (эмулятор API29/33, коммит `db77e5e`) и его влияние на первый paint. Не менять живой renderer всех телефонов.
+2. API34: Java instrumentation вернул SUCCESS, но `scripts/emulator_navigation_smoke.sh` не нашёл наше окно в `mCurrentFocus`/`topResumedActivity`, 11 сценариев «wrong foreground». Сначала отделить ошибку определения foreground от реальной смерти Activity, посмотреть `foreground.txt`/`window.txt`/`activities.txt`/PID и причину, только после этого менять shell test или Activity lifecycle.
+
+**Модули для первого чтения:** `src/android-client.tsx`, `src/router.tsx`, `src/routes/__root.tsx`, `src/components/AppShell.tsx`, `src/lib/native-startup-state.ts`, `src/lib/system-insets.ts`, `android/app/src/main/java/app/lovable/privacygallery/MainActivity.java`, `android/app/src/main/java/app/lovable/privacygallery/SystemInsetsPlugin.java`, `scripts/emulator_navigation_smoke.sh`, `scripts/run_android_emulator_tests.sh`. Не перечитывать `src/components/ui/*`, все локали и `gallery.$folder.tsx` без причины.
+
+**Границы:** preserve 3-tabs, all media/Safe/ad functions; не скрывать ошибку фальшивым overlay и не подменять реальную отрисовку фальшивым snapshot. Не ломать `main`; не удалять сохранённые файлы ради теста. Если emulator artifact истёк — перезапустить этот же test workflow на новом кодовом SHA или сохранить доступные логи; не заявлять старые изображения «новыми».
+
+**Команды проверки:** §6.1. Для тестирования, имеющего смысл для этого багфикса, необходимы **оба** результата: unit + APK SUCCESS и emulator instrumentation **и** снимки с читаемой галереей. После решения / блокера обновить §0, §4, §5, §6.2, §7, §8, §10 в **этом** `PROGRESS.md`, сохранить fast-forward коммитом в текущую ветку.
+
+**Ожидаемый результат:** реальная галерея с тремя доступными вкладками отображается на API29/33/34, в портрете/ландшафте/компактном/широком окне, вне статус-бара, вырезов и системных кнопок/жестов; нет потери/раскрытия файлов Safe, native-ads не тормозят boot; прежние зелёные API24/26/36 не регрессируют. Только после фактических результатов — увеличить соответствующие проценты.
+
+---
+_Этот документ намеренно компактнее полной переписки и не дублирует исходный код. Актуальный код, тесты, CI и пользовательские требования имеют приоритет над устаревшими описаниями._
