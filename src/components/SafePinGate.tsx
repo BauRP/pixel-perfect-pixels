@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { safePin } from "@/lib/pin-store";
-import { vault } from "@/lib/vault-store";
+import { establishSafePin, unlockSafeWithPin } from "@/lib/safe-pin-auth";
+
 import { useT } from "@/lib/i18n";
 import { ShieldCheck, Delete, ArrowLeft } from "lucide-react";
 
@@ -43,6 +44,7 @@ export function SafePinGate({
   };
 
   const submit = async (value: string) => {
+    if (busy) return;
     setBusy(true);
     try {
       if (isSetup) {
@@ -60,46 +62,37 @@ export function SafePinGate({
             setStage("enter");
             return;
           }
-          // The PIN must NEVER open a Safe without its matching AES file key.
-          // Existing keys cannot be reinitialized by creating a new UI PIN.
-          try {
-            if (vault.hasPassword()) {
-              setError(t("pin_wrong"));
-              return;
-            }
-            await vault.setInitialPassword(value);
-            await safePin.setPin(value);
-            onSuccess();
-          } catch (e) {
-            setError(e instanceof Error ? e.message : t("pin_wrong"));
+          // An interrupted PIN update can leave the AES key configured but
+          // the UI PIN missing. Recover ONLY after verifying the real AES
+          // password; never generate a new key over existing Safe files.
+          const ok = await establishSafePin(value);
+          if (!ok) {
+            setError(t("pin_wrong"));
+            triggerShake();
+            setPin("");
+            setFirstPin("");
+            setStage("enter");
+            return;
           }
+          onSuccess();
         }
       } else {
-        const ok = await safePin.verify(value);
-        if (ok) {
-          try {
-            const keyReady = vault.hasPassword()
-              ? (vault.isUnlocked() || await vault.verifyPassword(value))
-              : (await vault.setInitialPassword(value), true);
-            if (!keyReady) {
-              safePin.lock();
-              setError(t("pin_wrong"));
-              setPin("");
-              return;
-            }
-            onSuccess();
-          } catch (e) {
-            safePin.lock();
-            setError(e instanceof Error ? e.message : t("pin_wrong"));
-            setPin("");
-          }
-        }
-        else {
+        // A durable crypto password may be newer than its UI-only PIN hash
+        // if storage failed during an update. Verify against the encryption
+        // key, then repair the UI PIN only on cryptographic success.
+        const ok = await unlockSafeWithPin(value);
+        if (!ok) {
           setError(t("pin_wrong"));
           triggerShake();
           setPin("");
+          return;
         }
+        onSuccess();
       }
+    } catch (e) {
+      safePin.lock();
+      setError(e instanceof Error ? e.message : t("pin_wrong"));
+      setPin("");
     } finally {
       setBusy(false);
     }

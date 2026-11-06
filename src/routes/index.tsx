@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ViewOptionsMenu } from "@/components/ViewOptionsMenu";
 import { useViewPrefs, sortRows } from "@/lib/view-prefs";
 import { resolveAdaptiveGridColumns } from "@/lib/adaptive-grid-columns";
+import { measureAlbumForSort } from "@/lib/album-sort-metrics";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -79,16 +80,11 @@ function GalleryIndex() {
   // Real Array.prototype.sort() over the album list. Folders carry no date
   // of their own, so they inherit it from their newest / oldest member.
   const sortedAlbums: ScannedAlbum[] = useMemo(() => {
-    const rows = filteredAlbums.map((a) => {
-      const times = a.items.map((i) => i.mtime).filter((n) => Number.isFinite(n));
-      return {
-        album: a,
-        name: a.name,
-        createdAt: times.length ? Math.min(...times) : 0,
-        mtime: times.length ? Math.max(...times) : 0,
-        size: a.items.reduce((sum, i) => sum + (i.size ?? 0), 0),
-      };
-    });
+    const rows = filteredAlbums.map((a) => ({
+      album: a,
+      name: a.name,
+      ...measureAlbumForSort(a.items),
+    }));
     return sortRows(rows, prefs.field, prefs.dir).map((r) => r.album);
   }, [filteredAlbums, prefs.field, prefs.dir]);
 
