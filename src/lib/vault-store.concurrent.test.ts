@@ -88,6 +88,50 @@ describe("real Safe operations reject stale crypto results", () => {
     expect(localStorage.getItem("vault.store.v3")).toBe(original);
   });
 
+  it("stops reading the remaining large files after a lock mid-import", async () => {
+    const vault = await unlockedVault();
+    const folder = vault.createFolder("Private");
+    let finish!: (bytes: ArrayBuffer) => void;
+    const nextRead = vi.fn(async () => new Uint8Array([4, 5, 6]).buffer);
+    const first = { name: "first.jpg", type: "image/jpeg", size: 3,
+      arrayBuffer: () => new Promise<ArrayBuffer>(resolve => { finish = resolve; }) } as File;
+    const second = { name: "second.mp4", type: "video/mp4", size: 3,
+      arrayBuffer: nextRead } as File;
+    const pending = vault.addFiles(folder, [first, second]);
+    // The first file's read is suspended, so there is no need to process
+    // the second file after a lock.
+    vault.lock();
+    finish(new Uint8Array([1, 2, 3]).buffer);
+    await expect(pending).rejects.toThrow("locked");
+    expect(nextRead).not.toHaveBeenCalled();
+    expect(mockCrypto.encrypt).not.toHaveBeenCalled();
+    const persisted = JSON.parse(localStorage.getItem("vault.store.v3") || "{}");
+    expect(persisted.folders[0].files).toEqual([]);
+  });
+
+  it("does not encrypt the second item if the Safe locks during the first encryption", async () => {
+    const vault = await unlockedVault();
+    const folder = vault.createFolder("Private");
+    let finish!: (payload: { iv: string; cipher: string }) => void;
+    mockCrypto.encrypt.mockImplementationOnce(() => new Promise(resolve => {
+      finish = resolve;
+    }));
+    const secondRead = vi.fn(async () => new Uint8Array([4, 5, 6]).buffer);
+    const makeFile = (name: string, read: () => Promise<ArrayBuffer>) =>
+      ({ name, type: "image/jpeg", size: 3, arrayBuffer: read }) as File;
+    const pending = vault.addFiles(folder, [
+      makeFile("one.jpg", async () => new Uint8Array([1, 2, 3]).buffer),
+      makeFile("two.jpg", secondRead),
+    ]);
+    await Promise.resolve();
+    vault.lock();
+    finish({ iv: "nonce", cipher: "encrypted" });
+    await expect(pending).rejects.toThrow("locked");
+    expect(secondRead).not.toHaveBeenCalled();
+    const persisted = JSON.parse(localStorage.getItem("vault.store.v3") || "{}");
+    expect(persisted.folders[0].files).toEqual([]);
+  });
+
   it("does not commit an import that finishes after locking", async () => {
     const vault = await unlockedVault();
     const folder = vault.createFolder("Private");

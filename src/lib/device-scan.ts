@@ -131,8 +131,15 @@ function group(items: { item: ScannedItem; path: string }[]): ScannedAlbum[] {
   return out;
 }
 
+function revokeObjectUrls(items: readonly ScannedItem[]) {
+  // Only browser-created blob: URLs hold native resources. Never revoke
+  // a capacitor:// or file:// URI belonging to the actual Android gallery.
+  for (const item of items) {
+    if (item.url.startsWith("blob:")) URL.revokeObjectURL(item.url);
+  }
+}
 function revokeAll() {
-  for (const a of state.albums) for (const i of a.items) URL.revokeObjectURL(i.url);
+  for (const album of state.albums) revokeObjectUrls(album.items);
 }
 
 async function walkDir(
@@ -159,8 +166,9 @@ async function walkDir(
 async function rescanHandle(handle: FileSystemDirectoryHandle) {
   if (rescanInFlight) { rescanQueued = true; return; }
   rescanInFlight = true;
+  const collected: { item: ScannedItem; path: string }[] = [];
+  let adopted = false;
   try {
-    const collected: { item: ScannedItem; path: string }[] = [];
     await walkDir(handle, handle.name, collected);
     const nextIds = new Set(collected.map((c) => c.item.id));
     const currentIds = new Set(state.albums.flatMap((a) => a.items.map((i) => i.id)));
@@ -168,10 +176,17 @@ async function rescanHandle(handle: FileSystemDirectoryHandle) {
       nextIds.size !== currentIds.size ||
       [...nextIds].some((id) => !currentIds.has(id));
     if (changed) {
+      const nextAlbums = group(collected);
+      // These URLs are now owned by the displayed album state.
+      adopted = true;
       revokeAll();
-      set({ albums: group(collected), scanned: true });
+      set({ albums: nextAlbums, scanned: true });
     }
   } finally {
+    // Every unchanged scan previously leaked one Blob URL per photo on
+    // focus/pageshow. Partial/failed walks leaked them too. Cleanup only
+    // temporary URLs; the displayed album URLs must remain usable.
+    if (!adopted) revokeObjectUrls(collected.map(({ item }) => item));
     rescanInFlight = false;
     if (rescanQueued) {
       rescanQueued = false;

@@ -235,46 +235,57 @@ export const vault = {
     if (!importKey || !state.unlocked) throw new Error("Vault is locked");
     if (!state.folders.some((f) => f.id === folderId))
       throw new Error("Vault folder no longer exists");
-    if (isNative()) await ensureNativeVaultDir(folderId);
     const encrypted: EncryptedFile[] = [];
     const writtenBlobs: string[] = [];
-    try {
-      for (let i = 0; i < files.length; i++) {
-      const f = files[i];
-      const buf = await f.arrayBuffer();
-      const { iv, cipher } = await encryptBytes(buf, importKey);
-      const id = createSecureId();
-      let blobPath: string | undefined;
-      let inlineCipher: string | undefined = cipher;
-      if (isNative()) {
-        // Native: the ciphertext is MOVED into app-private internal storage
-        // instead of being kept inline, so large media never bloats the
-        // metadata store and never touches public storage.
-        blobPath = await writeBlob(folderId, id, cipher);
-        writtenBlobs.push(blobPath);
-        inlineCipher = undefined;
-      }
-      encrypted.push({
-        id,
-        name: f.name,
-        size: f.size,
-        type: f.type || "application/octet-stream",
-        addedAt: Date.now(),
-        iv,
-        ...(inlineCipher ? { cipher: inlineCipher } : {}),
-        ...(blobPath ? { blobPath } : {}),
-        ...(meta?.[i]?.origPath ? { origPath: meta[i]!.origPath } : {}),
-      });
-      }
-      // Import may outlive a screen lock or password reset. Never commit
-      // ciphertext from an operation that started with another RAM key.
+    // Cancel at every awaited boundary. Previously a lock during a large
+    // batch still read and encrypted the remaining files before rollback:
+    // that kept gigabytes of private media in memory for no useful purpose.
+    const assertCurrent = () => {
       if (!isSafeOperationCurrent(importEpoch, keyEpoch) ||
           liveFileKey !== importKey || !state.unlocked)
         throw new Error("Vault was locked during import");
-      // Folder deletion may have happened while we were encrypting or
-      // awaiting the native filesystem. Do not orphan encrypted blobs.
       if (!state.folders.some((f) => f.id === folderId))
         throw new Error("Vault folder was removed during import");
+    };
+    try {
+      if (isNative()) {
+        await ensureNativeVaultDir(folderId);
+        assertCurrent();
+      }
+      for (let i = 0; i < files.length; i++) {
+        assertCurrent();
+        const f = files[i];
+        const buf = await f.arrayBuffer();
+        assertCurrent();
+        const { iv, cipher } = await encryptBytes(buf, importKey);
+        assertCurrent();
+        const id = createSecureId();
+        let blobPath: string | undefined;
+        let inlineCipher: string | undefined = cipher;
+        if (isNative()) {
+          // Reserve the unique path *before* attempting a native write:
+          // Filesystem.writeFile can create a partial blob and then reject.
+          // A rejected/aborted import must clean up that partial ciphertext.
+          blobPath = `${VAULT_DIR}/${folderId}/${id}.enc`;
+          writtenBlobs.push(blobPath);
+          await writeBlob(folderId, id, cipher);
+          assertCurrent();
+          inlineCipher = undefined;
+        }
+        encrypted.push({
+          id,
+          name: f.name,
+          size: f.size,
+          type: f.type || "application/octet-stream",
+          addedAt: Date.now(),
+          iv,
+          ...(inlineCipher ? { cipher: inlineCipher } : {}),
+          ...(blobPath ? { blobPath } : {}),
+          ...(meta?.[i]?.origPath ? { origPath: meta[i]!.origPath } : {}),
+        });
+      }
+      // Both the encryption key and folder must still belong to this import.
+      assertCurrent();
       set((s) => ({
         ...s,
         folders: s.folders.map((f) =>
