@@ -135,6 +135,8 @@ public class MainActivity extends BridgeActivity {
         if (isFinishing() || isDestroyed() || galleryUiReady || bootRecoveryView != null) return;
         FrameLayout container = findViewById(android.R.id.content);
         if (container == null) return;
+        WebView stalledWeb = getBridge() == null ? null : getBridge().getWebView();
+        probeMissingGallery(stalledWeb, "native-fallback");
         FrameLayout overlay = new FrameLayout(this);
         overlay.setTag("nova-native-boot-recovery");
         overlay.setBackgroundColor(Color.rgb(15, 17, 23));
@@ -224,6 +226,38 @@ public class MainActivity extends BridgeActivity {
         });
     }
 
+    /**
+     * CI-only DOM readiness probe for an unpainted gallery. Return a fixed,
+     * privacy-safe set of booleans/dimensions: never a URL/hash, HTML, folder
+     * name, PIN, photo or exception message. A missing evaluateJavascript
+     * callback distinguishes a stalled renderer from a mounted-but-hidden UI.
+     * This never changes app state or reload timing.
+     */
+    private void probeMissingGallery(WebView web, String stage) {
+        if (!isEmulatorRuntime() || web == null) return;
+        Log.w("NovaGalleryBoot", "DOM probe requested stage=" + stage
+                + " web=" + web.getWidth() + "x" + web.getHeight()
+                + " shown=" + web.isShown() + " focus=" + hasWindowFocus());
+        final String probe = "(function(){try{var d=document,r=d.documentElement;"
+                + "var has=function(s){return !!d.querySelector(s)};"
+                + "return 'ready='+d.readyState"
+                + "+',root='+has('#root')"
+                + "+',shell='+has('[data-app-shell]')"
+                + "+',route='+has('[data-nova-route-content]')"
+                + "+',tabs='+has('[data-bottom-nav]')"
+                + "+',pending='+has('[data-nova-route-pending]')"
+                + "+',recovery='+has('[data-nova-react-recovery]')"
+                + "+',insets='+String(r.dataset.novaInsetsReady==='true')"
+                + "+',size='+innerWidth+'x'+innerHeight;"
+                + "}catch(e){return 'probe-error'}})()";
+        try {
+            web.evaluateJavascript(probe, value ->
+                    Log.w("NovaGalleryBoot", "DOM probe stage=" + stage + " result=" + value));
+        } catch (RuntimeException ignored) {
+            Log.w("NovaGalleryBoot", "DOM probe unavailable stage=" + stage);
+        }
+    }
+
     // On some API 29/33 WebView provider images, local Capacitor assets can
     // stall at 10% before a single JS callback runs. Recover a stalled LOCAL
     // page once per Activity, never restart an already loaded gallery, and
@@ -260,8 +294,10 @@ public class MainActivity extends BridgeActivity {
         // rendered; only the explicit UI-ready handshake can cancel recovery.
         int progress = web.getProgress();
         attemptedLocalBootRecovery = true;
-        Log.w("NovaGalleryBoot", "One-time blank gallery recovery: progress="
-                + progress + " url=" + url);
+        // The URL can include a private Safe folder identifier in its hash.
+        // Log only generic progress and non-personal diagnostic evidence.
+        Log.w("NovaGalleryBoot", "One-time blank gallery recovery: progress=" + progress);
+        probeMissingGallery(web, "before-reload");
         // On API 29/33 the page sometimes reaches 100% but never paints or
         // sends a single React layout snapshot. Our earlier software-renderer
         // retry lived only in verifyWindowPaint(), which is gated on

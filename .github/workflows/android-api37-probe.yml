@@ -5,6 +5,12 @@ name: Android 17 API 37 isolated build
 # commit the temporary SDK bump.
 on:
   push:
+    # A PROGRESS.md update is mandatory after every user request. Do not
+    # rebuild APKs for documentation-only commits; mixed code+docs pushes
+    # still run the complete workflow, and workflow_dispatch is unaffected.
+    paths-ignore:
+      - 'PROGRESS.md'
+      - 'AGENTS2.md'
     branches: [ 'chatgpt/nova-gallery-*' ]
   workflow_dispatch:
 

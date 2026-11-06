@@ -87,6 +87,23 @@ function SafeFolderView() {
   // vault.addFiles() throws "Vault is locked".
   const gate = !pin.unlocked || !vaultUnlocked;
 
+  // A lock must immediately obscure a previously decrypted image/video,
+  // not leave the z-80 viewer above the z-70 PIN gate. The existing URL
+  // cleanup effect revokes plaintext object URLs after viewer closes.
+  useEffect(() => {
+    if (!gate) return;
+    setViewer(null);
+    setConfirmFile(null);
+    setPickerOpen(false);
+  }, [gate]);
+
+  // Async operations are authorized for one key epoch only. A later lock or
+  // password change invalidates the token, including an immediate re-unlock.
+  const requireSafeSession = (token: number | null) => {
+    if (!safePin.isUnlocked() || !vault.isAccessTokenCurrent(token))
+      throw new Error("Safe was locked during operation");
+  };
+
   if (!folder) {
     return (
       <AppShell>
@@ -98,9 +115,12 @@ function SafeFolderView() {
 
   const onPick = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
+    const accessToken = vault.captureAccessToken();
     setBusy(true);
     try {
+      requireSafeSession(accessToken);
       await vault.addFiles(folder.id, Array.from(files));
+      requireSafeSession(accessToken);
       toast.success(t("encrypted_count", { n: files.length }));
     } catch (e) {
       toast.error((e as Error).message ?? t("encryption_failed"));
@@ -111,8 +131,10 @@ function SafeFolderView() {
 
   const addFromGallery = async (items: ScannedItem[]) => {
     if (items.length === 0) return;
+    const accessToken = vault.captureAccessToken();
     setBusy(true);
     try {
+      requireSafeSession(accessToken);
       // Scoped MediaStore owns deletion; no unrestricted all-files access
       // needs to be requested just to move media into the Safe.
 
@@ -121,18 +143,25 @@ function SafeFolderView() {
       //    single unreadable item can't abort the whole batch).
       const secured: ScannedItem[] = [];
       for (const it of items) {
+        requireSafeSession(accessToken);
         try {
           const file = await materializeFile(it);
+          requireSafeSession(accessToken);
           // Remember where the original lived so "Restore" can put it back
           // in exactly the same public folder later on.
           await vault.addFiles(folder.id, [file], [{ origPath: it.path }]);
+          requireSafeSession(accessToken);
           secured.push(it);
-        } catch (e) {
+        } catch {
+          // Stop the batch immediately after locking. The Safe index is
+          // preserved and public originals are never deleted on this path.
+          requireSafeSession(accessToken);
           // Private filenames and native exception messages may include personal
           // paths; log a non-identifying counter/status only.
           console.warn("[Vault] one selected item could not be secured");
         }
       }
+      requireSafeSession(accessToken);
       if (secured.length === 0) throw new Error(t("no_readable_files"));
 
       // 2. Only AFTER the encrypted copy is safely written do we delete the
@@ -143,6 +172,7 @@ function SafeFolderView() {
         .filter((p): p is string => Boolean(p));
       let removed = 0;
       if (isNative() && paths.length > 0) {
+        requireSafeSession(accessToken);
         const res = await deleteOriginals(paths);
         removed = res.deleted.length;
         deviceScan.removeByPaths(res.deleted);
@@ -163,8 +193,11 @@ function SafeFolderView() {
   };
 
   const openFile = async (f: EncryptedFile) => {
+    const accessToken = vault.captureAccessToken();
     try {
+      requireSafeSession(accessToken);
       const blob = await vault.decryptFile(f);
+      requireSafeSession(accessToken);
       const url = URL.createObjectURL(blob);
       setViewer({ file: f, url });
     } catch {
@@ -179,11 +212,15 @@ function SafeFolderView() {
    */
   const restoreFromSafe = async (f: EncryptedFile) => {
     if (busy) return;
+    const accessToken = vault.captureAccessToken();
     setBusy(true);
     try {
+      requireSafeSession(accessToken);
       const blob = await vault.decryptFile(f);
+      requireSafeSession(accessToken);
       if (isNative()) {
         const base64 = await blobToBase64(blob);
+        requireSafeSession(accessToken);
         await restoreToPublic({
           base64,
           name: f.name,
@@ -196,6 +233,10 @@ function SafeFolderView() {
         a.href = url; a.download = f.name; a.click();
         URL.revokeObjectURL(url);
       }
+      // If the Safe locks while Android is writing the restored file,
+      // preserve the encrypted original. A duplicate is recoverable; a
+      // deleted only copy is not.
+      requireSafeSession(accessToken);
       vault.deleteFile(folder.id, f.id);
       setViewer(null);
       if (isNative()) void deviceScan.scan();
@@ -386,7 +427,7 @@ function SafeFolderView() {
         broke the delete confirmation, and its header crammed the action
         buttons into the title row so Close overlapped Delete.
       */}
-      {viewer && (
+      {viewer && !gate && (
         <div
           className="fixed inset-0 z-[80] flex flex-col bg-black text-white"
           style={{ paddingLeft: "var(--app-safe-left)", paddingRight: "var(--app-safe-right)" }}
@@ -451,7 +492,7 @@ function SafeFolderView() {
         </div>
       )}
 
-      {confirmFile && (
+      {confirmFile && !gate && (
         <ConfirmSheet
           message={
             confirmFile.type.startsWith("video/")

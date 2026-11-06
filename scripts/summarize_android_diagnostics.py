@@ -79,6 +79,8 @@ def classify(log: str, result: str, foreground: str, baseline: str = "",
         "play_services_provider_kills": len(re.findall(
             r"Killing .*app\.lovable\.privacygallery.*depends on provider.*google", log)),
         "wrong_foreground": "FAIL: " in foreground,
+        "resumed_gallery_without_window_focus": foreground.count(
+            "FAIL: gallery resumed without its focused window"),
         "system_baseline": baseline.strip() or "not_collected",
         "system_after_resize": post_resize.strip() or "not_collected",
     }

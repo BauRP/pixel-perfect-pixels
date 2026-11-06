@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { vault } from "./vault-store";
 
 // Simple SHA-256(salt+pin) storage. Not intended to be cryptographic vault
 // material — the encrypted vault has its own key derivation. This gates the
@@ -55,11 +56,15 @@ export const safePin = {
   lock(): void {
     if (typeof window === "undefined") return;
     sessionStorage.removeItem(SESSION_KEY);
+    // UI lock MUST also invalidate the in-memory AES key and any in-flight
+    // decrypt/import. A PIN overlay alone cannot protect opened media.
+    vault.lock();
     emit();
   },
   reset(): void {
     localStorage.removeItem(KEY);
     sessionStorage.removeItem(SESSION_KEY);
+    vault.lock();
     emit();
   },
 };

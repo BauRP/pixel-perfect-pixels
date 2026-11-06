@@ -23,6 +23,16 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertEqual(outcome["diagnosis"], "ROUTE_MOUNTED_BUT_NATIVE_LAYOUT_UNVERIFIED")
         self.assertEqual(outcome["system_baseline"], "painted")
 
+    def test_resumed_gallery_with_launcher_focus_is_reported_without_falsely_passing(self):
+        foreground = ("FAIL: gallery resumed without its focused window for portrait\\n"
+                      "FAIL: the gallery process/window did not survive either launch\\n")
+        summary = classify("[NovaBoot] react-root-committed",
+                           "Java tests: 0 | native shell smoke: 1 | script: 1",
+                           foreground, "painted")
+        self.assertEqual(summary["resumed_gallery_without_window_focus"], 1)
+        self.assertTrue(summary["wrong_foreground"])
+        self.assertNotEqual(summary["diagnosis"], "PASS_WITH_CONFIRMED_PAINT")
+
     def test_launcher_crashes_are_not_gallery_crashes(self):
         summary = classify(LAUNCHER + "[NovaBoot] react-root-committed", "script: 1", "")
         self.assertEqual(summary["app_crashes"], 0)

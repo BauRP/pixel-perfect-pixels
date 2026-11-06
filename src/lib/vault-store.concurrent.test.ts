@@ -35,6 +35,18 @@ async function unlockedVault() {
 }
 
 describe("real Safe operations reject stale crypto results", () => {
+  it("invalidates a previously authorized media operation on lock and re-unlock", async () => {
+    const vault = await unlockedVault();
+    const token = vault.captureAccessToken();
+    expect(token).not.toBeNull();
+    expect(vault.isAccessTokenCurrent(token)).toBe(true);
+    vault.lock();
+    expect(vault.isAccessTokenCurrent(token)).toBe(false);
+    mockCrypto.unlock.mockResolvedValue(fileKey);
+    expect(await vault.verifyPassword("correct")).toBe(true);
+    expect(vault.isAccessTokenCurrent(token)).toBe(false);
+    expect(vault.isAccessTokenCurrent(vault.captureAccessToken())).toBe(true);
+  });
   it("cannot finish a pending password verification after the Safe locks", async () => {
     const vault = await unlockedVault();
     vault.lock();

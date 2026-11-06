@@ -372,6 +372,14 @@ export const vault = {
   },
   /** Sync check — true when the in-memory file key is available. */
   isUnlocked: (): boolean => liveFileKey !== null && state.unlocked,
+  /** Capture the current authorization generation before any asynchronous
+   * decrypt/restore operation. A lock or password change makes it stale.
+   * Tokens are not keys and must never substitute for checking the PIN UI. */
+  captureAccessToken: (): number | null =>
+    liveFileKey !== null && state.unlocked ? keyEpoch : null,
+  isAccessTokenCurrent: (token: number | null): boolean =>
+    token !== null && liveFileKey !== null && state.unlocked &&
+    isSafeOperationCurrent(token, keyEpoch),
   unlock: () => {
     // Never resurrect unlock state when the encryption key is absent.
     if (liveFileKey) setTransient((s) => ({ ...s, unlocked: true }));

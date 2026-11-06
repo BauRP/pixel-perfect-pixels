@@ -75,6 +75,15 @@ start_app() {
       break
     fi
     echo "Gallery not foreground after launch $attempt for $1: $focus"
+    # Android 14 occasionally reports a resumed gallery Activity while
+    # mCurrentFocus remains the launcher. This is NOT a screenshot pass:
+    # preserve both independent signals so a follow-up can diagnose window
+    # focus instead of incorrectly labelling a killed process.
+    resumed="$(adb shell dumpsys activity activities | grep -m1 -E 'topResumedActivity=|mResumedActivity=|ResumedActivity:' || true)"
+    echo "Gallery window evidence for $1: $resumed" | tee -a emulator-diagnostics/foreground.txt
+    if [[ "$resumed" == *"$PACKAGE"* && "$focus" != *"$PACKAGE"* ]]; then
+      echo "FAIL: gallery resumed without its focused window for $1" | tee -a emulator-diagnostics/foreground.txt
+    fi
     if (( attempt == 1 )); then
       adb shell input keyevent KEYCODE_HOME >/dev/null 2>&1 || true
       sleep 2
