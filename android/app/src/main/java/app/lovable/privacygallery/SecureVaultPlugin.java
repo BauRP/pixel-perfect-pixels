@@ -360,7 +360,7 @@ public class SecureVaultPlugin extends Plugin {
                     failed.add(original);
                 }
             } catch (Exception error) {
-                Log.w("GalleryDelete", "Could not delete " + original, error);
+                Log.w("GalleryDelete", "Could not delete one selected media item");
                 failed.add(original);
             }
         }
@@ -655,6 +655,75 @@ public class SecureVaultPlugin extends Plugin {
         }
     }
 
+    /** MediaStore IS_PENDING prevents incomplete files showing up in other
+     * galleries. On any failed write/publication delete the uncommitted row. */
+    private Uri writePublishedMedia(Uri collection, String name,
+            String mime, String relative, byte[] bytes) throws IOException {
+        ContentResolver resolver = getContext().getContentResolver();
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.MediaColumns.DISPLAY_NAME, PublicMediaWritePolicy.fileName(name));
+        values.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+        values.put(MediaStore.MediaColumns.RELATIVE_PATH, relative);
+        values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+        Uri uri = resolver.insert(collection, values);
+        if (uri == null) throw new IOException("MediaStore insert failed");
+        boolean published = false;
+        try {
+            try (OutputStream output = resolver.openOutputStream(uri, "w")) {
+                if (output == null) throw new IOException("MediaStore output unavailable");
+                output.write(bytes);
+                output.flush();
+            }
+            ContentValues ready = new ContentValues();
+            ready.put(MediaStore.MediaColumns.IS_PENDING, 0);
+            if (resolver.update(uri, ready, null, null) < 1)
+                throw new IOException("MediaStore publish failed");
+            published = true;
+            return uri;
+        } finally {
+            if (!published) {
+                try { resolver.delete(uri, null, null); }
+                catch (Exception ignored) {
+                    Log.w("GalleryMedia", "Could not discard incomplete media row");
+                }
+            }
+        }
+    }
+
+    /** Legacy Android 7–9: stage in the target directory, fsync, then rename
+     * to a freshly reserved filename. Never overwrite an existing photo. */
+    private File writeLegacyPublicMedia(File dir, String name, byte[] bytes)
+            throws IOException {
+        if (!dir.isDirectory() && !dir.mkdirs())
+            throw new IOException("Media directory unavailable");
+        String safeName = PublicMediaWritePolicy.fileName(name);
+        File reserved = null;
+        for (int suffix = 0; suffix < 10000; suffix++) {
+            String candidateName = suffix == 0 ? safeName : suffix + "_" + safeName;
+            File candidate = new File(dir, candidateName);
+            if (candidate.createNewFile()) {
+                reserved = candidate;
+                break;
+            }
+        }
+        if (reserved == null) throw new IOException("No available media filename");
+        File staged = null;
+        boolean committed = false;
+        try {
+            staged = File.createTempFile(".nova-incomplete-", ".tmp", dir);
+            try (FileOutputStream stream = new FileOutputStream(staged)) {
+                stream.write(bytes);
+                stream.getFD().sync();
+            }
+            if (!staged.renameTo(reserved)) throw new IOException("Media rename failed");
+            committed = true;
+            return reserved;
+        } finally {
+            if (staged != null && staged.exists()) staged.delete();
+            if (!committed) reserved.delete();
+        }
+    }
+
     // ── restore a decrypted Safe file back to public storage ─────────────
     /**
      * Writes decrypted bytes back into the user's public media collection at
@@ -672,12 +741,13 @@ public class SecureVaultPlugin extends Plugin {
             call.reject("base64 is required");
             return;
         }
-        if (relative == null || relative.trim().length() == 0) {
-            relative = mime.startsWith("video/")
-                    ? Environment.DIRECTORY_MOVIES
-                    : Environment.DIRECTORY_PICTURES;
+        try {
+            relative = PublicMediaWritePolicy.relativeDirectory(relative, mime);
+            name = PublicMediaWritePolicy.fileName(name);
+        } catch (IllegalArgumentException invalid) {
+            call.reject("Unsafe restore destination");
+            return;
         }
-        relative = relative.replaceAll("^/+", "").replaceAll("/+$", "");
 
         byte[] bytes;
         try {
@@ -690,35 +760,23 @@ public class SecureVaultPlugin extends Plugin {
         try {
             String savedPath;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                ContentValues cv = new ContentValues();
-                cv.put(MediaStore.MediaColumns.DISPLAY_NAME, sanitize(name));
-                cv.put(MediaStore.MediaColumns.MIME_TYPE, mime);
-                cv.put(MediaStore.MediaColumns.RELATIVE_PATH, relative);
                 Uri collection = mime.startsWith("video/")
                         ? MediaStore.Video.Media.EXTERNAL_CONTENT_URI
                         : MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
-                Uri uri = getContext().getContentResolver().insert(collection, cv);
-                if (uri == null) { call.reject("insert failed"); return; }
-                try (OutputStream os = getContext().getContentResolver().openOutputStream(uri)) {
-                    if (os == null) { call.reject("open failed"); return; }
-                    os.write(bytes);
-                }
-                savedPath = uri.toString();
+                savedPath = writePublishedMedia(collection, name, mime, relative, bytes).toString();
             } else {
                 File dir = new File(Environment.getExternalStorageDirectory(), relative);
-                if (!dir.exists()) dir.mkdirs();
-                File out = new File(dir, sanitize(name));
-                try (FileOutputStream fos = new FileOutputStream(out)) { fos.write(bytes); }
-                savedPath = out.getAbsolutePath();
+                File output = writeLegacyPublicMedia(dir, name, bytes);
+                savedPath = output.getAbsolutePath();
                 Intent scan = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
-                scan.setData(Uri.fromFile(out));
+                scan.setData(Uri.fromFile(output));
                 getContext().sendBroadcast(scan);
             }
             JSObject ret = new JSObject();
             ret.put("path", savedPath);
             call.resolve(ret);
         } catch (Exception e) {
-            call.reject("restore failed: " + e.getMessage());
+            call.reject("restore failed");
         }
     }
 
@@ -746,37 +804,24 @@ public class SecureVaultPlugin extends Plugin {
         try {
             String savedPath;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                ContentValues cv = new ContentValues();
-                cv.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
-                cv.put(MediaStore.MediaColumns.MIME_TYPE, mime);
-                cv.put(MediaStore.MediaColumns.RELATIVE_PATH,
-                        Environment.DIRECTORY_PICTURES + "/NovaGallery");
-                Uri uri = getContext().getContentResolver()
-                        .insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv);
-                if (uri == null) { call.reject("insert failed"); return; }
-                try (OutputStream os = getContext().getContentResolver().openOutputStream(uri)) {
-                    if (os == null) { call.reject("open failed"); return; }
-                    os.write(bytes);
-                }
-                savedPath = uri.toString();
+                savedPath = writePublishedMedia(
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                        name, mime, Environment.DIRECTORY_PICTURES + "/NovaGallery",
+                        bytes).toString();
             } else {
                 File dir = new File(Environment.getExternalStoragePublicDirectory(
                         Environment.DIRECTORY_PICTURES), "NovaGallery");
-                if (!dir.exists()) dir.mkdirs();
-                File out = new File(dir, name);
-                try (FileOutputStream fos = new FileOutputStream(out)) {
-                    fos.write(bytes);
-                }
-                savedPath = out.getAbsolutePath();
+                File output = writeLegacyPublicMedia(dir, name, bytes);
+                savedPath = output.getAbsolutePath();
                 Intent scan = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
-                scan.setData(Uri.fromFile(out));
+                scan.setData(Uri.fromFile(output));
                 getContext().sendBroadcast(scan);
             }
             JSObject ret = new JSObject();
             ret.put("path", savedPath);
             call.resolve(ret);
         } catch (Exception e) {
-            call.reject("save failed: " + e.getMessage());
+            call.reject("save failed");
         }
     }
 }

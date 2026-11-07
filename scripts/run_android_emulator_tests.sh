@@ -28,6 +28,11 @@ on_exit() {
   grep -E 'NovaGalleryBoot|AndroidCompatTest|Capacitor/Console.*(\[NovaBoot\]|\[NovaLayout\]|Error|Uncaught)|E/chromium|FATAL EXCEPTION|Input dispatching timed out' emulator-diagnostics/logcat.txt     > emulator-diagnostics/boot-errors.txt 2>/dev/null || true
   echo "Java tests: $status_tests | native shell smoke: $status_shell | script: $status" > emulator-diagnostics/result.txt
   python3 scripts/summarize_android_diagnostics.py emulator-diagnostics || true
+  # Surface only privacy-safe DOM probe markers in the CI job output. These
+  # boolean/window-size details otherwise remain buried in ZIP artifacts.
+  echo "Nova CI DOM probe evidence:"
+  grep -E 'NovaGalleryBoot.*DOM probe (requested|stage=|unavailable)' \
+    emulator-diagnostics/logcat.txt | tail -n 35 || true
 }
 trap on_exit EXIT
 adb wait-for-device
