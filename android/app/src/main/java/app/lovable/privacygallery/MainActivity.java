@@ -11,6 +11,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.webkit.WebView;
+import android.webkit.WebViewRenderProcess;
+import android.webkit.WebViewRenderProcessClient;
 import android.util.Log;
 import android.view.Window;
 import android.view.PixelCopy;
@@ -328,6 +330,39 @@ public class MainActivity extends BridgeActivity {
                 || fingerprint.startsWith("generic") || model.contains("emulator");
     }
 
+    /**
+     * Android 10/13 CI shows a fully focused, correctly-sized WebView yet
+     * evaluateJavascript callbacks NEVER return. Diagnose whether Chromium's
+     * isolated renderer is unresponsive, instead of attributing it to GPU
+     * composition without evidence. Diagnostic only; never kill a renderer,
+     * reload a user's screen, or log a URL/photo/private directory.
+     *
+     * Android API 29 introduced WebViewRenderProcessClient. Restrict this
+     * observer to disposable API 29/33 emulator images where the startup
+     * failure has been reproduced, not personal devices.
+     */
+    private void installEmulatorRendererHealthObserver(WebView web) {
+        if (web == null || !isEmulatorRuntime()
+                || !BootRecoveryPolicy.preferSoftwareRendererOnEmulator(
+                        Build.VERSION.SDK_INT, true)) return;
+        web.setWebViewRenderProcessClient(getMainExecutor(),
+                new WebViewRenderProcessClient() {
+                    @Override
+                    public void onRenderProcessUnresponsive(
+                            WebView view, WebViewRenderProcess renderer) {
+                        Log.e("NovaGalleryBoot", "Chromium renderer UNRESPONSIVE"
+                                + " web=" + view.getWidth() + "x" + view.getHeight()
+                                + " focused=" + hasWindowFocus());
+                    }
+
+                    @Override
+                    public void onRenderProcessResponsive(
+                            WebView view, WebViewRenderProcess renderer) {
+                        Log.i("NovaGalleryBoot", "Chromium renderer RESPONSIVE");
+                    }
+                });
+    }
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         // Capacitor 4+ (including 8): ALL local plugins MUST be registered
@@ -339,6 +374,9 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SystemInsetsPlugin.class);
         super.onCreate(savedInstanceState);
 
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            installEmulatorRendererHealthObserver(getBridge().getWebView());
+        }
         if (BootRecoveryPolicy.preferSoftwareRendererOnEmulator(
                 Build.VERSION.SDK_INT, isEmulatorRuntime()) && getBridge() != null) {
             WebView web = getBridge().getWebView();

@@ -11,6 +11,10 @@ final class PublicMediaWritePolicy {
     static String fileName(String value) {
         if (value == null) return "restored_media";
         String cleaned = value.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "_").trim();
+        // A relative parent-directory prefix in corrupted metadata is not a
+        // filename. Strip it before publishing, rather than creating a
+        // hidden-looking ".._" entry in the user's public photo directory.
+        while (cleaned.startsWith(".._")) cleaned = cleaned.substring(3);
         if (cleaned.length() == 0 || ".".equals(cleaned) || "..".equals(cleaned))
             return "restored_media";
         return cleaned.length() <= 200 ? cleaned : cleaned.substring(0, 200);

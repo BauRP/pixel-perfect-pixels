@@ -32,6 +32,8 @@ public class PublicMediaWritePolicyTest {
 
     @Test public void sanitizesFilenameWithoutChangingRealNames() {
         assertEquals("private_photo.jpg", PublicMediaWritePolicy.fileName("../private/photo.jpg"));
+        assertEquals("secret.jpg", PublicMediaWritePolicy.fileName("../../secret.jpg"));
+        assertEquals("normal.jpg", PublicMediaWritePolicy.fileName("normal.jpg"));
         assertEquals("my_photo.png", PublicMediaWritePolicy.fileName("my/photo.png"));
         assertEquals("restored_media", PublicMediaWritePolicy.fileName(".."));
         assertEquals("restored_media", PublicMediaWritePolicy.fileName(""));
