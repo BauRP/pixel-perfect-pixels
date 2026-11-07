@@ -658,7 +658,7 @@ public class SecureVaultPlugin extends Plugin {
     /** MediaStore IS_PENDING prevents incomplete files showing up in other
      * galleries. On any failed write/publication delete the uncommitted row. */
     private Uri writePublishedMedia(Uri collection, String name,
-            String mime, String relative, byte[] bytes) throws IOException {
+            String mime, String relative, InputStream bytes) throws IOException {
         ContentResolver resolver = getContext().getContentResolver();
         ContentValues values = new ContentValues();
         values.put(MediaStore.MediaColumns.DISPLAY_NAME, PublicMediaWritePolicy.fileName(name));
@@ -671,7 +671,7 @@ public class SecureVaultPlugin extends Plugin {
         try {
             try (OutputStream output = resolver.openOutputStream(uri, "w")) {
                 if (output == null) throw new IOException("MediaStore output unavailable");
-                output.write(bytes);
+                PublicMediaStreams.copy(bytes, output);
                 output.flush();
             }
             ContentValues ready = new ContentValues();
@@ -687,40 +687,6 @@ public class SecureVaultPlugin extends Plugin {
                     Log.w("GalleryMedia", "Could not discard incomplete media row");
                 }
             }
-        }
-    }
-
-    /** Legacy Android 7–9: stage in the target directory, fsync, then rename
-     * to a freshly reserved filename. Never overwrite an existing photo. */
-    private File writeLegacyPublicMedia(File dir, String name, byte[] bytes)
-            throws IOException {
-        if (!dir.isDirectory() && !dir.mkdirs())
-            throw new IOException("Media directory unavailable");
-        String safeName = PublicMediaWritePolicy.fileName(name);
-        File reserved = null;
-        for (int suffix = 0; suffix < 10000; suffix++) {
-            String candidateName = suffix == 0 ? safeName : suffix + "_" + safeName;
-            File candidate = new File(dir, candidateName);
-            if (candidate.createNewFile()) {
-                reserved = candidate;
-                break;
-            }
-        }
-        if (reserved == null) throw new IOException("No available media filename");
-        File staged = null;
-        boolean committed = false;
-        try {
-            staged = File.createTempFile(".nova-incomplete-", ".tmp", dir);
-            try (FileOutputStream stream = new FileOutputStream(staged)) {
-                stream.write(bytes);
-                stream.getFD().sync();
-            }
-            if (!staged.renameTo(reserved)) throw new IOException("Media rename failed");
-            committed = true;
-            return reserved;
-        } finally {
-            if (staged != null && staged.exists()) staged.delete();
-            if (!committed) reserved.delete();
         }
     }
 
@@ -749,15 +715,9 @@ public class SecureVaultPlugin extends Plugin {
             return;
         }
 
-        byte[] bytes;
-        try {
-            bytes = Base64.decode(stripDataUrl(base64), Base64.DEFAULT);
-        } catch (Exception e) {
-            call.reject("invalid base64");
-            return;
-        }
+        // Stream rather than materializing a second complete decoded array.
 
-        try {
+        try (InputStream bytes = PublicMediaStreams.fromBase64(base64)) {
             String savedPath;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 Uri collection = mime.startsWith("video/")
@@ -766,7 +726,7 @@ public class SecureVaultPlugin extends Plugin {
                 savedPath = writePublishedMedia(collection, name, mime, relative, bytes).toString();
             } else {
                 File dir = new File(Environment.getExternalStorageDirectory(), relative);
-                File output = writeLegacyPublicMedia(dir, name, bytes);
+                File output = PublicMediaStreams.writeLegacy(dir, name, bytes);
                 savedPath = output.getAbsolutePath();
                 Intent scan = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
                 scan.setData(Uri.fromFile(output));
@@ -794,14 +754,8 @@ public class SecureVaultPlugin extends Plugin {
             call.reject("base64 is required");
             return;
         }
-        byte[] bytes;
-        try {
-            bytes = Base64.decode(stripDataUrl(base64), Base64.DEFAULT);
-        } catch (Exception e) {
-            call.reject("invalid base64");
-            return;
-        }
-        try {
+        // Stream rather than materializing a second complete decoded array.
+        try (InputStream bytes = PublicMediaStreams.fromBase64(base64)) {
             String savedPath;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 savedPath = writePublishedMedia(
@@ -811,7 +765,7 @@ public class SecureVaultPlugin extends Plugin {
             } else {
                 File dir = new File(Environment.getExternalStoragePublicDirectory(
                         Environment.DIRECTORY_PICTURES), "NovaGallery");
-                File output = writeLegacyPublicMedia(dir, name, bytes);
+                File output = PublicMediaStreams.writeLegacy(dir, name, bytes);
                 savedPath = output.getAbsolutePath();
                 Intent scan = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
                 scan.setData(Uri.fromFile(output));
