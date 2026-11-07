@@ -717,16 +717,22 @@ public class SecureVaultPlugin extends Plugin {
 
         // Stream rather than materializing a second complete decoded array.
 
+        // Android photo/video writes may take seconds. Keep the WebView UI
+        // responsive and resolve the same Capacitor call from a worker, as
+        // already done for native wallpaper operations.
+        final String restoreName = name;
+        final String restoreDirectory = relative;
+        new Thread(() -> {
         try (InputStream bytes = PublicMediaStreams.fromBase64(base64)) {
             String savedPath;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 Uri collection = mime.startsWith("video/")
                         ? MediaStore.Video.Media.EXTERNAL_CONTENT_URI
                         : MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
-                savedPath = writePublishedMedia(collection, name, mime, relative, bytes).toString();
+                savedPath = writePublishedMedia(collection, restoreName, mime, restoreDirectory, bytes).toString();
             } else {
-                File dir = new File(Environment.getExternalStorageDirectory(), relative);
-                File output = PublicMediaStreams.writeLegacy(dir, name, bytes);
+                File dir = new File(Environment.getExternalStorageDirectory(), restoreDirectory);
+                File output = PublicMediaStreams.writeLegacy(dir, restoreName, bytes);
                 savedPath = output.getAbsolutePath();
                 Intent scan = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
                 scan.setData(Uri.fromFile(output));
@@ -738,6 +744,7 @@ public class SecureVaultPlugin extends Plugin {
         } catch (Exception e) {
             call.reject("restore failed");
         }
+        }, "NovaGalleryMediaRestore").start();
     }
 
     // ── save an edited image back to public storage ──────────────────────
@@ -755,6 +762,9 @@ public class SecureVaultPlugin extends Plugin {
             return;
         }
         // Stream rather than materializing a second complete decoded array.
+        // File writes are blocking even with fixed-size decode buffers.
+        // Keep Android's UI/Chromium bridge responsive during large exports.
+        new Thread(() -> {
         try (InputStream bytes = PublicMediaStreams.fromBase64(base64)) {
             String savedPath;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -777,5 +787,6 @@ public class SecureVaultPlugin extends Plugin {
         } catch (Exception e) {
             call.reject("save failed");
         }
+        }, "NovaGalleryMediaSave").start();
     }
 }
