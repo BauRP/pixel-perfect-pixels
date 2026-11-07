@@ -293,6 +293,12 @@ public class SecureVaultPlugin extends Plugin {
      */
     @PluginMethod
     public void deleteOriginals(PluginCall call) {
+        // A second user request must not overwrite an outstanding system
+        // consent dialog's paths/call and resolve the wrong deletion.
+        if (pendingDeleteCall != null) {
+            call.reject("A previous media deletion awaits system confirmation");
+            return;
+        }
         JSArray input = call.getArray("paths");
         if (input == null) {
             call.reject("paths is required");
@@ -384,7 +390,19 @@ public class SecureVaultPlugin extends Plugin {
                     return;
                 }
             } catch (IntentSender.SendIntentException | RuntimeException error) {
-                Log.e("GalleryDelete", "System delete dialog failed", error);
+                // If launching the system dialog throws, clear EVERY pending
+                // field; otherwise a later delete can hang or map the wrong
+                // selection to the previous call.
+                if (pendingDeleteCall == call) {
+                    pendingDeleteCall = null;
+                    pendingDeletePaths = null;
+                    pendingDeleteUris = null;
+                    pendingAlreadyDeleted = null;
+                    pendingFailedPaths = null;
+                    call.setKeepAlive(false);
+                }
+                // No private paths or OS exception messages in logs.
+                Log.w("GalleryDelete", "System deletion confirmation unavailable");
             }
             failed.addAll(confirmPaths);
         }

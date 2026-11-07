@@ -76,13 +76,21 @@ export async function ensureDeletePermission(): Promise<boolean> {
   return false;
 }
 
-/** Permanently delete the given public-storage files. */
+// Android only supports one outstanding MediaStore consent dialog.
+// Do not start an overlapping batch or report its items as deleted.
+let deleteInFlight = false;
+
+/** Permanently delete public media only after native confirmation. */
 export async function deleteOriginals(paths: string[]): Promise<DeleteResult> {
-  if (!isNative() || paths.length === 0) return { deleted: [], failed: paths };
+  if (!isNative() || paths.length === 0 || deleteInFlight)
+    return { deleted: [], failed: paths };
+  deleteInFlight = true;
   try {
     return await SecureVault.deleteOriginals({ paths });
   } catch {
     return { deleted: [], failed: paths };
+  } finally {
+    deleteInFlight = false;
   }
 }
 

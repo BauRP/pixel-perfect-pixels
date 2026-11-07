@@ -65,8 +65,10 @@ export function guessMimeFromName(name: string): string {
 const guessMime = guessMimeFromName;
 
 /**
- * Lazily materialise a native-scanned item into a real `File` object.
- * Reads the underlying bytes through @capacitor/filesystem exactly once.
+ * Lazily materialise a native-scanned item into a real File object.
+ * Never retain a large decoded video in gallery album state: after a share
+ * or encrypted import, caching the whole media file can keep hundreds of MB
+ * alive indefinitely. Small photos remain cached for convenient reuse.
  */
 export async function materializeFile(item: ScannedItem): Promise<File> {
   if (item.file) return item.file;
@@ -79,8 +81,14 @@ export async function materializeFile(item: ScannedItem): Promise<File> {
   for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
   const mime = guessMime(item.name);
   const file = new File([arr], item.name, { type: mime, lastModified: item.mtime });
-  // Cache so repeated share / add operations don't re-read the file.
-  (item as { file: File | null }).file = file;
+  // Unknown-sized and large native media are deliberately NOT cached.
+  // This does not remove the current File from its caller; it just releases
+  // the gallery's long-lived reference once the operation finishes.
+  const MAX_CACHED_MEDIA_BYTES = 8 * 1024 * 1024;
+  if (item.size > 0 && item.size <= MAX_CACHED_MEDIA_BYTES &&
+      file.size <= MAX_CACHED_MEDIA_BYTES) {
+    (item as { file: File | null }).file = file;
+  }
   return file;
 }
 
