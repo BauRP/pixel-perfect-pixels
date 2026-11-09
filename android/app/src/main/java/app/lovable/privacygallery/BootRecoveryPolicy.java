@@ -8,14 +8,10 @@ package app.lovable.privacygallery;
 public final class BootRecoveryPolicy {
     private BootRecoveryPolicy() {}
 
-    /**
-     * Android 10/13 headless emulators exhibit a SwiftShader font-raster
-     * compositor defect even when the Settings UI itself paints correctly.
-     * Use software WebView composition on these disposable test devices
-     * BEFORE the first render, not only after an unpainted watchdog sample.
-     * Do not change real-phone rendering, or other Android SDK versions.
-     */
-    public static boolean preferSoftwareRendererOnEmulator(int sdk, boolean emulator) {
+    /** Observe API29/33 emulator renderer health without forcing software
+     * before first paint. Keep bounded software recovery after proven failure.
+     * Previous CI showed early software layer did not fix these blank screens. */
+    public static boolean observeLegacyRendererOnEmulator(int sdk, boolean emulator) {
         return emulator && (sdk == 29 || sdk == 33);
     }
 

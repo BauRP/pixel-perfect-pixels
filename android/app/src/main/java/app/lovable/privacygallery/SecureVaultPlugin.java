@@ -5,6 +5,7 @@ import android.app.PendingIntent;
 import android.app.RecoverableSecurityException;
 import android.app.WallpaperManager;
 import android.content.ContentResolver;
+import android.content.ClipData;
 import android.content.ContentValues;
 import android.content.ContentUris;
 import android.content.Intent;
@@ -646,6 +647,53 @@ public class SecureVaultPlugin extends Plugin {
             call.resolve(ret);
         } catch (Exception e) {
             call.reject("Share failed: " + e.getMessage());
+        }
+    }
+
+    // Share public album media directly by MediaStore URI, never copy bytes.
+    @PluginMethod
+    public void shareMediaUris(PluginCall call) {
+        JSArray input = call.getArray("uris");
+        if (input == null) { call.reject("uris required"); return; }
+        try {
+            List<String> values = input.toList();
+            // Avoid Android Binder transaction size errors; never silently
+            // share a truncated selection.
+            if (values.isEmpty() || values.size() > 1000) {
+                call.reject("Unsupported album size for sharing");
+                return;
+            }
+            ArrayList<Uri> uris = new ArrayList<>();
+            for (String value : values) {
+                Uri uri = Uri.parse(value);
+                if (!MediaSharePolicy.isPublicMediaUri(uri)) {
+                    call.reject("Invalid public media URI");
+                    return;
+                }
+                uris.add(uri);
+            }
+            Intent send = new Intent(uris.size() == 1
+                    ? Intent.ACTION_SEND : Intent.ACTION_SEND_MULTIPLE);
+            send.setType("*/*");
+            if (uris.size() == 1) send.putExtra(Intent.EXTRA_STREAM, uris.get(0));
+            else send.putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris);
+            ClipData clip = ClipData.newUri(getContext().getContentResolver(),
+                    "Nova Gallery media", uris.get(0));
+            for (int i = 1; i < uris.size(); i++)
+                clip.addItem(new ClipData.Item(uris.get(i)));
+            send.setClipData(clip);
+            send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            Intent chooser = Intent.createChooser(send,
+                    call.getString("title", "Share album"));
+            chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(chooser);
+            JSObject result = new JSObject();
+            result.put("success", true);
+            call.resolve(result);
+        } catch (Exception ignored) {
+            // Never log MediaStore paths, filenames or private media contents.
+            call.reject("Album sharing unavailable");
         }
     }
 

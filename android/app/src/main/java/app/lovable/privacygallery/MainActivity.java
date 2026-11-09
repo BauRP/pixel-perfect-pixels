@@ -343,7 +343,7 @@ public class MainActivity extends BridgeActivity {
      */
     private void installEmulatorRendererHealthObserver(WebView web) {
         if (web == null || !isEmulatorRuntime()
-                || !BootRecoveryPolicy.preferSoftwareRendererOnEmulator(
+                || !BootRecoveryPolicy.observeLegacyRendererOnEmulator(
                         Build.VERSION.SDK_INT, true)) return;
         web.setWebViewRenderProcessClient(getMainExecutor(),
                 new WebViewRenderProcessClient() {
@@ -377,14 +377,11 @@ public class MainActivity extends BridgeActivity {
         if (getBridge() != null && getBridge().getWebView() != null) {
             installEmulatorRendererHealthObserver(getBridge().getWebView());
         }
-        if (BootRecoveryPolicy.preferSoftwareRendererOnEmulator(
-                Build.VERSION.SDK_INT, isEmulatorRuntime()) && getBridge() != null) {
-            WebView web = getBridge().getWebView();
-            if (web != null) {
-                web.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-                softwarePaintRetryAttempted = true;
-                Log.i("NovaGalleryBoot", "Emulator-only early software WebView compositor");
-            }
+        if (BootRecoveryPolicy.observeLegacyRendererOnEmulator(
+                Build.VERSION.SDK_INT, isEmulatorRuntime())) {
+            // Controlled A/B: default first-frame compositor vs failed
+            // early-software builds. One-time fallback is preserved.
+            Log.i("NovaGalleryBoot", "Legacy emulator uses default first-frame WebView compositor");
         }
         applyTransparentStatusBar();
         // A stuck blank WebView needs one bounded recovery even at 100% load

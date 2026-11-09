@@ -25,7 +25,7 @@ import { materializeFile } from "@/lib/device-scan";
 import { getThumb } from "@/lib/thumbnails";
 import { useBackHandler } from "@/lib/back-handler";
 import {
-  isNative, deleteOriginals, setWallpaperSafely, saveEditedImage, shareNative,
+  isNative, deleteOriginals, setWallpaperSafely, saveEditedImage, shareNative, shareNativeAlbum,
 } from "@/lib/native-vault";
 import { guessMimeFromName } from "@/lib/device-scan";
 import { ViewOptionsMenu } from "@/components/ViewOptionsMenu";
@@ -167,6 +167,18 @@ function FolderView() {
   };
 
   const shareAlbum = async () => {
+    // For native MediaStore files, pass existing URI grants directly to the
+    // Android chooser. Previous implementation decoded the ENTIRE album
+    // (including videos) into File[], risking out-of-memory crashes.
+    if (isNative() && folder.items.length > 0 &&
+        folder.items.every((it) => it.nativeUri?.startsWith("content://media/"))) {
+      try {
+        if (await shareNativeAlbum(
+          folder.items.map((it) => it.nativeUri!), folder.name)) return;
+      } catch { /* Native chooser unavailable or Binder limit exceeded. */ }
+      toast.error(t("share_failed"));
+      return;
+    }
     const files: File[] = [];
     for (const it of folder.items) {
       try { files.push(await materializeFile(it)); } catch { /* skip unreadable */ }

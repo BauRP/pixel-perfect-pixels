@@ -60,14 +60,14 @@ public class AndroidCompatibilitySmokeTest {
     }
 
     @Test
-    public void earlySoftwareCompositorOnlyTargetsBrokenEmulatorApis() {
-        assertTrue(BootRecoveryPolicy.preferSoftwareRendererOnEmulator(29, true));
-        assertTrue(BootRecoveryPolicy.preferSoftwareRendererOnEmulator(33, true));
+    public void rendererHealthObserverOnlyTargetsProblematicEmulators() {
+        assertTrue(BootRecoveryPolicy.observeLegacyRendererOnEmulator(29, true));
+        assertTrue(BootRecoveryPolicy.observeLegacyRendererOnEmulator(33, true));
         for (int sdk : new int[]{24, 26, 28, 30, 31, 32, 34, 35, 36, 37}) {
-            assertFalse(BootRecoveryPolicy.preferSoftwareRendererOnEmulator(sdk, true));
+            assertFalse(BootRecoveryPolicy.observeLegacyRendererOnEmulator(sdk, true));
         }
-        assertFalse(BootRecoveryPolicy.preferSoftwareRendererOnEmulator(29, false));
-        assertFalse(BootRecoveryPolicy.preferSoftwareRendererOnEmulator(33, false));
+        assertFalse(BootRecoveryPolicy.observeLegacyRendererOnEmulator(29, false));
+        assertFalse(BootRecoveryPolicy.observeLegacyRendererOnEmulator(33, false));
     }
 
     @Test
