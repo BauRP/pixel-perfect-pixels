@@ -53,6 +53,12 @@ jobs:
           # its Gradle wrapper only in this disposable CI checkout.
           sed -i "s/gradle:8.13.0/gradle:9.2.0/" android/build.gradle
           sed -i 's/gradle-8.13-bin.zip/gradle-9.4.1-bin.zip/' android/gradle/wrapper/gradle-wrapper.properties
+          # services.gradle.org currently redirects the 9.4.1 ZIP to a
+          # GitHub release endpoint returning intermittent HTTP 504 in CI.
+          # The official Gradle distributions CDN serves the same release,
+          # without the flaky GitHub-release redirect. This is restricted to
+          # the disposable API37 checkout, not production SDK/Gradle.
+          sed -i 's#services.gradle.org/distributions/#downloads.gradle.org/distributions/#' android/gradle/wrapper/gradle-wrapper.properties
           sed -i 's/compileSdkVersion = 36/compileSdkVersion = 37/' android/variables.gradle
           sed -i 's/targetSdkVersion = 36/targetSdkVersion = 37/' android/variables.gradle
           # Capacitor Filesystem uses the legacy Kotlin Android plugin;
@@ -74,7 +80,18 @@ jobs:
           bun run build:capacitor
           python3 scripts/check_legacy_webview.py
           cd android
-          ./gradlew --version
+          # Retry the wrapper download only; do not keep rebuilding the
+          # project when Android compilation itself fails. HTTP 504 is an
+          # external network error and must not be counted as a code failure.
+          installed=false
+          for attempt in 1 2 3; do
+            if ./gradlew --version; then installed=true; break; fi
+            sleep 8
+          done
+          if [ "$installed" != true ]; then
+            echo 'Gradle distribution unavailable after 3 attempts' >&2
+            exit 1
+          fi
           ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace --no-daemon
       - name: Preserve Android 17 probe diagnostics
         if: always()
