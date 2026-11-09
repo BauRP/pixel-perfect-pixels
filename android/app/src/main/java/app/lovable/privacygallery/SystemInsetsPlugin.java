@@ -164,17 +164,21 @@ public class SystemInsetsPlugin extends Plugin {
                 current = ViewCompat.getRootWindowInsets(source);
             }
             if (current != null) {
-                publish(snapshot(source, current));
-            } else {
-                // Empty snapshot is NOT proof that all system bars are zero.
-                // Ask Android to dispatch an actual snapshot when attached.
-                ViewCompat.requestApplyInsets(source);
-                JSObject pending = new JSObject();
-                pending.put("measured", false);
-                call.resolve(pending);
+                // A read MUST NOT emit an "insetsChanged" event back to JS:
+                // the listener then remeasures the frame and asks getInsets
+                // again, creating a feedback loop during startup/rotation.
+                // Real OS WindowInsets events continue through publish() in
+                // onApplyWindowInsets, so gesture/3-button/IME updates remain.
+                JSObject measured = snapshot(source, current);
+                latest = measured;
+                call.resolve(measured);
                 return;
             }
-            call.resolve(latest);
+            // Empty snapshot is NOT proof that system bars are zero.
+            ViewCompat.requestApplyInsets(source);
+            JSObject pending = new JSObject();
+            pending.put("measured", false);
+            call.resolve(pending);
         });
     }
 }
