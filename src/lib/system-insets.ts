@@ -1,4 +1,5 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { createSingleFlightRefresh } from "./single-flight-refresh";
 import { normalizeSystemInsets, fitInsetsToViewport, isMeasuredViewport, isTrustedNativeInsetsSnapshot, type RawSystemInsets } from "./insets-math";
 
 type Insets = RawSystemInsets & { measured?: boolean };
@@ -78,14 +79,20 @@ export function initSystemInsets(): void {
     root.dataset.novaInsetsReady = ready;
     document.dispatchEvent(new Event("nova-native-insets"));
   };
-  const refresh = () => {
+  // The Android 10 WebView trace previously showed a burst of parallel
+  // getInsets callbacks while the first React frame was still unpainted.
+  // Never have more than one native read active or one queued follow-up.
+  const refresh = createSingleFlightRefresh(async () => {
     const versionAtRequest = pushedVersion;
-    void nativeInsets.getInsets().then((snapshot) => {
+    try {
+      const snapshot = await nativeInsets.getInsets();
       if (versionAtRequest === pushedVersion) apply(snapshot);
-    }).catch((error) => {
-      console.warn("[insets] native snapshot failed", error);
-    });
-  };
+    } catch {
+      // Activity recreation can reject an obsolete call. We will obtain a
+      // fresh snapshot on the next lifecycle event; do not log private data.
+      console.warn("[insets] native snapshot temporarily unavailable");
+    }
+  });
   nativeRefresh = refresh;
   nativeResubscribe = () => {
     if (lastAppliedNativeInsets) apply(lastAppliedNativeInsets);
@@ -101,11 +108,18 @@ export function initSystemInsets(): void {
       console.warn("[insets] native listener unavailable; refreshing on resume", error);
       refresh();
     });
+  // Android resize/visualViewport.scroll may fire dozens of times before
+  // a compositor frame. Keep prompt CSS padding from cached real insets,
+  // but coalesce the bridge reads into a single bounded timer per burst.
+  let queuedWindowRefresh = false;
   const refreshForWindow = () => {
-    // Reapply the last real insets against the current viewport first,
-    // then obtain a newer OS snapshot. Never invent 0px during rotation.
     nativeResubscribe?.();
-    refresh();
+    if (queuedWindowRefresh) return;
+    queuedWindowRefresh = true;
+    setTimeout(() => {
+      queuedWindowRefresh = false;
+      refresh();
+    }, 100);
   };
   window.addEventListener("focus", refreshForWindow);
   window.addEventListener("pageshow", refreshForWindow);

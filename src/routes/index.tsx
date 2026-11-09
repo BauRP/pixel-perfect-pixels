@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { Capacitor } from "@capacitor/core";
 import { AppShell, ScreenHeader } from "@/components/AppShell";
 import { NativeAdTile } from "@/components/NativeAdTile";
 import { useT } from "@/lib/i18n";
@@ -48,7 +49,14 @@ function GalleryIndex() {
     // process kill or system-reclaimed restart, so rescan every cold-start
     // to rebuild `albums` — otherwise re-opening the app after a swipe
     // leaves the gallery empty.
-    void deviceScan.scan();
+    // Give the WebView its first render opportunity before asking Android
+    // for the media permissions and a potentially large MediaStore scan.
+    // The scan is still mandatory on every cold launch; only its START is
+    // postponed briefly. Desktop/web keeps the original immediate scan.
+    const initialScanTimer = Capacitor.isNativePlatform()
+      ? setTimeout(() => void deviceScan.scan(), 250)
+      : null;
+    if (initialScanTimer === null) void deviceScan.scan();
 
     // Re-scan whenever the app comes back to the foreground. This mirrors
     // Android's onResume() lifecycle hook — permission grants and newly
@@ -60,6 +68,7 @@ function GalleryIndex() {
     window.addEventListener("focus", onVisible);
     window.addEventListener("pageshow", onVisible);
     return () => {
+      if (initialScanTimer !== null) clearTimeout(initialScanTimer);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
       window.removeEventListener("pageshow", onVisible);

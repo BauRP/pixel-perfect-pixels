@@ -180,6 +180,10 @@ function MeasuredAppFrame({ children }: { children: ReactNode }) {
       }
     };
     const schedule = () => {
+      // A ResizeObserver/inset storm previously cancelled and recreated
+      // the same two rAF callbacks and timeout repeatedly before first
+      // paint on the affected old WebView. One pending batch is enough.
+      if (paintFallbackTimer !== undefined) return;
       // Do not postpone this timer when the nav keeps resizing, even if
       // requestAnimationFrame is suspended by the WebView compositor.
       if (watchdog === undefined) {

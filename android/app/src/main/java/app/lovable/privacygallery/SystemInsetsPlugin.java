@@ -60,9 +60,16 @@ public class SystemInsetsPlugin extends Plugin {
     private void publish(JSObject next) {
         String before = latest.toString();
         latest = next;
-        if (!before.equals(next.toString())) {
-            notifyListeners("insetsChanged", next, true);
-        }
+        if (before.equals(next.toString())) return;
+        // Activity recreation can deliver one final WindowInsets callback
+        // after the old Capacitor JavaScript bridge has been detached.
+        // The old listener then throws "triggerEvent of undefined" and
+        // cannot be allowed to re-enter a destroyed WebView.
+        Activity activity = getActivity();
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()
+                || getBridge() == null || getBridge().getWebView() == null
+                || !getBridge().getWebView().isAttachedToWindow()) return;
+        notifyListeners("insetsChanged", next, true);
     }
 
     @Override
