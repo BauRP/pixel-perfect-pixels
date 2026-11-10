@@ -171,14 +171,23 @@ function MeasuredAppFrame({ children }: { children: ReactNode }) {
       publishLayout({ ...values, layoutIssue });
       // Retry BOTH early native insets and not-yet-laid-out navigation.
       // This is bounded, and real OS events still refresh measurements.
-      if (layoutIssue !== "OK" && insetRetryCount < MAX_INSET_RETRIES) {
+      if (layoutIssue !== "OK" && insetRetryCount < MAX_INSET_RETRIES
+          && pendingRetry === undefined) {
+        // Keep one retry alive across unrelated resize/observer notifications.
+        // Previously every schedule() cancelled the pending retry, so a busy
+        // old WebView could remain forever without a fresh native snapshot.
         insetRetryCount++;
         pendingRetry = setTimeout(() => {
+          pendingRetry = undefined;
           refreshSystemInsetsForViewport();
           schedule();
         }, 1200);
       } else if (layoutIssue === "OK") {
         insetRetryCount = 0;
+        if (pendingRetry !== undefined) {
+          clearTimeout(pendingRetry);
+          pendingRetry = undefined;
+        }
       }
     };
     const schedule = () => {
@@ -200,7 +209,7 @@ function MeasuredAppFrame({ children }: { children: ReactNode }) {
           }
         }, 1500);
       }
-      if (pendingRetry !== undefined) clearTimeout(pendingRetry);
+      // Do not cancel an already scheduled native-insets retry here.
       cancelAnimationFrame(firstFrame);
       cancelAnimationFrame(secondFrame);
       if (paintFallbackTimer !== undefined) clearTimeout(paintFallbackTimer);
