@@ -21,9 +21,11 @@ export function createLayoutSignalPublisher(
     if (signature === lastSignature && now - lastSentAt < repeatAfterMs) {
       return false;
     }
+    // Only acknowledge delivery to the callback after it returns normally.
+    // A synchronous bridge failure must not suppress the next measurement.
+    publish(signal);
     lastSignature = signature;
     lastSentAt = now;
-    publish(signal);
     return true;
   };
 }
