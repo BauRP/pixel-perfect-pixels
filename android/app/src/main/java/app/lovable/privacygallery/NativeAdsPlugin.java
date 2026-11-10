@@ -425,25 +425,59 @@ public class NativeAdsPlugin extends Plugin {
                 call.resolve(res);
                 return;
             }
+            WebView webView = getBridge() == null ? null : getBridge().getWebView();
+            if (webView == null || webView.getWidth() <= 0 || webView.getHeight() <= 0) {
+                clipFrame.setVisibility(View.GONE);
+                res.put("shown", false);
+                res.put("reason", "WEBVIEW_NOT_READY");
+                call.resolve(res);
+                return;
+            }
             float d = activity.getResources().getDisplayMetrics().density;
-            WebView webView = getBridge().getWebView();
+            if (d <= 0f) d = 1f;
+            NativeAdOverlayGeometry.Clip clip = NativeAdOverlayGeometry.calculate(
+                    x, y, w, h, clipTop, clipBottom,
+                    webView.getWidth() / d, webView.getHeight() / d);
+            if (clip == null) {
+                // A scrolled-away ad must not create a touch-blocking layer.
+                clipFrame.setVisibility(View.GONE);
+                res.put("shown", false);
+                res.put("reason", "OUTSIDE_VISIBLE_AD_SLOT");
+                call.resolve(res);
+                return;
+            }
 
             applyColors(colors);
             badgeView.setText(label);
 
-            int frameTop = Math.round((float) clipTop * d);
-            int frameHeight = Math.round((float) (clipBottom - clipTop) * d);
+            // IMPORTANT: the native overlay must cover ONLY the ad's actual
+            // visible tile, not the full scroll viewport. A full-width,
+            // full-height sibling layer covered gallery cards whenever the
+            // three-dot popup was closed. Opening the popup hid that layer
+            // and made all cards reappear, despite the gallery DOM being intact.
+            int frameWidth = Math.round((float) (clip.width * d));
+            int frameHeight = Math.round((float) (clip.height * d));
+            if (frameWidth <= 0 || frameHeight <= 0) {
+                clipFrame.setVisibility(View.GONE);
+                res.put("shown", false);
+                res.put("reason", "AD_SLOT_TOO_SMALL");
+                call.resolve(res);
+                return;
+            }
             ViewGroup.LayoutParams lp = clipFrame.getLayoutParams();
-            lp.width = webView.getWidth();
+            lp.width = frameWidth;
             lp.height = frameHeight;
             clipFrame.setLayoutParams(lp);
-            clipFrame.setX(webView.getX());
-            clipFrame.setY(webView.getY() + frameTop);
+            clipFrame.setX(webView.getX() + Math.round((float) (clip.left * d)));
+            clipFrame.setY(webView.getY() + Math.round((float) (clip.top * d)));
 
+            // Keep the ad full-size *inside* the clipped tile. Negative
+            // margins preserve scroll cropping at sticky headers / bottom
+            // navigation without covering neighboring gallery cards.
             FrameLayout.LayoutParams ap = new FrameLayout.LayoutParams(
-                    Math.round((float) w * d), Math.round((float) h * d));
-            ap.leftMargin = Math.round((float) x * d);
-            ap.topMargin = Math.round((float) (y - clipTop) * d);
+                    Math.round((float) (w * d)), Math.round((float) (h * d)));
+            ap.leftMargin = Math.round((float) (clip.adOffsetX * d));
+            ap.topMargin = Math.round((float) (clip.adOffsetY * d));
             adView.setLayoutParams(ap);
             clipFrame.setVisibility(View.VISIBLE);
             clipFrame.bringToFront();
