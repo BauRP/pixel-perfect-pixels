@@ -20,6 +20,7 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 import { useSyncExternalStore } from "react";
 import { backoffDelay } from "./backoff";
 import { createLatestAsyncDispatcher } from "./native-ad-placement";
+import { waitForNativePlugin } from "./native-ad-bridge-ready";
 
 export { cssColorToHex } from "./css-color";
 import { cssColorToHex } from "./css-color";
@@ -135,6 +136,9 @@ let deadlineTimer: ReturnType<typeof setTimeout> | null = null;
 let foreground = true;
 let screenActive = 0; // number of mounted ad slots (0 or 1)
 let started = false;
+let starting: Promise<void> | null = null;
+let startRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let bridgeRetryCount = 0;
 let canRequestAds = false;
 let bootReadyObserver: MutationObserver | null = null;
 
@@ -304,53 +308,101 @@ async function requestAd(): Promise<void> {
   }
 }
 
-async function start() {
-  if (started) return;
-  started = true;
-  try {
-    await NativeAds.addListener("networkChanged", (d) => onNetwork(d.status));
-    await NativeAds.addListener("adLoaded", onAdLoaded);
-    await NativeAds.addListener("adFailed", (d) => onAdFailed(!!d.noFill, `code ${d.code}: ${d.message}`));
-    await NativeAds.addListener("adGone", onAdGone);
-    // retainUntilConsumed on native side delivers a resolution that preceded this listener.
-    await NativeAds.addListener("consentUpdated", onConsent);
-  } catch (e) {
-    adLog("error", `NativeAds plugin unavailable: ${e instanceof Error ? e.message : String(e)}`);
+/**
+ * Wave Notes fixed cold-start ad failures by waiting for the real Capacitor
+ * bridge, before registering listeners or asking UMP to initialize AdMob.
+ * In this app the previous "started = true" happened BEFORE those calls:
+ * a transient missing bridge could permanently leave ads uninitialized.
+ * Keep Nova's own UMP, NativeAdsPlugin, ad slot and layout behavior.
+ */
+function scheduleBridgeRetry() {
+  if (started || screenActive === 0 || startRetryTimer !== null) return;
+  const delay = Math.min(2_000 * (2 ** Math.min(bridgeRetryCount, 4)), 30_000);
+  bridgeRetryCount += 1;
+  adLog("warn", `NativeAds bridge not ready; retrying in ${delay} ms`);
+  startRetryTimer = setTimeout(() => {
+    startRetryTimer = null;
+    void start();
+  }, delay);
+}
+
+async function initializeNativeAds(): Promise<void> {
+  // isPluginAvailable remains false until the native Android bridge exposes
+  // our custom NativeAds plugin. A registered JS proxy is not proof of that.
+  const bridgeReady = await waitForNativePlugin(
+    () => Capacitor.isNativePlatform() && Capacitor.isPluginAvailable("NativeAds"),
+    12_000,
+  );
+  if (!bridgeReady) {
+    scheduleBridgeRetry();
+    return;
   }
+
+  const handles: Array<{ remove: () => Promise<void> }> = [];
   try {
-    const { App } = await import("@capacitor/app");
-    await App.addListener("appStateChange", ({ isActive }) => {
-      foreground = isActive;
-      if (!isActive) {
-        clearRetry();
-        return;
-      }
-      resumeListeners.forEach((l) => l()); // re-place overlay after resume
-      if (state !== "LOADED" && !requestInFlight) {
-        attempt = 0;
-        void requestAd();
-      }
-    });
-  } catch {
-    /* lifecycle listener unavailable */
-  }
-  try {
-    testAdsBuild = !!(await NativeAds.getBuildInfo()).testAds;
+    handles.push(await NativeAds.addListener("networkChanged", (d) => onNetwork(d.status)));
+    handles.push(await NativeAds.addListener("adLoaded", onAdLoaded));
+    handles.push(await NativeAds.addListener("adFailed", (d) =>
+      onAdFailed(!!d.noFill, `code ${d.code}: ${d.message}`)));
+    handles.push(await NativeAds.addListener("adGone", onAdGone));
+    handles.push(await NativeAds.addListener("consentUpdated", onConsent));
+
+    // Ensure actual plugin calls work BEFORE treating initialization as done.
+    // Network and UMP state are independent of popup/menu geometry.
+    const build = await NativeAds.getBuildInfo();
+    const network = await NativeAds.getNetworkState();
+    const consent = await NativeAds.getConsentStatus();
+    net = network.status;
+    testAdsBuild = !!build.testAds;
     listeners.forEach((l) => l());
-  } catch {
-    testAdsBuild = false;
-  }
-  try {
-    onConsent(await NativeAds.getConsentStatus());
-  } catch (e) {
+
+    started = true;
+    bridgeRetryCount = 0;
+    if (startRetryTimer !== null) clearTimeout(startRetryTimer);
+    startRetryTimer = null;
+
+    try {
+      const { App } = await import("@capacitor/app");
+      const appHandle = await App.addListener("appStateChange", ({ isActive }) => {
+        foreground = isActive;
+        if (!isActive) {
+          clearRetry();
+          return;
+        }
+        resumeListeners.forEach((l) => l()); // keep native overlay aligned
+        if (state !== "LOADED" && !requestInFlight) {
+          attempt = 0;
+          void requestAd();
+        }
+      });
+      handles.push(appHandle);
+    } catch {
+      // AdMob is ready even if the optional app-state listener is unavailable.
+    }
+
+    onConsent(consent);
+    if (net !== "online") onNetwork(net);
+    else if (state !== "LOADED" && !requestInFlight) void requestAd();
+    adLog("info", "NativeAds bridge, listeners and UMP status ready");
+  } catch (error) {
+    // NEVER keep a half-installed listener set and mark start() successful.
+    // That used to strand the loaded ad without any JS event subscriber.
+    for (const handle of handles) {
+      try { await handle.remove(); } catch { /* listener already detached */ }
+    }
+    started = false;
     canRequestAds = false;
-    adLog("error", `consent status unavailable: ${e instanceof Error ? e.message : String(e)}`);
+    adLog("error", `NativeAds startup incomplete: ${error instanceof Error ? error.message : String(error)}`);
+    scheduleBridgeRetry();
   }
-  try {
-    net = (await NativeAds.getNetworkState()).status;
-  } catch {
-    net = typeof navigator !== "undefined" && navigator.onLine === false ? "none" : "online";
-  }
+}
+
+function start(): Promise<void> {
+  if (started || !isNativeAdSupported()) return Promise.resolve();
+  if (starting) return starting;
+  const run = initializeNativeAds();
+  starting = run.finally(() => { starting = null; });
+  return starting;
 }
 
 /** Called by the slot on mount; returns the unmount cleanup. */
@@ -365,7 +417,11 @@ export function activateNativeAdSlot(): () => void {
   }
   return () => {
     screenActive = Math.max(0, screenActive - 1);
-    if (screenActive === 0) clearRetry();
+    if (screenActive === 0) {
+      clearRetry();
+      if (startRetryTimer !== null) clearTimeout(startRetryTimer);
+      startRetryTimer = null;
+    }
   };
 }
 
