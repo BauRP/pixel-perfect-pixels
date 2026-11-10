@@ -82,6 +82,11 @@ public class SecureVaultPlugin extends Plugin {
         super.load();
         instance = this;
         ensureVaultDir();
+        // Expired decrypted share copies are private and may only be deleted
+        // after receivers had enough time to open the FileProvider URI.
+        final File cacheRoot = getContext().getCacheDir();
+        new Thread(() -> PrivateShareStaging.cleanupExpired(
+                cacheRoot, System.currentTimeMillis()), "NovaShareCacheCleanup").start();
     }
 
     private static String[] mediaPermissions() {
@@ -607,47 +612,76 @@ public class SecureVaultPlugin extends Plugin {
      */
     @PluginMethod
     public void shareFile(PluginCall call) {
-        String path = call.getString("path");
-        String base64 = call.getString("base64");
-        String name = call.getString("name", "share_" + System.currentTimeMillis());
-        String mime = call.getString("mime", "*/*");
-        String title = call.getString("title", "Share");
-        try {
-            Uri uri;
-            if (base64 != null && base64.length() > 0) {
-                byte[] bytes = Base64.decode(stripDataUrl(base64), Base64.DEFAULT);
-                File out = stageCacheFile(sanitize(name));
-                try (FileOutputStream fos = new FileOutputStream(out)) { fos.write(bytes); }
-                uri = providerUri(out);
-            } else if (path != null && path.startsWith("content://")) {
-                uri = Uri.parse(path);
-            } else if (path != null && path.length() > 0) {
-                String abs = normalize(path);
-                File src = abs == null ? null : new File(abs);
-                if (src == null || !src.exists()) { call.reject("File not found"); return; }
-                File out = stageCacheFile(sanitize(src.getName()));
-                copyFile(src, out);
-                uri = providerUri(out);
-            } else {
-                call.reject("path or base64 is required");
-                return;
-            }
-
-            Intent send = new Intent(Intent.ACTION_SEND);
-            send.setType(mime);
-            send.putExtra(Intent.EXTRA_STREAM, uri);
-            send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            Intent chooser = Intent.createChooser(send, title);
-            chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            getContext().startActivity(chooser);
-
-            JSObject ret = new JSObject();
-            ret.put("success", true);
-            call.resolve(ret);
-        } catch (Exception e) {
-            call.reject("Share failed: " + e.getMessage());
+        final String path = call.getString("path");
+        final String base64 = call.getString("base64");
+        final String name = call.getString("name", "share_" + System.currentTimeMillis());
+        final String mime = call.getString("mime", "*/*");
+        final String title = call.getString("title", "Share");
+        if ((base64 == null || base64.isEmpty()) && (path == null || path.isEmpty())) {
+            call.reject("path or base64 is required");
+            return;
         }
+        // A decrypted Safe video can be hundreds of MB. Decode/copy in small
+        // chunks off the Android UI thread, using a distinct private directory
+        // for every share so repeated names can never overwrite another export.
+        final File cacheRoot = getContext().getCacheDir();
+        new Thread(() -> {
+            File staged = null;
+            try {
+                final Uri uri;
+                if (base64 != null && !base64.isEmpty()) {
+                    staged = PrivateShareStaging.stageBase64(cacheRoot, name, base64);
+                    uri = providerUri(staged);
+                } else if (path.startsWith("content://")) {
+                    uri = Uri.parse(path);
+                } else {
+                    String abs = normalize(path);
+                    File src = abs == null ? null : new File(abs);
+                    if (src == null || !src.isFile()) {
+                        call.reject("File not found");
+                        return;
+                    }
+                    staged = PrivateShareStaging.stageFile(cacheRoot, src.getName(), src);
+                    uri = providerUri(staged);
+                }
+                final File sharedCopy = staged;
+                final Activity activity = getActivity();
+                if (activity == null || activity.isFinishing() || activity.isDestroyed()) {
+                    PrivateShareStaging.discard(sharedCopy);
+                    call.reject("Share unavailable");
+                    return;
+                }
+                activity.runOnUiThread(() -> {
+                    if (activity.isFinishing() || activity.isDestroyed()) {
+                        PrivateShareStaging.discard(sharedCopy);
+                        call.reject("Share unavailable");
+                        return;
+                    }
+                    try {
+                        Intent send = new Intent(Intent.ACTION_SEND);
+                        send.setType(mime);
+                        send.putExtra(Intent.EXTRA_STREAM, uri);
+                        // The chooser must receive the same URI grant on
+                        // older Android versions as on current scoped storage.
+                        send.setClipData(ClipData.newRawUri("Nova Gallery media", uri));
+                        send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        Intent chooser = Intent.createChooser(send, title);
+                        chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        activity.startActivity(chooser);
+                        JSObject ret = new JSObject();
+                        ret.put("success", true);
+                        call.resolve(ret);
+                    } catch (Exception ignored) {
+                        PrivateShareStaging.discard(sharedCopy);
+                        // Never expose an encrypted Safe filename in an error.
+                        call.reject("Share unavailable");
+                    }
+                });
+            } catch (Exception ignored) {
+                PrivateShareStaging.discard(staged);
+                call.reject("Share unavailable");
+            }
+        }, "NovaGalleryMediaShare").start();
     }
 
     // Share public album media directly by MediaStore URI, never copy bytes.
@@ -697,28 +731,9 @@ public class SecureVaultPlugin extends Plugin {
         }
     }
 
-    private String sanitize(String n) {
-        return n.replaceAll("[\\\\/:*?\"<>|]", "_");
-    }
-
-    private File stageCacheFile(String name) {
-        File dir = new File(getContext().getCacheDir(), "shared");
-        if (!dir.exists()) dir.mkdirs();
-        return new File(dir, name);
-    }
-
     private Uri providerUri(File f) {
         return FileProvider.getUriForFile(
                 getContext(), getContext().getPackageName() + ".fileprovider", f);
-    }
-
-    private void copyFile(File src, File dst) throws IOException {
-        try (FileInputStream in = new FileInputStream(src);
-             FileOutputStream out = new FileOutputStream(dst)) {
-            byte[] buf = new byte[16384];
-            int n;
-            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
-        }
     }
 
     /** MediaStore IS_PENDING prevents incomplete files showing up in other
