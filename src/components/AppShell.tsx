@@ -7,6 +7,7 @@ import { useVault } from "@/lib/vault-store";
 import { cssColorToHex } from "@/lib/css-color";
 import { initSystemInsets, updateSystemBarAppearance, signalGalleryUiReady, refreshSystemInsetsForViewport } from "@/lib/system-insets";
 import { assessGalleryLayout, type GalleryLayoutEvidence } from "@/lib/gallery-geometry";
+import { createLayoutSignalPublisher } from "@/lib/layout-signal";
 
 /**
  * First launch after install: detect the device locale, map it to one of the
@@ -104,6 +105,7 @@ function MeasuredAppFrame({ children }: { children: ReactNode }) {
     let pendingRetry: ReturnType<typeof setTimeout> | undefined;
     let insetRetryCount = 0;
     let lastReportedIssue = "";
+    const publishLayout = createLayoutSignalPublisher(signalGalleryUiReady);
     // Independently timed geometry reports cannot be starved by resize,
     // mutation or inset events. On older WebViews those events can arrive
     // faster than requestAnimationFrame (and reset the debounced timer).
@@ -166,7 +168,7 @@ function MeasuredAppFrame({ children }: { children: ReactNode }) {
           " insets=" + values.nativeInsetsReady);
       }
       lastReportedIssue = layoutIssue;
-      signalGalleryUiReady({ ...values, layoutIssue });
+      publishLayout({ ...values, layoutIssue });
       // Retry BOTH early native insets and not-yet-laid-out navigation.
       // This is bounded, and real OS events still refresh measurements.
       if (layoutIssue !== "OK" && insetRetryCount < MAX_INSET_RETRIES) {
