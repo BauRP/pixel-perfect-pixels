@@ -10,14 +10,14 @@ import { zh } from "./locales/zh";
 import { ko } from "./locales/ko";
 import { ja } from "./locales/ja";
 import { de } from "./locales/de";
-import { it } from "./locales/it";
+import { it as italian } from "./locales/it";
 import { tr } from "./locales/tr";
 import { pl } from "./locales/pl";
 import { hi } from "./locales/hi";
 import { vi } from "./locales/vi";
 import { id } from "./locales/id";
 
-const dictionaries = { en, ru, kk, pt, es, fr, ar, zh, ko, ja, de, it, tr, pl, hi, vi, id };
+const dictionaries = { en, ru, kk, pt, es, fr, ar, zh, ko, ja, de, it: italian, tr, pl, hi, vi, id };
 const canonicalKeys = Object.keys(en).sort();
 const placeholders = (str: string) => [...str.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 
