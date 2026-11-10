@@ -36,16 +36,37 @@ const emit = () => listeners.forEach((l) => l());
 let cache: Record<Scope, ViewPrefs> = { ...DEFAULTS };
 let loaded = false;
 
+const VALID_COLUMNS: readonly Columns[] = [2, 3, 4];
+const VALID_FIELDS: readonly SortField[] = ["created", "name", "size", "modified"];
+const VALID_DIRS: readonly SortDir[] = ["asc", "desc"];
+
+/**
+ * localStorage is not a typed database. Corrupted/old versions can contain
+ * invalid column counts and sort modes, which used to reach the live grid.
+ * Keep each healthy preference and fall back only for invalid fields.
+ */
+export function sanitizeViewPrefs(scope: Scope, raw: unknown): ViewPrefs {
+  const base = DEFAULTS[scope];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ...base };
+  const obj = raw as Partial<Record<keyof ViewPrefs, unknown>>;
+  const columns = VALID_COLUMNS.includes(obj.columns as Columns) ? obj.columns as Columns : base.columns;
+  const field = VALID_FIELDS.includes(obj.field as SortField) ? obj.field as SortField : base.field;
+  const dir = VALID_DIRS.includes(obj.dir as SortDir) ? obj.dir as SortDir : base.dir;
+  return { columns, field, dir };
+}
+
 function load(): Record<Scope, ViewPrefs> {
   if (loaded || typeof window === "undefined") return cache;
   loaded = true;
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as Partial<Record<Scope, Partial<ViewPrefs>>>;
+      const parsed: unknown = JSON.parse(raw);
+      const obj = parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed as Partial<Record<Scope, unknown>> : {};
       cache = {
-        folders: { ...DEFAULTS.folders, ...(parsed.folders ?? {}) },
-        media: { ...DEFAULTS.media, ...(parsed.media ?? {}) },
+        folders: sanitizeViewPrefs("folders", obj.folders),
+        media: sanitizeViewPrefs("media", obj.media),
       };
     }
   } catch {
@@ -68,7 +89,7 @@ export function getPrefs(scope: Scope): ViewPrefs {
 
 export function setPrefs(scope: Scope, patch: Partial<ViewPrefs>) {
   const cur = load();
-  save({ ...cur, [scope]: { ...cur[scope], ...patch } });
+  save({ ...cur, [scope]: sanitizeViewPrefs(scope, { ...cur[scope], ...patch }) });
 }
 
 export function useViewPrefs(scope: Scope): [ViewPrefs, (patch: Partial<ViewPrefs>) => void] {
