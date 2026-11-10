@@ -10,6 +10,10 @@
 
 ## 0. Быстрый старт: 90 секунд вместо повторного аудита
 
+> **2026-11-10, скачивание APK по прямой ссылке, коммит [`701c405`](https://github.com/BauRP/pixel-perfect-pixels/commit/701c4050afb3624d5240d9f747c334bde5088f61).** По прямому запросу владельца и образцу Wave Notes изменён **только** `.github/workflows/build.yml`: ранее `Create Release & Upload APK` исполнялся лишь в `main/master`, поэтому в рабочей ветке `chatgpt/nova-gallery-android7-17-fixes-20261031` была только ограниченная `actions/upload-artifact` загрузка. Теперь после штатной сборки рабочая ветка также публикует **debug APK с тестовой рекламой** как отдельный prerelease GitHub Releases с уникальным тегом `nova-gallery-preview-{run}-a{attempt}`, привязанным к точному SHA исходников, SHA-256 и двумя прямыми ссылками в `GITHUB_STEP_SUMMARY` (APK / контрольная сумма). Существующий production-путь `main/master`, release-signing, native Ads, Android SDK36, тесты и сборка не изменены; `main` не тронута. **Важно:** это публикация в GitHub Releases, не сторонний сервер; обход временного хранилища Actions, но ограничения Releases по-прежнему действуют. Проверочный CI [#42830962466](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/42830962466) запущен, реальное создание ссылки считать доказанным **только после SUCCESS шага publish и существования Release asset**. Автоматическое повышение индекса недопустимо за изменение способа выдачи APK: **31/55=56,36%, +0,00; исторический Android 91,9%, +0,0**. Новые отдельные Android emulators [#42830962449](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/42830962449) и API37 [#42830962451](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/42830962451) могут запускаться автоматически на workflow-only push; не утверждать их результат до завершения.
+
+
+
 > **Промежуточная runtime-сверка CI #42826660318 для кода `8aa93ff`, 2026-11-10:** общая идентичная пара APK и Android API24 (7) / API26 (8) **SUCCESS**, включая запущенные Android instrumentation; AOSP API33 (Android13) **FAILURE**, старый P0 не закрыт. Остальные API29/33/34/36 и AOSP29 выполнялись на момент просмотра. Нельзя считать полную Android-матрицу пройденной. Для SHA `8aa93ff` уже подтверждены 89/89 Vitest, полная APK SUCCESS (#42826660360), API37 isolated compile SUCCESS (#42826660409), но Android17 runtime не проверен. Никаких новых 55 критериев этим пакетом не закрыто: 31/55=56,36%, +0,00; исторический Android 91,9%, +0,0.
 
 
@@ -375,6 +379,9 @@ cd android
 
 ### 9.1. Журнал запросов без изменений исходного кода
 
+| **2026-11-10** | По образцу Wave Notes добавлено прямое скачивание APK в ветке Nova Gallery через GitHub Releases. Убрано ограничение publish только для `main/master`, предпросмотр помечен отдельно, добавлены SHA-256 и прямые ссылки в Summary. | Код приложения не менялся. CI #42830962466 выполнялся при записи; способ публикации не объявлять подтверждённым до наличия Release asset. Коммит `701c405`; индекс 31/55=56,36%, прирост +0,00, Android 91,9%, +0,0. |
+
+
 | **2026-11-10** | Очередной запрос продолжать реальную разработку: проверены финальные эмульторные результаты #42734132991, P0 Android 10/13 всё ещё FAIL. Новый независимый критический пакет против UI freeze при Android Safe/public file share: потоковая запись/уникальные временные копии/ограниченное хранение + 4 Android instrumentation теста. | SHA [`8aa93ff`](https://github.com/BauRP/pixel-perfect-pixels/commit/8aa93fff7c197cd6f9e425b4ee9307a6d036ba5a), CI build #42826660360, emulators #42826660318, API37 #42826660409; запуск не завершён на момент записи, поэтому прогресс зафиксирован на 31/55=56,36%, +0,00 п.п., исторический Android 91,9% +0,0. Код только в согласованной ветке; main не затронута. |
 
 
@@ -406,6 +413,9 @@ cd android
 | **2026-11-06** | Владелец потребовал **обновлять `PROGRESS.md` при каждом своём запросе по Nova Gallery без напоминания**. Требование закреплено в §0, §1.1 и §9; правило распространяется даже на информационные запросы и действует для следующих чатов. | **Код не менялся**; сборка/тесты для одного изменения Markdown не запускались вручную; проценты без изменений. |
 
 ## 10. С чего продолжить в следующем чате
+
+**Последнее обновление: APK download 2026-11-10**. Проверить [workflow #42830962466](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/42830962466) и действительно созданный prerelease asset `app-debug.apk` и `app-debug.apk.sha256` для SHA `701c405`. Если `Publish APK and SHA-256...` ошибся, исправить только workflow, проверить GitHub Releases permissions и квоты; не менять Android app, SDK или рекламу ради скачивания. Ветку `main` не трогать. Текущая готовность 56,36% (+0,00). Остальные проблемы и приоритеты перечислены ниже.
+
 
 **Новый кодовый SHA `8aa93ff` (2026-11-10):** сначала проверить [APK+unit #42826660360](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/42826660360), [API37 #42826660409](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/42826660409), [emulators #42826660318](https://github.com/BauRP/pixel-perfect-pixels/actions/runs/42826660318) для worker-based Safe sharing и `PrivateShareStagingTest.java`. При failing Java tests исправлять на ЭТОМ новом кодовом SHA, не приписывать ему прошлые 89 Vitest. Для P0 Android10/13 использовать прошлый runtime baseline #42734132991: API29 Google 6 blank/AOSP 6, API33 Google 10 blank/AOSP 1. Ниже дальнейшие инструкции остаются актуальны. Не изменять `main`.
 
