@@ -70,6 +70,10 @@ public class NativeAdsPlugin extends Plugin {
     private NativeAd nativeAd = null;
     private boolean loading = false;
     private final AtomicBoolean sdkInitStarted = new AtomicBoolean(false);
+    // Google Mobile Ads initialization is asynchronous. The first AdLoader
+    // must wait for its completion callback, as in the working Wave Notes app.
+    private final NativeAdSdkGate sdkGate = new NativeAdSdkGate();
+    private static final long SDK_INIT_TIMEOUT_MS = 35_000L;
     private final AtomicBoolean consentFlowStarted = new AtomicBoolean(false);
     private ConsentInformation consentInfo = null;
     /** True once the consent info request for this session has completed (success or error). */
@@ -100,17 +104,39 @@ public class NativeAdsPlugin extends Plugin {
         getActivity().runOnUiThread(this::gatherConsent);
     }
 
-    /** The only Google Mobile Ads SDK initialization in the app (off the UI thread). */
+    /**
+     * Initialize only after UMP permits requests. Do not make an AdLoader
+     * request until MobileAds' completion callback: initialization on its
+     * own worker thread is NOT the same as readiness.
+     */
     private void initSdk() {
-        if (!sdkInitStarted.compareAndSet(false, true)) return;
+        if (sdkGate.isReady() || !sdkInitStarted.compareAndSet(false, true)) return;
         final Context appCtx = getContext().getApplicationContext();
         new Thread(() -> {
             try {
-                MobileAds.initialize(appCtx, status -> Log.i(TAG, "Mobile Ads SDK ready"));
+                MobileAds.initialize(appCtx, status -> mainHandler.post(() -> {
+                    Log.i(TAG, "Mobile Ads SDK ready");
+                    sdkGate.complete();
+                }));
             } catch (Throwable t) {
                 Log.w(TAG, "Mobile Ads SDK init failed", t);
+                mainHandler.post(() -> {
+                    if (sdkGate.isReady()) return;
+                    sdkInitStarted.set(false);
+                    if (sdkGate.fail()) reportAdFailure(-1001, "SDK_INIT_FAILED");
+                });
             }
         }, "mobile-ads-init").start();
+    }
+
+    /** Reports a recoverable SDK failure so JS can retry with normal backoff. */
+    private void reportAdFailure(int code, String reason) {
+        loading = false;
+        JSObject error = new JSObject();
+        error.put("code", code);
+        error.put("message", reason);
+        error.put("noFill", false);
+        notifyListeners("adFailed", error);
     }
 
     // ── Google UMP consent (EEA / UK) ───────────────────────────────────────
@@ -328,57 +354,84 @@ public class NativeAdsPlugin extends Plugin {
             call.resolve(ret);
             return;
         }
-        initSdk();
         final String adId = BuildConfig.USE_TEST_ADS ? TEST_NATIVE_AD_UNIT_ID : prodId;
         loading = true;
         ret.put("started", true);
         call.resolve(ret);
 
         activity.runOnUiThread(() -> {
-            try {
-                AdLoader loader = new AdLoader.Builder(activity, adId)
-                        .forNativeAd(ad -> {
-                            loading = false;
-                            Activity a = getActivity();
-                            if (a == null || a.isDestroyed() || a.isFinishing()) {
-                                ad.destroy();
-                                return;
-                            }
-                            if (!canRequestAds()) {
-                                // User could withdraw consent while an ad loads.
-                                ad.destroy();
-                                return;
-                            }
-                            if (nativeAd != null) nativeAd.destroy();
-                            nativeAd = ad;
-                            bindAd();
-                            notifyListeners("adLoaded", new JSObject());
-                        })
-                        .withAdListener(new AdListener() {
-                            @Override
-                            public void onAdFailedToLoad(LoadAdError error) {
+            // Google requires consent BEFORE SDK initialization. Retest it
+            // after asynchronous initialization, in case it was withdrawn.
+            final Runnable startRequest = () -> {
+                if (!loading) return;
+                Activity current = getActivity();
+                if (current == null || current.isDestroyed() || current.isFinishing()) {
+                    reportAdFailure(-1002, "ACTIVITY_UNAVAILABLE");
+                    return;
+                }
+                if (!canRequestAds()) {
+                    loading = false;
+                    notifyListeners("consentUpdated", consentStatus(), true);
+                    return;
+                }
+                try {
+                    AdLoader loader = new AdLoader.Builder(current, adId)
+                            .forNativeAd(ad -> {
                                 loading = false;
-                                Log.w(TAG, "native ad failed: " + error.getCode() + " " + error.getMessage());
-                                JSObject ev = new JSObject();
-                                ev.put("code", error.getCode());
-                                ev.put("message", error.getMessage());
-                                ev.put("noFill", error.getCode() == AdRequest.ERROR_CODE_NO_FILL);
-                                notifyListeners("adFailed", ev);
-                            }
-                        })
-                        .withNativeAdOptions(new NativeAdOptions.Builder()
-                                .setAdChoicesPlacement(NativeAdOptions.ADCHOICES_TOP_RIGHT)
-                                .setMediaAspectRatio(NativeAdOptions.NATIVE_MEDIA_ASPECT_RATIO_ANY)
-                                .build())
-                        .build();
-                loader.loadAd(new AdRequest.Builder().build());
-            } catch (Throwable t) {
-                loading = false;
-                JSObject ev = new JSObject();
-                ev.put("code", -1);
-                ev.put("message", String.valueOf(t.getMessage()));
-                ev.put("noFill", false);
-                notifyListeners("adFailed", ev);
+                                Activity a = getActivity();
+                                if (a == null || a.isDestroyed() || a.isFinishing()) {
+                                    ad.destroy();
+                                    return;
+                                }
+                                if (!canRequestAds()) {
+                                    // User could withdraw consent while an ad loads.
+                                    ad.destroy();
+                                    return;
+                                }
+                                if (nativeAd != null) nativeAd.destroy();
+                                nativeAd = ad;
+                                bindAd();
+                                notifyListeners("adLoaded", new JSObject());
+                            })
+                            .withAdListener(new AdListener() {
+                                @Override
+                                public void onAdFailedToLoad(LoadAdError error) {
+                                    loading = false;
+                                    Log.w(TAG, "native ad failed: " + error.getCode() + " " + error.getMessage());
+                                    JSObject ev = new JSObject();
+                                    ev.put("code", error.getCode());
+                                    ev.put("message", error.getMessage());
+                                    ev.put("noFill", error.getCode() == AdRequest.ERROR_CODE_NO_FILL);
+                                    notifyListeners("adFailed", ev);
+                                }
+                            })
+                            .withNativeAdOptions(new NativeAdOptions.Builder()
+                                    .setAdChoicesPlacement(NativeAdOptions.ADCHOICES_TOP_RIGHT)
+                                    .setMediaAspectRatio(NativeAdOptions.NATIVE_MEDIA_ASPECT_RATIO_ANY)
+                                    .build())
+                            .build();
+                    loader.loadAd(new AdRequest.Builder().build());
+                } catch (Throwable t) {
+                    reportAdFailure(-1, "AD_LOADER_EXCEPTION");
+                    Log.w(TAG, "AdLoader creation or load failed", t);
+                }
+            };
+
+            if (sdkGate.isReady()) {
+                startRequest.run();
+            } else {
+                // Do not report an ad as 'loading forever' after a failed
+                // SDK startup. The JS ad loader will receive adFailed and
+                // retry safely, without changing the native tile or menu.
+                sdkGate.await(startRequest);
+                initSdk();
+                mainHandler.postDelayed(() -> {
+                    if (sdkGate.expire(startRequest)) {
+                        sdkInitStarted.set(false);
+                        Log.w(TAG, "Mobile Ads SDK initialization deadline exceeded");
+                        reportAdFailure(-1003, "SDK_INIT_TIMEOUT");
+                    }
+                }, SDK_INIT_TIMEOUT_MS);
             }
         });
     }
@@ -506,6 +559,8 @@ public class NativeAdsPlugin extends Plugin {
 
     @Override
     protected void handleOnDestroy() {
+        sdkGate.clear();
+        loading = false;
         mainHandler.removeCallbacksAndMessages(null);
         if (netCallback != null) {
             ConnectivityManager cm = (ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
