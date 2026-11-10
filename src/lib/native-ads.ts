@@ -19,6 +19,7 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { useSyncExternalStore } from "react";
 import { backoffDelay } from "./backoff";
+import { createLatestAsyncDispatcher } from "./native-ad-placement";
 
 export { cssColorToHex } from "./css-color";
 import { cssColorToHex } from "./css-color";
@@ -368,14 +369,32 @@ export function activateNativeAdSlot(): () => void {
   };
 }
 
-/** Places the overlay; if the native side reports it no longer has an ad, JS state is resynced. */
+type PlacementCommand =
+  | { type: "bounds"; bounds: NativeAdBounds }
+  | { type: "hide" };
+
+/**
+ * setBounds and hide are asynchronous Capacitor commands. A previously
+ * dispatched hide must never arrive AFTER a newer visible placement and
+ * make the ad disappear until the next menu interaction. Keep the newest
+ * requested state and serialize the bridge operations.
+ */
+const publishPlacement = createLatestAsyncDispatcher<PlacementCommand>(
+  async (command) => {
+    if (command.type === "hide") {
+      await NativeAds.hide();
+      return;
+    }
+    const result = await NativeAds.setBounds(command.bounds);
+    if (result?.reason === "NO_AD") onAdGone();
+  },
+  () => adLog("warn", "native ad placement command failed"),
+);
+
+/** Show/reposition a loaded native ad regardless of menu-open state. */
 export function setNativeAdBounds(bounds: NativeAdBounds) {
   if (!isNativeAdSupported()) return;
-  void NativeAds.setBounds(bounds)
-    .then((r) => {
-      if (r && r.reason === "NO_AD") onAdGone();
-    })
-    .catch(() => {});
+  publishPlacement({ type: "bounds", bounds });
 }
 
 /** Subscribe to foreground resumes so the slot can re-place the overlay. */
@@ -389,7 +408,7 @@ export function onAppResume(cb: () => void) {
 
 export function hideNativeAd() {
   if (!isNativeAdSupported()) return;
-  void NativeAds.hide().catch(() => {});
+  publishPlacement({ type: "hide" });
 }
 
 export function readThemeColors(): NativeAdColors {
