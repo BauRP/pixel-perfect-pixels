@@ -14,19 +14,78 @@ import type { ScannedItem } from "./device-scan";
 const MAX_EDGE = 256;
 const MAX_ENTRIES = 400;
 
-const cache = new Map<string, string>();        // id → blob: URL
+type ThumbEntry = { url: string; owned: boolean };
+// The gallery itself owns source media URLs. Only posters we generate here
+// may be revoked by this cache; revoking an original Blob URL breaks the
+// full-screen viewer and all other gallery references to that same file.
+const cache = new Map<string, ThumbEntry>();
 const inFlight = new Map<string, Promise<string>>();
+const MAX_ACTIVE_VIDEO_DECODERS = 2;
+let activeVideoDecoders = 0;
+const queuedVideoDecoders: Array<() => void> = [];
 
-function touch(id: string, url: string) {
+async function withVideoDecoder<T>(work: () => Promise<T>): Promise<T> {
+  if (activeVideoDecoders >= MAX_ACTIVE_VIDEO_DECODERS) {
+    await new Promise<void>((resume) => queuedVideoDecoders.push(resume));
+  }
+  activeVideoDecoders++;
+  try {
+    return await work();
+  } finally {
+    activeVideoDecoders--;
+    queuedVideoDecoders.shift()?.();
+  }
+}
+
+function touch(id: string, entry: ThumbEntry) {
   cache.delete(id);
-  cache.set(id, url);
+  cache.set(id, entry);
   while (cache.size > MAX_ENTRIES) {
     const first = cache.keys().next().value;
     if (!first) break;
     const stale = cache.get(first);
-    if (stale) URL.revokeObjectURL(stale);
+    if (stale?.owned && stale.url.startsWith("blob:")) URL.revokeObjectURL(stale.url);
     cache.delete(first);
   }
+}
+
+/** Bounded waits prevent corrupt media or a stalled decoder from pinning the
+ * thumbnail promise and holding media surfaces forever on older WebViews. */
+function waitForVideoEvent(video: HTMLVideoElement, eventName: string, limitMs: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let finished = false;
+    const finish = (reason?: Error) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      video.removeEventListener(eventName, ready);
+      video.removeEventListener("error", failed);
+      if (reason) reject(reason);
+      else resolve();
+    };
+    const ready = () => finish();
+    const failed = () => finish(new Error("video decode failed"));
+    const timer = setTimeout(() => finish(new Error("video decoder timeout")), limitMs);
+    video.addEventListener(eventName, ready);
+    video.addEventListener("error", failed);
+  });
+}
+
+function boundedCanvasBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise<Blob>((resolve, reject) => {
+    let finished = false;
+    const timer = setTimeout(() => {
+      finished = true;
+      reject(new Error("thumbnail encoding timeout"));
+    }, 4000);
+    canvas.toBlob((blob) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      if (blob) resolve(blob);
+      else reject(new Error("toBlob failed"));
+    }, "image/webp", 0.72);
+  });
 }
 
 async function renderImage(file: File): Promise<Blob> {
@@ -48,49 +107,54 @@ async function renderImage(file: File): Promise<Blob> {
     if ("convertToBlob" in canvas) {
       return await (canvas as OffscreenCanvas).convertToBlob({ type: "image/webp", quality: 0.72 });
     }
-    return await new Promise<Blob>((res, rej) => {
-      (canvas as HTMLCanvasElement).toBlob(
-        (b) => b ? res(b) : rej(new Error("toBlob failed")),
-        "image/webp", 0.72,
-      );
-    });
+    return await boundedCanvasBlob(canvas as HTMLCanvasElement);
   } finally {
     bitmap.close?.();
   }
 }
 
 async function renderVideoPosterFromUrl(url: string, revoke: boolean): Promise<Blob> {
+  const v = document.createElement("video");
   try {
-    const v = document.createElement("video");
-    v.src = url;
     v.muted = true;
     v.playsInline = true;
     v.preload = "metadata";
     v.crossOrigin = "anonymous";
-    await new Promise<void>((res, rej) => {
-      v.onloadeddata = () => res();
-      v.onerror = () => rej(new Error("video decode failed"));
-    });
-    // seek to a bit past the start for a non-black frame
-    await new Promise<void>((res) => {
-      v.onseeked = () => res();
-      v.currentTime = Math.min(0.1, (v.duration || 1) * 0.05);
-    });
+    // Install both listeners BEFORE touching src: short local videos can
+    // dispatch loadeddata synchronously on old Android implementations.
+    const ready = waitForVideoEvent(v, "loadeddata", 5000);
+    v.src = url;
+    await ready;
+
+    // On malformed/seekless clips the seeked event may never fire. A failed
+    // seek must not hang the grid or retain the MediaCodec decoder.
+    const duration = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : 0;
+    const target = Math.min(0.1, duration * 0.05);
+    if (target > 0 && Math.abs(v.currentTime - target) > 0.001) {
+      const seeked = waitForVideoEvent(v, "seeked", 1500);
+      try { v.currentTime = target; } catch { /* use already decoded frame */ }
+      await seeked.catch(() => { /* best-effort seek, render frame zero */ });
+    }
+
+    if (v.videoWidth <= 0 || v.videoHeight <= 0) throw new Error("video frame unavailable");
     const scale = Math.min(1, MAX_EDGE / Math.max(v.videoWidth, v.videoHeight));
     const w = Math.max(1, Math.round(v.videoWidth * scale));
     const h = Math.max(1, Math.round(v.videoHeight * scale));
     const canvas = document.createElement("canvas");
-    canvas.width = w; canvas.height = h;
+    canvas.width = w;
+    canvas.height = h;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("no 2d ctx");
     ctx.drawImage(v, 0, 0, w, h);
-    return await new Promise<Blob>((res, rej) => {
-      canvas.toBlob(
-        (b) => b ? res(b) : rej(new Error("toBlob failed")),
-        "image/webp", 0.72,
-      );
-    });
+    return await boundedCanvasBlob(canvas);
   } finally {
+    // Release the video surface and decoder even if the event/seek/encoding
+    // timed out. Simply dropping the element did not release them promptly.
+    try {
+      v.pause();
+      v.removeAttribute("src");
+      v.load();
+    } catch { /* WebView is tearing down */ }
     if (revoke) URL.revokeObjectURL(url);
   }
 }
@@ -103,7 +167,7 @@ async function renderVideoPoster(file: File): Promise<Blob> {
 /** Get (or generate) a downscaled thumbnail URL for a scanned item. */
 export function getThumb(item: ScannedItem): Promise<string> {
   const hit = cache.get(item.id);
-  if (hit) { touch(item.id, hit); return Promise.resolve(hit); }
+  if (hit) { touch(item.id, hit); return Promise.resolve(hit.url); }
   const pending = inFlight.get(item.id);
   if (pending) return pending;
   const p = (async () => {
@@ -116,24 +180,24 @@ export function getThumb(item: ScannedItem): Promise<string> {
       //    the native URL (MediaStore-style thumbnail retrieval).
       if (!item.file) {
         if (item.kind === "video") {
-          const blob = await renderVideoPosterFromUrl(item.url, false);
+          const blob = await withVideoDecoder(() => renderVideoPosterFromUrl(item.url, false));
           const posterUrl = URL.createObjectURL(blob);
-          touch(item.id, posterUrl);
+          touch(item.id, { url: posterUrl, owned: true });
           return posterUrl;
         }
-        touch(item.id, item.url);
+        touch(item.id, { url: item.url, owned: false });
         return item.url;
       }
       const blob = item.kind === "video"
-        ? await renderVideoPoster(item.file)
+        ? await withVideoDecoder(() => renderVideoPoster(item.file!))
         : await renderImage(item.file);
       const url = URL.createObjectURL(blob);
-      touch(item.id, url);
+      touch(item.id, { url, owned: true });
       return url;
     } catch {
       // Fall back to the original — bitmap decode may fail for HEIC on some
       // WebViews; the original URL still renders through the platform decoder.
-      touch(item.id, item.url);
+      touch(item.id, { url: item.url, owned: false });
       return item.url;
     } finally {
       inFlight.delete(item.id);
