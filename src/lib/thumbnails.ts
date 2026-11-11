@@ -24,7 +24,7 @@ const MAX_ACTIVE_VIDEO_DECODERS = 2;
 let activeVideoDecoders = 0;
 const queuedVideoDecoders: Array<() => void> = [];
 
-async function withVideoDecoder<T>(work: () => Promise<T>): Promise<T> {
+export async function withVideoDecoder<T>(work: () => Promise<T>): Promise<T> {
   if (activeVideoDecoders >= MAX_ACTIVE_VIDEO_DECODERS) {
     await new Promise<void>((resume) => queuedVideoDecoders.push(resume));
   }
@@ -37,7 +37,7 @@ async function withVideoDecoder<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
-function touch(id: string, entry: ThumbEntry) {
+export function touch(id: string, entry: ThumbEntry) {
   cache.delete(id);
   cache.set(id, entry);
   while (cache.size > MAX_ENTRIES) {

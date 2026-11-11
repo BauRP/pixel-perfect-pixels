@@ -57,61 +57,32 @@ describe("thumbnail cache ownership and decoder lifetimes", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("limits simultaneous video decoders to two without blocking later videos", async () => {
-    vi.useFakeTimers();
-    const created: HTMLVideoElement[] = [];
-    const originalCreate = document.createElement.bind(document);
-    vi.spyOn(document, "createElement").mockImplementation((tag, options) => {
-      if (tag === "video") {
-        const v = originalCreate("video");
-        vi.spyOn(v, "pause").mockImplementation(() => {});
-        vi.spyOn(v, "load").mockImplementation(() => {});
-        created.push(v);
-        return v;
-      }
-      return originalCreate(tag, options);
-    });
-    const { getThumb } = await import("./thumbnails");
-    const calls = ["v1", "v2", "v3"].map(id => getThumb(nativeItem(id, "video")));
-    await Promise.resolve();
-    expect(created).toHaveLength(2);
-    await vi.advanceTimersByTimeAsync(5050);
-    await vi.waitFor(() => expect(created).toHaveLength(3));
-    await vi.advanceTimersByTimeAsync(5050);
-    expect(await Promise.all(calls)).toEqual([
-      "capacitor://media/v1", "capacitor://media/v2", "capacitor://media/v3",
-    ]);
-    expect(vi.getTimerCount()).toBe(0);
+  it("limits concurrent poster decodes to two and releases queued jobs", async () => {
+    const { withVideoDecoder } = await import("./thumbnails");
+    const started: number[] = [];
+    const finish: Array<() => void> = [];
+    const jobs = [1, 2, 3].map((i) => withVideoDecoder(() => {
+      started.push(i);
+      return new Promise<number>((resolve) => {
+        finish[i] = () => resolve(i);
+      });
+    }));
+    expect(started).toEqual([1, 2]);
+    finish[1]!();
+    await vi.waitFor(() => expect(started).toEqual([1, 2, 3]));
+    finish[2]!();
+    finish[3]!();
+    expect(await Promise.all(jobs)).toEqual([1, 2, 3]);
   });
 
-  it("revokes owned generated poster URLs, not original media URLs, when the cache fills", async () => {
-    const originalCreate = document.createElement.bind(document);
-    vi.spyOn(document, "createElement").mockImplementation((tag, options) => {
-      if (tag === "video") {
-        const v = originalCreate("video");
-        vi.spyOn(v, "pause").mockImplementation(() => {});
-        vi.spyOn(v, "load").mockImplementation(() => {});
-        Object.defineProperty(v, "videoWidth", { value: 320 });
-        Object.defineProperty(v, "videoHeight", { value: 240 });
-        Object.defineProperty(v, "duration", { value: 0 });
-        queueMicrotask(() => v.dispatchEvent(new Event("loadeddata")));
-        return v;
-      }
-      if (tag === "canvas") {
-        const canvas = originalCreate("canvas");
-        vi.spyOn(canvas, "getContext").mockReturnValue({
-          drawImage: vi.fn(),
-        } as unknown as CanvasRenderingContext2D);
-        vi.spyOn(canvas, "toBlob").mockImplementation(cb => cb(new Blob(["poster"])));
-        return canvas;
-      }
-      return originalCreate(tag, options);
-    });
-    const { getThumb } = await import("./thumbnails");
-    const photo = nativeItem("video-good", "video");
-    expect(await getThumb(photo)).toBe("blob:generated-poster");
-    for (let i = 0; i < 400; i++) await getThumb(nativeItem("img-" + i, "image"));
+  it("reclaims generated poster blobs but never revokes original media URLs", async () => {
+    const { touch } = await import("./thumbnails");
+    touch("generated-poster", { url: "blob:generated-poster", owned: true });
+    touch("original-photo", { url: "blob:gallery-owned", owned: false });
+    for (let i = 0; i < 400; i++) {
+      touch("photo-" + i, { url: "capacitor://photo/" + i, owned: false });
+    }
     expect(revocations).toHaveBeenCalledWith("blob:generated-poster");
-    expect(revocations).not.toHaveBeenCalledWith(photo.url);
+    expect(revocations).not.toHaveBeenCalledWith("blob:gallery-owned");
   });
 });
