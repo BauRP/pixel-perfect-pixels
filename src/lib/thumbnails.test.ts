@@ -14,10 +14,12 @@ const urls = vi.fn(() => "blob:generated-poster");
 beforeEach(() => {
   vi.resetModules();
   vi.resetAllMocks();
-  vi.stubGlobal("URL", {
-    ...URL,
-    createObjectURL: urls,
-    revokeObjectURL: revocations,
+  // Keep URL as a constructor: jsdom, Capacitor mocks and Vitest's
+  // environment create URL instances while this test is running.
+  const OriginalURL = URL;
+  vi.stubGlobal("URL", class extends OriginalURL {
+    static createObjectURL = urls;
+    static revokeObjectURL = revocations;
   });
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
