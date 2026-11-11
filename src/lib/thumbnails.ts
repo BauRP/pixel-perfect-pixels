@@ -14,12 +14,13 @@ import type { ScannedItem } from "./device-scan";
 const MAX_EDGE = 256;
 const MAX_ENTRIES = 400;
 
-type ThumbEntry = { url: string; owned: boolean };
+type ThumbEntry = { url: string; owned: boolean; sourceKey?: string };
 // The gallery itself owns source media URLs. Only posters we generate here
 // may be revoked by this cache; revoking an original Blob URL breaks the
 // full-screen viewer and all other gallery references to that same file.
 const cache = new Map<string, ThumbEntry>();
-const inFlight = new Map<string, Promise<string>>();
+type PendingThumb = { sourceKey: string; promise: Promise<string> };
+const inFlight = new Map<string, PendingThumb>();
 const MAX_ACTIVE_VIDEO_DECODERS = 2;
 let activeVideoDecoders = 0;
 const queuedVideoDecoders: Array<() => void> = [];
@@ -37,15 +38,34 @@ export async function withVideoDecoder<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
+function releaseEntry(entry: ThumbEntry | undefined) {
+  if (entry?.owned && entry.url.startsWith("blob:")) URL.revokeObjectURL(entry.url);
+}
+
 export function touch(id: string, entry: ThumbEntry) {
+  const old = cache.get(id);
+  // Replacing a poster of the same media slot must reclaim the old object URL.
+  if (old && old.url !== entry.url) releaseEntry(old);
   cache.delete(id);
   cache.set(id, entry);
   while (cache.size > MAX_ENTRIES) {
     const first = cache.keys().next().value;
     if (!first) break;
-    const stale = cache.get(first);
-    if (stale?.owned && stale.url.startsWith("blob:")) URL.revokeObjectURL(stale.url);
+    releaseEntry(cache.get(first));
     cache.delete(first);
+  }
+}
+
+/**
+ * Called only when media IDs disappear from the scanner (deletion, album
+ * replacement, permission loss). A late async decoder cannot resurrect
+ * the removed poster: in-flight work is invalidated as well.
+ */
+export function dropThumbnails(ids: Iterable<string>): void {
+  for (const id of ids) {
+    releaseEntry(cache.get(id));
+    cache.delete(id);
+    inFlight.delete(id);
   }
 }
 
@@ -166,43 +186,58 @@ async function renderVideoPoster(file: File): Promise<Blob> {
 
 /** Get (or generate) a downscaled thumbnail URL for a scanned item. */
 export function getThumb(item: ScannedItem): Promise<string> {
+  // A WebView directory picker may return a NEW blob URL for an unchanged
+  // (path,size,mtime) file. Never reuse a thumbnail tied to the old URL.
+  const sourceKey = `${item.kind}:${item.url}:${item.size}:${item.mtime}`;
   const hit = cache.get(item.id);
-  if (hit) { touch(item.id, hit); return Promise.resolve(hit.url); }
-  const pending = inFlight.get(item.id);
-  if (pending) return pending;
-  const p = (async () => {
+  if (hit?.sourceKey === sourceKey) {
+    touch(item.id, hit);
+    return Promise.resolve(hit.url);
+  }
+  if (hit) {
+    releaseEntry(hit);
+    cache.delete(item.id);
+  }
+  const existing = inFlight.get(item.id);
+  if (existing?.sourceKey === sourceKey) return existing.promise;
+
+  // Schedule work in a microtask, AFTER registering the current operation.
+  // Previously the synchronous native-image path completed its finally
+  // before the inFlight.set below and leaked a settled promise per image.
+  const pending = {} as PendingThumb;
+  pending.sourceKey = sourceKey;
+  const current = () => inFlight.get(item.id) === pending;
+  const publish = (url: string, owned: boolean): string => {
+    if (!current()) {
+      // A late result must neither resurrect a removed picture nor overwrite
+      // a newer thumbnail. Its private URL belongs to us, so reclaim it.
+      if (owned && url.startsWith("blob:")) URL.revokeObjectURL(url);
+      return item.url;
+    }
+    touch(item.id, { url, owned, sourceKey });
+    return url;
+  };
+
+  pending.promise = Promise.resolve().then(async () => {
     try {
-      // Native (capacitor:// / file://) items:
-      //  * Images — the WebView decoder can render the original URL
-      //    directly and caches efficiently, so we forward the URL.
-      //  * Videos — <img src="video.mp4"> renders a broken placeholder.
-      //    Extract a real poster frame via a <video> element pointed at
-      //    the native URL (MediaStore-style thumbnail retrieval).
       if (!item.file) {
         if (item.kind === "video") {
           const blob = await withVideoDecoder(() => renderVideoPosterFromUrl(item.url, false));
-          const posterUrl = URL.createObjectURL(blob);
-          touch(item.id, { url: posterUrl, owned: true });
-          return posterUrl;
+          return publish(URL.createObjectURL(blob), true);
         }
-        touch(item.id, { url: item.url, owned: false });
-        return item.url;
+        return publish(item.url, false);
       }
       const blob = item.kind === "video"
         ? await withVideoDecoder(() => renderVideoPoster(item.file!))
         : await renderImage(item.file);
-      const url = URL.createObjectURL(blob);
-      touch(item.id, { url, owned: true });
-      return url;
+      return publish(URL.createObjectURL(blob), true);
     } catch {
-      // Fall back to the original — bitmap decode may fail for HEIC on some
-      // WebViews; the original URL still renders through the platform decoder.
-      touch(item.id, { url: item.url, owned: false });
-      return item.url;
+      // Unsupported/invalid decodes must not overwrite a NEWER source.
+      return publish(item.url, false);
     } finally {
-      inFlight.delete(item.id);
+      if (current()) inFlight.delete(item.id);
     }
-  })();
-  inFlight.set(item.id, p);
-  return p;
+  });
+  inFlight.set(item.id, pending);
+  return pending.promise;
 }

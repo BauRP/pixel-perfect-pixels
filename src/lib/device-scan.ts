@@ -14,6 +14,7 @@
 import { useSyncExternalStore } from "react";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory } from "@capacitor/filesystem";
+import { dropThumbnails } from "./thumbnails";
 
 export type ScannedItem = {
   id: string;
@@ -150,6 +151,15 @@ function revokeAll() {
   for (const album of state.albums) revokeObjectUrls(album.items);
 }
 
+/** Drop only the thumbnails no longer present in the NEXT album list. */
+function dropRemovedThumbnails(nextAlbums: readonly ScannedAlbum[]) {
+  const nextIds = new Set(nextAlbums.flatMap(album => album.items.map(item => item.id)));
+  const removed = state.albums.flatMap(album => album.items)
+    .filter(item => !nextIds.has(item.id))
+    .map(item => item.id);
+  dropThumbnails(removed);
+}
+
 async function walkDir(
   dir: FileSystemDirectoryHandle,
   prefix: string,
@@ -187,6 +197,7 @@ async function rescanHandle(handle: FileSystemDirectoryHandle) {
       const nextAlbums = group(collected);
       // These URLs are now owned by the displayed album state.
       adopted = true;
+      dropRemovedThumbnails(nextAlbums);
       revokeAll();
       set({ albums: nextAlbums, scanned: true });
     }
@@ -256,8 +267,10 @@ async function scanWithPicker(): Promise<boolean> {
   set({ scanning: true });
   const collected: { item: ScannedItem; path: string }[] = [];
   await walkDir(root, root.name, collected);
+  const nextAlbums = group(collected);
+  dropRemovedThumbnails(nextAlbums);
   revokeAll();
-  set({ albums: group(collected), scanning: false, scanned: true });
+  set({ albums: nextAlbums, scanning: false, scanned: true });
   startWatch(root);
   return true;
 }
@@ -281,8 +294,10 @@ function scanWithInput(): Promise<void> {
         const item = toItem(f, path);
         if (item) collected.push({ item, path });
       }
+      const nextAlbums = group(collected);
+      dropRemovedThumbnails(nextAlbums);
       revokeAll();
-      set({ albums: group(collected), scanning: false, scanned: true });
+      set({ albums: nextAlbums, scanning: false, scanned: true });
       document.body.removeChild(input);
       resolve();
     };
@@ -442,8 +457,10 @@ async function scanNative(): Promise<boolean> {
 
     // SAFEGUARD: Never wipe existing albums on a subsequent empty or partial scan result
     if (res.status === "success" || res.status === "empty") {
+      dropRemovedThumbnails(res.albums);
       set({ albums: res.albums, scanning: false, scanned: true });
     } else if (res.status === "permission_denied") {
+      dropRemovedThumbnails([]);
       set({ albums: [], scanning: false, scanned: true });
     } else {
       console.warn(SCAN_TAG, `keeping ${state.albums.length} existing album(s) — status: ${res.status}, genuineEmpty: ${genuineEmpty}`);
@@ -526,16 +543,19 @@ export const deviceScan = {
       set$.has(norm(i.nativeUri ?? "")) ||
       set$.has(norm(i.path)) ||
       [...set$].some((p) => p.endsWith(`/${i.path}`));
+    const removedIds: string[] = [];
     const albums = state.albums
       .map((a) => ({
         ...a,
         items: a.items.filter((i) => {
           if (!hit(i)) return true;
+          removedIds.push(i.id);
           if (i.url.startsWith("blob:")) URL.revokeObjectURL(i.url);
           return false;
         }),
       }))
       .filter((a) => a.items.length > 0);
+    dropThumbnails(removedIds);
     set({ albums });
   },
   removeItems(albumId: string, itemIds: Set<string>) {
@@ -551,6 +571,7 @@ export const deviceScan = {
           }) }
         : a)
       .filter((a) => a.items.length > 0);
+    dropThumbnails(itemIds);
     set({ albums });
   },
 };
