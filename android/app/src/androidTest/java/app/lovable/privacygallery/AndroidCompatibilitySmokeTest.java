@@ -12,6 +12,12 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
+import android.view.Gravity;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -57,6 +63,55 @@ public class AndroidCompatibilitySmokeTest {
             }
         }
         return null;
+    }
+
+    /**
+     * A control WebView with no React, router, Capacitor or media access is
+     * loaded inside the SAME disposable emulator Activity. If its independent
+     * evaluateJavascript callback also stalls, the provider/renderer is not
+     * generally responding. If the control works while Nova's gallery fails,
+     * investigate the app-side JS/layout path rather than assuming a broken
+     * emulator GPU. This test never replaces the actual gallery smoke test.
+     */
+    @Test
+    public void isolatedControlWebViewExecutesSimpleJavaScript() throws Exception {
+        final CountDownLatch received = new CountDownLatch(1);
+        final AtomicReference<String> response = new AtomicReference<>("");
+        final AtomicReference<WebView> controlRef = new AtomicReference<>();
+        scenario.getScenario().onActivity(activity -> {
+            FrameLayout parent = activity.findViewById(android.R.id.content);
+            WebView control = new WebView(activity);
+            controlRef.set(control);
+            control.getSettings().setJavaScriptEnabled(true);
+            control.setWebViewClient(new WebViewClient() {
+                @Override public void onPageFinished(WebView view, String url) {
+                    view.evaluateJavascript("(function(){return 6*7})()", value -> {
+                        response.set(value == null ? "" : value);
+                        received.countDown();
+                    });
+                }
+            });
+            parent.addView(control, new FrameLayout.LayoutParams(
+                    96, 96, Gravity.TOP | Gravity.LEFT));
+            control.loadDataWithBaseURL("https://localhost/",
+                    "<!doctype html><html><body>Nova control</body></html>",
+                    "text/html", "UTF-8", null);
+        });
+        boolean finished = received.await(12, TimeUnit.SECONDS);
+        // Remove the isolated WebView regardless of outcome. No app state,
+        // photo, ads, credentials or protected media are accessed here.
+        scenario.getScenario().onActivity(activity -> {
+            WebView control = controlRef.get();
+            if (control != null) {
+                control.stopLoading();
+                if (control.getParent() instanceof android.view.ViewGroup) {
+                    ((android.view.ViewGroup) control.getParent()).removeView(control);
+                }
+                control.destroy();
+            }
+        });
+        assertTrue("Independent WebView did not respond to basic JS", finished);
+        assertEquals("Independent WebView computed unexpected JS result", "42", response.get());
     }
 
     @Test
