@@ -11,7 +11,7 @@
 //
 // Everything is 100% local: no file bytes ever leave the device.
 
-import { useSyncExternalStore } from "react";
+import { useStableStoreSelector } from "./store-selector";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { dropThumbnails } from "./thumbnails";
@@ -584,20 +584,5 @@ function subscribe(cb: () => void) {
 }
 
 export function useDeviceScan<T>(sel: (s: State) => T): T {
-  // Cache the last (state, result) pair per-hook-instance so
-  // useSyncExternalStore sees a stable snapshot between store emits.
-  const cacheRef = { current: null as null | { state: State; value: T } };
-  const getClient = () => {
-    const c = cacheRef.current;
-    if (c && c.state === state) return c.value;
-    const value = sel(state);
-    cacheRef.current = { state, value };
-    return value;
-  };
-  const serverCache = { current: null as null | T };
-  const getServer = () => {
-    if (serverCache.current === null) serverCache.current = sel(SERVER_STATE);
-    return serverCache.current;
-  };
-  return useSyncExternalStore(subscribe, getClient, getServer);
+  return useStableStoreSelector(subscribe, () => state, () => SERVER_STATE, sel);
 }

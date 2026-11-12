@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useStableStoreSelector } from "./store-selector";
 import { commitStateAfterPersistence, parseVaultMetadata, isSafeVaultId, isSafeVaultBlobPath } from "./vault-transaction";
 import { createSecureId } from "./secure-id";
 import { isSafeOperationCurrent } from "./vault-lifecycle";
@@ -129,11 +129,17 @@ function setTransient(mut: (s: State) => State) {
   emit();
 }
 
+function subscribeVault(cb: () => void) {
+  listeners.push(cb);
+  return () => { listeners = listeners.filter((x) => x !== cb); };
+}
+
 export function useVault<T>(sel: (s: State) => T): T {
-  return useSyncExternalStore(
-    (cb) => { listeners.push(cb); return () => { listeners = listeners.filter((x) => x !== cb); }; },
-    () => { hydrate(); return sel(state); },
-    () => sel(DEFAULT),
+  return useStableStoreSelector(
+    subscribeVault,
+    () => { hydrate(); return state; },
+    () => DEFAULT,
+    sel,
   );
 }
 
