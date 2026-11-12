@@ -83,7 +83,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api: [29, 33]
+        api: [29, 30, 33]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -117,7 +117,10 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -partition-size 4096
+          # A/B the supported SwiftShader+ANGLE backend, keeping the exact app APK.
+          # The old deprecated swiftshader_indirect fails to paint API29/33
+          # despite the Android Settings baseline painting correctly.
+          emulator-options: -no-window -gpu swangle -feature -Vulkan -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -partition-size 4096
           script: bash scripts/run_android_emulator_tests.sh
       - name: Preserve independent AOSP evidence
         if: always()
@@ -130,7 +133,7 @@ jobs:
 
   emulator-smoke:
     name: Android API ${{ matrix.api }} device smoke
-    # Push: Android 7/8/10/13/14/16; manual: every API 24–37.
+    # Push: Android 7/8/10/11/13/14/16; manual: every API 24–37.
     runs-on: ubuntu-latest
     needs: build-apks
     timeout-minutes: 50
@@ -138,7 +141,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '[24,25,26,27,28,29,30,31,32,33,34,35,36,37]' || '[24,26,29,33,34,36]') }}
+        api: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '[24,25,26,27,28,29,30,31,32,33,34,35,36,37]' || '[24,26,29,30,33,34,36]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -200,11 +203,12 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          # Diagnose API 29/33 blank compositor frames using Google's
-          # explicitly supported SwiftShader GLES renderer, with Vulkan off.
-          # The generic 'software' selector still produced 100%-black frames.
-          # Keep previously passing API levels on their stable renderer.
-          emulator-options: -no-window -gpu ${{ contains(fromJSON('[29,33]'), matrix.api) && 'swiftshader' || 'swiftshader_indirect' }} ${{ contains(fromJSON('[29,33]'), matrix.api) && '-feature -Vulkan' || '' }} -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -partition-size 4096
+          # A/B isolate old-emulator Chromium/GPU stalls. SwiftShader+ANGLE
+          # is officially supported; the deprecated *_indirect mode and
+          # straight SwiftShader were unable to render API29/33 reliably.
+          # Leave passing API24/26/34/36 on their known-good renderer.
+          # API30 (Android 11) is added because it previously had no push test.
+          emulator-options: -no-window -gpu ${{ contains(fromJSON('[29,30,33]'), matrix.api) && 'swangle' || 'swiftshader_indirect' }} ${{ contains(fromJSON('[29,30,33]'), matrix.api) && '-feature -Vulkan' || '' }} -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -partition-size 4096
           # The runner executes each script line in a fresh shell.
           # Use ONE script to retain the working directory and fail atomically.
           script: bash scripts/run_android_emulator_tests.sh
