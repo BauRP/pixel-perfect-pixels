@@ -8,6 +8,7 @@ import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from "
 import { RouterProvider } from "@tanstack/react-router";
 import { getRouter } from "./router";
 import { nativeStartupState, shouldShowBlockingBootOverlay, shouldOfferLayoutRetry } from "./lib/native-startup-state";
+import { useNativeFirstPaint } from "./lib/native-first-paint";
 
 // A lightweight phase marker lets native regression reports identify where
 // startup stalled. It contains no photo, account, or other user information.
@@ -63,6 +64,26 @@ class NativeStartupBoundary extends Component<
 function NativeReactCommitMarker() {
   useEffect(() => boot("react-root-committed"), []);
   return null;
+}
+
+/**
+ * Old Chromium WebViews can stop scheduling frames when the first React
+ * flush also mounts the full route tree before the compositor has painted
+ * even one lightweight screen. Stage ONLY the route provider: all other
+ * functions and app routes remain exactly the same after first paint.
+ */
+function NativeFirstPaintRouter({ router }: { router: ReturnType<typeof getRouter> }) {
+  const ready = useNativeFirstPaint();
+  return ready ? <RouterProvider router={router} /> : (
+    <div data-nova-route-pending="true" role="status" aria-live="polite"
+      style={{
+        minHeight: "75vh", padding: "48px 24px",
+        background: "#101116", color: "#f5f5f7",
+        fontFamily: "system-ui, sans-serif", fontSize: 16,
+      }}>
+      Nova Gallery is starting…
+    </div>
+  );
 }
 
 /**
@@ -217,7 +238,7 @@ try {
       <NativeStartupBoundary>
         <NativeReactCommitMarker />
         <NativeRouterBootMonitor />
-        <RouterProvider router={router} />
+        <NativeFirstPaintRouter router={router} />
       </NativeStartupBoundary>,
     );
   });
