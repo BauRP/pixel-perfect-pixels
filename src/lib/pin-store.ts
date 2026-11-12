@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { vault } from "./vault-store";
+import { useVault, vault } from "./vault-store";
 
 // Simple SHA-256(salt+pin) storage. Not intended to be cryptographic vault
 // material — the encrypted vault has its own key derivation. This gates the
@@ -51,7 +51,14 @@ export const safePin = {
   },
   isUnlocked(): boolean {
     if (typeof window === "undefined") return false;
-    return sessionStorage.getItem(SESSION_KEY) === "1";
+    // Android may restore sessionStorage after WebView/process recreation.
+    // Its marker is NOT an encryption key. Never bypass the PIN gate unless
+    // the encrypted Safe has a live in-memory AES key as well.
+    try {
+      return sessionStorage.getItem(SESSION_KEY) === "1" && vault.isUnlocked();
+    } catch {
+      return false;
+    }
   },
   lock(): void {
     if (typeof window === "undefined") return;
@@ -79,25 +86,15 @@ function getSnap() {
   return cached;
 }
 
-// Ensure store mutations invalidate the cached snapshot before notifying React.
-const origEmit = emit;
-listeners = listeners; // keep reference
-function notify() { cached = { hasPin: safePin.hasPin(), unlocked: safePin.isUnlocked() }; origEmit(); }
-
-export function useSafePin() {
-  return useSyncExternalStore(
-    (cb) => { listeners.push(cb); return () => { listeners = listeners.filter((x) => x !== cb); }; },
-    getSnap,
-    () => SERVER_SNAP,
-  );
+function subscribe(cb: () => void) {
+  listeners.push(cb);
+  return () => { listeners = listeners.filter((x) => x !== cb); };
 }
 
-// Re-wire emit-triggering methods to also refresh cache.
-const _set = safePin.setPin;
-safePin.setPin = async (p: string) => { await _set(p); notify(); };
-const _lock = safePin.lock;
-safePin.lock = () => { _lock(); notify(); };
-const _reset = safePin.reset;
-safePin.reset = () => { _reset(); notify(); };
-const _verify = safePin.verify;
-safePin.verify = async (p: string) => { const ok = await _verify(p); if (ok) notify(); return ok; };
+export function useSafePin() {
+  // A real AES unlock/lock changes vault state independently of the PIN
+  // session marker, so subscribe to BOTH sources. The stable PIN snapshot
+  // prevents repeated React renders when neither source changes.
+  useVault((s) => s.unlocked);
+  return useSyncExternalStore(subscribe, getSnap, () => SERVER_SNAP);
+}
