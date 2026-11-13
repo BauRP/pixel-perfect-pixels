@@ -79,7 +79,15 @@ export function ViewOptionsMenu({
       <DropdownMenuTrigger asChild>
         <button
           className="tap grid h-8 w-8 place-items-center rounded-full"
-          style={{ background: "var(--color-surface)" }}
+          // Radix restores focus to this trigger when the menu closes.
+          // Old Android WebView keeps drawing a circular focus/tap halo
+          // until the user touches elsewhere. Suppress only this decoration.
+          style={{
+            background: "var(--color-surface)",
+            outline: "none",
+            boxShadow: "none",
+            WebkitTapHighlightColor: "transparent",
+          }}
           aria-label={t("menu")}
         >
           <MoreVertical size={20} />
