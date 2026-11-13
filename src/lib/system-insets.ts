@@ -40,15 +40,38 @@ export function initSystemInsets(): void {
   if (initialized || !Capacitor.isNativePlatform() || typeof document === "undefined") return;
   initialized = true;
   let last = "";
+  // Some older Android WebViews first return an unmeasured inset snapshot
+  // even after a real WindowInsets event. A late "pending" response must
+  // never revoke a known-good safe-area layout.
+  let pendingRetry: ReturnType<typeof setTimeout> | undefined;
+  let pendingRetryCount = 0;
+  const MAX_PENDING_RETRIES = 4;
+  const retryPending = () => {
+    if (lastAppliedNativeInsets || pendingRetry !== undefined ||
+        pendingRetryCount >= MAX_PENDING_RETRIES) return;
+    pendingRetryCount++;
+    pendingRetry = setTimeout(() => {
+      pendingRetry = undefined;
+      nativeRefresh?.();
+    }, pendingRetryCount * 400);
+  };
   const apply = (i: Insets) => {
     if (!isTrustedNativeInsetsSnapshot(i)) {
-      // A null/early native WindowInsets never means "zero safe areas".
-      // Preserve previously measured CSS padding until Android supplies
-      // a real reading for this activity.
-      document.documentElement.dataset.novaInsetsReady = "pending";
+      if (!lastAppliedNativeInsets) {
+        // No trustworthy measurements yet: retry the native snapshot a
+        // bounded number of times without claiming that bars are zero.
+        document.documentElement.dataset.novaInsetsReady = "pending";
+        retryPending();
+      }
+      // A transient unmeasured read cannot undo an earlier trusted event.
       return;
     }
     lastAppliedNativeInsets = i;
+    pendingRetryCount = 0;
+    if (pendingRetry !== undefined) {
+      clearTimeout(pendingRetry);
+      pendingRetry = undefined;
+    }
     const safe = fitInsetsToViewport(normalizeSystemInsets(i),
       window.innerWidth, window.innerHeight);
     const values = [safe.top, safe.bottom, safe.left, safe.right];
