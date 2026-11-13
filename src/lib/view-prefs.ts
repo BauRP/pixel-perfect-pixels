@@ -92,14 +92,46 @@ export function setPrefs(scope: Scope, patch: Partial<ViewPrefs>) {
   save({ ...cur, [scope]: sanitizeViewPrefs(scope, { ...cur[scope], ...patch }) });
 }
 
+// Stable subscriptions avoid reattaching React 19 external-store listeners
+// on every render. Storage changes from another window restore the correct
+// cached settings without forcing unrelated screens to rerender.
+function samePrefs(a: ViewPrefs, b: ViewPrefs): boolean {
+  return a.columns === b.columns && a.field === b.field && a.dir === b.dir;
+}
+
+function onPrefsStorage(event: StorageEvent) {
+  if (event.key !== null && event.key !== KEY) return;
+  const previous = load();
+  loaded = false;
+  const current = load();
+  if (!samePrefs(previous.folders, current.folders) ||
+      !samePrefs(previous.media, current.media)) emit();
+}
+
+function subscribe(cb: () => void) {
+  const first = listeners.length === 0;
+  listeners.push(cb);
+  if (first && typeof window !== "undefined") {
+    window.addEventListener("storage", onPrefsStorage);
+  }
+  return () => {
+    listeners = listeners.filter((x) => x !== cb);
+    if (listeners.length === 0 && typeof window !== "undefined") {
+      window.removeEventListener("storage", onPrefsStorage);
+    }
+  };
+}
+
+const getFoldersSnapshot = () => load().folders;
+const getMediaSnapshot = () => load().media;
+const getServerFoldersSnapshot = () => DEFAULTS.folders;
+const getServerMediaSnapshot = () => DEFAULTS.media;
+
 export function useViewPrefs(scope: Scope): [ViewPrefs, (patch: Partial<ViewPrefs>) => void] {
   const prefs = useSyncExternalStore(
-    (cb) => {
-      listeners.push(cb);
-      return () => { listeners = listeners.filter((x) => x !== cb); };
-    },
-    () => load()[scope],
-    () => DEFAULTS[scope],
+    subscribe,
+    scope === "folders" ? getFoldersSnapshot : getMediaSnapshot,
+    scope === "folders" ? getServerFoldersSnapshot : getServerMediaSnapshot,
   );
   return [prefs, (patch) => setPrefs(scope, patch)];
 }

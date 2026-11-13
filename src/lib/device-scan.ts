@@ -15,6 +15,7 @@ import { useStableStoreSelector } from "./store-selector";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { dropThumbnails } from "./thumbnails";
+import { processInBatches } from "./scan-batching";
 
 export type ScannedItem = {
   id: string;
@@ -414,9 +415,9 @@ async function runNativeScan(): Promise<ScanResult> {
   const { SecureVault } = await import("./native-vault");
   const response = await SecureVault.getMediaItems();
   const entries: { item: ScannedItem; path: string }[] = [];
-  for (const media of response.items) {
+  await processInBatches(response.items, (media) => {
     const kind = media.mime.startsWith("video/") ? "video" : media.mime.startsWith("image/") ? "image" : null;
-    if (!kind) continue;
+    if (!kind) return;
     const folder = media.relativePath.replace(/^\/+|\/+$/g, "") || "Pictures";
     const path = folder + "/" + media.name;
     entries.push({ path, item: {
@@ -425,7 +426,7 @@ async function runNativeScan(): Promise<ScanResult> {
       url: Capacitor.convertFileSrc(media.uri),
       mtime: media.mtime, size: media.size, path, nativeUri: media.uri,
     } });
-  }
+  });
   return { status: entries.length ? "success" : "empty", albums: group(entries),
     errors: [], roots: [{ root: "MediaStore", ok: true, items: entries.length }] };
 }
