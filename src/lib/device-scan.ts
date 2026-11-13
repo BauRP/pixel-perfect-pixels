@@ -16,6 +16,7 @@ import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { dropThumbnails } from "./thumbnails";
 import { processInBatches } from "./scan-batching";
+import { groupMediaItems, groupMediaItemsInBatches } from "./media-grouping";
 
 export type ScannedItem = {
   id: string;
@@ -123,23 +124,6 @@ function toItem(file: File, path: string): ScannedItem | null {
   };
 }
 
-function group(items: { item: ScannedItem; path: string }[]): ScannedAlbum[] {
-  const map = new Map<string, ScannedItem[]>();
-  for (const { item, path } of items) {
-    // Preserve distinct DCIM/Camera and Pictures/Camera albums.
-    const key = path.split("/").slice(0, -1).join("/") || "Root";
-    const arr = map.get(key) ?? [];
-    arr.push(item);
-    map.set(key, arr);
-  }
-  const out: ScannedAlbum[] = [];
-  for (const [name, arr] of map) {
-    arr.sort((a, b) => b.mtime - a.mtime);
-    out.push({ id: encodeURIComponent(name), name: name.split("/").pop() || "Root", items: arr });
-  }
-  out.sort((a, b) => b.items.length - a.items.length);
-  return out;
-}
 
 function revokeObjectUrls(items: readonly ScannedItem[]) {
   // Only browser-created blob: URLs hold native resources. Never revoke
@@ -195,7 +179,7 @@ async function rescanHandle(handle: FileSystemDirectoryHandle) {
       nextIds.size !== currentIds.size ||
       [...nextIds].some((id) => !currentIds.has(id));
     if (changed) {
-      const nextAlbums = group(collected);
+      const nextAlbums = groupMediaItems(collected);
       // These URLs are now owned by the displayed album state.
       adopted = true;
       dropRemovedThumbnails(nextAlbums);
@@ -268,7 +252,7 @@ async function scanWithPicker(): Promise<boolean> {
   set({ scanning: true });
   const collected: { item: ScannedItem; path: string }[] = [];
   await walkDir(root, root.name, collected);
-  const nextAlbums = group(collected);
+  const nextAlbums = groupMediaItems(collected);
   dropRemovedThumbnails(nextAlbums);
   revokeAll();
   set({ albums: nextAlbums, scanning: false, scanned: true });
@@ -295,7 +279,7 @@ function scanWithInput(): Promise<void> {
         const item = toItem(f, path);
         if (item) collected.push({ item, path });
       }
-      const nextAlbums = group(collected);
+      const nextAlbums = groupMediaItems(collected);
       dropRemovedThumbnails(nextAlbums);
       revokeAll();
       set({ albums: nextAlbums, scanning: false, scanned: true });
@@ -427,7 +411,7 @@ async function runNativeScan(): Promise<ScanResult> {
       mtime: media.mtime, size: media.size, path, nativeUri: media.uri,
     } });
   });
-  return { status: entries.length ? "success" : "empty", albums: group(entries),
+  return { status: entries.length ? "success" : "empty", albums: await groupMediaItemsInBatches(entries),
     errors: [], roots: [{ root: "MediaStore", ok: true, items: entries.length }] };
 }
 
