@@ -5,10 +5,8 @@ import "./styles.css";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from "react";
-import { RouterProvider } from "@tanstack/react-router";
-import { getRouter } from "./router";
+import { NativeFirstPaintRouter } from "./components/NativeFirstPaintRouter";
 import { nativeStartupState, shouldShowBlockingBootOverlay, shouldOfferLayoutRetry } from "./lib/native-startup-state";
-import { useNativeFirstPaint } from "./lib/native-first-paint";
 
 // A lightweight phase marker lets native regression reports identify where
 // startup stalled. It contains no photo, account, or other user information.
@@ -64,26 +62,6 @@ class NativeStartupBoundary extends Component<
 function NativeReactCommitMarker() {
   useEffect(() => boot("react-root-committed"), []);
   return null;
-}
-
-/**
- * Old Chromium WebViews can stop scheduling frames when the first React
- * flush also mounts the full route tree before the compositor has painted
- * even one lightweight screen. Stage ONLY the route provider: all other
- * functions and app routes remain exactly the same after first paint.
- */
-function NativeFirstPaintRouter({ router }: { router: ReturnType<typeof getRouter> }) {
-  const ready = useNativeFirstPaint();
-  return ready ? <RouterProvider router={router} /> : (
-    <div data-nova-route-pending="true" role="status" aria-live="polite"
-      style={{
-        minHeight: "75vh", padding: "48px 24px",
-        background: "#101116", color: "#f5f5f7",
-        fontFamily: "system-ui, sans-serif", fontSize: 16,
-      }}>
-      Nova Gallery is starting…
-    </div>
-  );
 }
 
 /**
@@ -221,8 +199,8 @@ boot("entry-loaded");
 try {
   const mount = document.getElementById("root");
   if (!mount) throw new Error("Nova Android: #root is missing");
-  const router = getRouter();
-  boot("router-created");
+  // Keep TanStack Router and every heavy route module out of the initial
+  // synchronous React commit. The native boot surface must paint first.
   // RouterProvider owns initial navigation. Calling router.load() here
   // concurrently caused "route resolved" reports with no child route on
   // old Android WebViews. The monitor reports actual DOM commits instead.
@@ -238,7 +216,7 @@ try {
       <NativeStartupBoundary>
         <NativeReactCommitMarker />
         <NativeRouterBootMonitor />
-        <NativeFirstPaintRouter router={router} />
+        <NativeFirstPaintRouter onRouterLoaded={() => boot("router-created")} />
       </NativeStartupBoundary>,
     );
   });
