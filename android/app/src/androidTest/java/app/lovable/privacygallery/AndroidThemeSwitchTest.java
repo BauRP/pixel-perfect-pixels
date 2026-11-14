@@ -95,8 +95,7 @@ public class AndroidThemeSwitchTest {
         // interaction only until its REAL options appear; no app state
         // is modified directly and a missing menu still fails the test.
         awaitWebView("theme options", "(function(){" +
-                "if(document.querySelector('[data-theme-option=\\\"" + theme +
-                "\\"]'))return true;" +
+                "if(document.querySelector('[data-theme-option=" + theme + "]'))return true;" +
                 "var e=document.querySelector('[data-theme-select-trigger]');" +
                 "if(!e)return false;e.focus();" +
                 "try{e.dispatchEvent(new KeyboardEvent('keydown',{" +
@@ -104,8 +103,8 @@ public class AndroidThemeSwitchTest {
                 "catch(ex){e.click();}return false;})()");
         // Do not treat a missing JS callback as proof the click failed:
         // verification below reads both persisted preference and DOM class.
-        evaluate("(function(){var e=document.querySelector('[data-theme-option=\\\"" +
-                theme + "\\"]');if(!e)return false;e.click();return true;})()");
+        evaluate("(function(){var e=document.querySelector('[data-theme-option=" + theme +
+                "]');if(!e)return false;e.click();return true;})()");
         awaitWebView("persisted theme " + theme,
                 themeStored(theme) + "&&document.documentElement.classList.contains('" + theme + "')");
     }
