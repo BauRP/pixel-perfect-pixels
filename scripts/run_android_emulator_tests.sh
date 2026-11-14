@@ -101,8 +101,11 @@ grant_smoke_media_permissions
 if adb install -r "$TEST_APK"; then
   adb shell am instrument -w -r     app.lovable.privacygallery.test/androidx.test.runner.AndroidJUnitRunner     > emulator-diagnostics/instrumentation.txt 2>&1 || status_tests=$?
   cat emulator-diagnostics/instrumentation.txt
-  if ! grep -Fxq 'INSTRUMENTATION_CODE: -1' emulator-diagnostics/instrumentation.txt; then
-    echo "FAIL: native instrumentation lacks successful completion marker"
+  # AndroidJUnitRunner may report INSTRUMENTATION_CODE: -1 even
+  # after JUnit test failures. Validate the REAL test verdict, not only
+  # the process exit code or final instrumentation marker.
+  if ! python3 scripts/check_android_instrumentation.py emulator-diagnostics/instrumentation.txt; then
+    echo "FAIL: native instrumentation reported incomplete or failing tests"
     status_tests=1
   fi
 else

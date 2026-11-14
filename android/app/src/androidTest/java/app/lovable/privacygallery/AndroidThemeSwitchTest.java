@@ -90,15 +90,22 @@ public class AndroidThemeSwitchTest {
         awaitWebView("theme trigger", "!!document.querySelector('[data-theme-select-trigger]')");
         // Radix Select opens from keyboard input; no private store mutation
         // or synthetic replacement dropdown is involved in choosing a theme.
-        assertTrue("Could not open theme selector", evaluate(
-                "(function(){var e=document.querySelector('[data-theme-select-trigger]');" +
-                "e.focus();e.dispatchEvent(new KeyboardEvent('keydown',{" +
-                "key:'Enter',code:'Enter',bubbles:true,cancelable:true}));return true;})()"));
-        awaitWebView("theme options", "!!document.querySelector('[data-theme-option=\"" +
-                theme + "\"]')");
-        assertTrue("Could not choose theme " + theme, evaluate(
-                "(function(){var e=document.querySelector('[data-theme-option=\"" +
-                theme + "\"]');e.click();return true;})()"));
+        // Older WebViews can drop a one-off evaluateJavascript callback
+        // while the Radix portal is opening. Retry the actual keyboard
+        // interaction only until its REAL options appear; no app state
+        // is modified directly and a missing menu still fails the test.
+        awaitWebView("theme options", "(function(){" +
+                "if(document.querySelector('[data-theme-option=\\\"" + theme +
+                "\\"]'))return true;" +
+                "var e=document.querySelector('[data-theme-select-trigger]');" +
+                "if(!e)return false;e.focus();" +
+                "try{e.dispatchEvent(new KeyboardEvent('keydown',{" +
+                "key:'Enter',code:'Enter',bubbles:true,cancelable:true}));}" +
+                "catch(ex){e.click();}return false;})()");
+        // Do not treat a missing JS callback as proof the click failed:
+        // verification below reads both persisted preference and DOM class.
+        evaluate("(function(){var e=document.querySelector('[data-theme-option=\\\"" +
+                theme + "\\"]');if(!e)return false;e.click();return true;})()");
         awaitWebView("persisted theme " + theme,
                 themeStored(theme) + "&&document.documentElement.classList.contains('" + theme + "')");
     }
