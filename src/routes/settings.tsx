@@ -81,13 +81,13 @@ function SettingsScreen() {
             label={t("theme")}
             right={
               <Select value={theme} onValueChange={(v) => vault.setTheme(v as typeof theme)}>
-                <SelectTrigger className="w-[140px] rounded-xl h-9 border-0" style={{ background: "var(--color-muted)" }}>
+                <SelectTrigger data-theme-select-trigger className="w-[140px] rounded-xl h-9 border-0" style={{ background: "var(--color-muted)" }}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="rounded-2xl">
-                  <SelectItem value="system">{t("system")}</SelectItem>
-                  <SelectItem value="light">{t("light")}</SelectItem>
-                  <SelectItem value="dark">{t("dark")}</SelectItem>
+                  <SelectItem data-theme-option="system" value="system">{t("system")}</SelectItem>
+                  <SelectItem data-theme-option="light" value="light">{t("light")}</SelectItem>
+                  <SelectItem data-theme-option="dark" value="dark">{t("dark")}</SelectItem>
                 </SelectContent>
               </Select>
             }
