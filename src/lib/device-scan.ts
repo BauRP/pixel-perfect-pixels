@@ -17,6 +17,7 @@ import { Filesystem, Directory } from "@capacitor/filesystem";
 import { dropThumbnails } from "./thumbnails";
 import { processInBatches } from "./scan-batching";
 import { groupMediaItems, groupMediaItemsInBatches } from "./media-grouping";
+import { createRemovalMatcher } from "./media-removal-match";
 
 export type ScannedItem = {
   id: string;
@@ -522,12 +523,10 @@ export const deviceScan = {
    */
   removeByPaths(paths: string[]) {
     if (paths.length === 0) return;
-    const norm = (p: string) => p.replace(/^file:\/\//, "");
-    const set$ = new Set(paths.map(norm));
-    const hit = (i: ScannedItem) =>
-      set$.has(norm(i.nativeUri ?? "")) ||
-      set$.has(norm(i.path)) ||
-      [...set$].some((p) => p.endsWith(`/${i.path}`));
+    // Precompile path suffixes once. Comparing every displayed item against
+    // every removed path used to block the WebView for large Safe imports.
+    // Preserve exact native URIs and the legacy absolute/relative path matches.
+    const hit = createRemovalMatcher(paths);
     const removedIds: string[] = [];
     const albums = state.albums
       .map((a) => ({
