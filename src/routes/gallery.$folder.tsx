@@ -30,6 +30,7 @@ import {
 import { guessMimeFromName } from "@/lib/device-scan";
 import { ViewOptionsMenu } from "@/components/ViewOptionsMenu";
 import { useViewPrefs, sortRows } from "@/lib/view-prefs";
+import { galleryGridRange, galleryGridScrollTarget, galleryGridViewport } from "@/lib/gallery-grid-scroll";
 
 export const Route = createFileRoute("/gallery/$folder")({
   head: () => ({
@@ -1020,23 +1021,28 @@ function VirtualizedGrid({
   }, [cols]);
 
   useEffect(() => {
-    const OVERSCAN = 6;
+    const el = wrapRef.current;
+    if (!el) return;
+    // AppShell scrolls [data-app-content], NOT window. Listening to window
+    // left the initially mounted tiles frozen while the user scrolled a
+    // large album, so the remaining photos appeared blank.
+    const scrollTarget = galleryGridScrollTarget(el);
     const compute = () => {
-      const el = wrapRef.current;
-      if (!el) return;
       const rect = el.getBoundingClientRect();
-      const rowH = tile + 4;
-      const viewportH = window.innerHeight;
-      const start = Math.max(0, Math.floor((-rect.top) / rowH) - OVERSCAN);
-      const end = Math.max(start + 1,
-        Math.ceil((-rect.top + viewportH) / rowH) + OVERSCAN);
-      setRange([start * cols, end * cols]);
+      const viewport = galleryGridViewport(scrollTarget);
+      const next = galleryGridRange(
+        items.length, cols, tile + 4, rect.top, viewport.top, viewport.bottom,
+      );
+      // Avoid rerendering the media grid for every pixel of scrolling when
+      // the same rows remain visible.
+      setRange(current =>
+        current[0] === next[0] && current[1] === next[1] ? current : next);
     };
     compute();
-    window.addEventListener("scroll", compute, { passive: true });
+    scrollTarget.addEventListener("scroll", compute, { passive: true });
     window.addEventListener("resize", compute);
     return () => {
-      window.removeEventListener("scroll", compute);
+      scrollTarget.removeEventListener("scroll", compute);
       window.removeEventListener("resize", compute);
     };
   }, [tile, cols, items.length]);
