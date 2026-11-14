@@ -16,6 +16,7 @@ import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { dropThumbnails } from "./thumbnails";
 import { processInBatches } from "./scan-batching";
+import { decodeBase64InBatches } from "./base64-batching";
 import { groupMediaItems, groupMediaItemsInBatches } from "./media-grouping";
 import { createRemovalMatcher } from "./media-removal-match";
 
@@ -80,9 +81,10 @@ export async function materializeFile(item: ScannedItem): Promise<File> {
     throw new Error("Cannot read this file — no native URI available");
   }
   const res = await Filesystem.readFile({ path: item.nativeUri });
-  const bin = atob(String(res.data));
-  const arr = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  // A single atob() of a large video creates a second, full-size binary
+  // string and blocks the WebView JS thread until every byte is copied.
+  // Decode in bounded chunks with event-loop turns between them instead.
+  const arr = await decodeBase64InBatches(String(res.data));
   const mime = guessMime(item.name);
   const file = new File([arr], item.name, { type: mime, lastModified: item.mtime });
   // Unknown-sized and large native media are deliberately NOT cached.
