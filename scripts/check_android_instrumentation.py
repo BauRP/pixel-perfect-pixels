@@ -11,20 +11,20 @@ from pathlib import Path
 
 
 def instrumentation_passed(log: str) -> bool:
-    if not re.search(r"(?m)^INSTRUMENTATION_CODE:\\s*-1\\s*$", log):
+    if not re.search(r"(?m)^INSTRUMENTATION_CODE:\s*-1\s*$", log):
         return False
     # Every actual JUnit test reports a completed status=0. Zero executed
     # tests must not certify an emulator with a broken instrumentation setup.
-    if not re.search(r"(?m)^INSTRUMENTATION_STATUS_CODE:\\s*0\\s*$", log):
+    if not re.search(r"(?m)^INSTRUMENTATION_STATUS_CODE:\s*0\s*$", log):
         return False
-    if re.search(r"(?m)^INSTRUMENTATION_STATUS_CODE:\\s*-2\\s*$", log):
+    if re.search(r"(?m)^INSTRUMENTATION_STATUS_CODE:\s*-2\s*$", log):
         return False
     if re.search(r"(?m)^INSTRUMENTATION_FAILED", log):
         return False
     if re.search(r"(?m)^INSTRUMENTATION_RESULT:.*(?:shortMsg|error)", log, re.I):
         return False
     for result in re.finditer(
-        r"Tests run:\\s*(\\d+)\\s*,\\s*Failures:\\s*(\\d+)", log
+        r"Tests run:\s*(\d+)\s*,\s*Failures:\s*(\d+)", log
     ):
         if int(result.group(2)) > 0:
             return False
