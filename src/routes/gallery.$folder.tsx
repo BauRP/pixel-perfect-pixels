@@ -458,7 +458,7 @@ function MediaViewer({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black text-white" onClick={() => setChromeVisible((v) => !v)}>
+    <div data-nova-media-viewer className="fixed inset-0 z-[60] bg-black text-white" onClick={() => setChromeVisible((v) => !v)}>
       <div
         className="absolute inset-0 flex items-center justify-center overflow-hidden"
         style={{
@@ -472,6 +472,7 @@ function MediaViewer({
           <div className="relative inline-block max-h-full max-w-full">
             <img
               src={item.url}
+              data-viewer-media
               alt={item.name}
               onLoad={(e) => {
                 const el = e.currentTarget;
@@ -614,13 +615,13 @@ function MediaViewer({
                     onClick={() => setTool((v) => (v === "draw" ? "none" : "draw"))}
                   />
                   <ViewerBtn
-                    icon={<Wand2 size={18} />} label={t("filters")}
+                    icon={<Wand2 size={18} />} label={t("filters")} actionId="filters"
                     active={tool === "filters"}
                     onClick={() => setTool((v) => (v === "filters" ? "none" : "filters"))}
                   />
-                  <ViewerBtn icon={<FlipHorizontal size={18} />} label={t("flip_h")} onClick={() => setFlipH((v) => !v)} />
-                  <ViewerBtn icon={<FlipVertical size={18} />} label={t("flip_v")} onClick={() => setFlipV((v) => !v)} />
-                  <ViewerBtn icon={<Undo2 size={18} />} label={t("reset")} onClick={resetAll} />
+                  <ViewerBtn icon={<FlipHorizontal size={18} />} label={t("flip_h")} actionId="flip-h" onClick={() => setFlipH((v) => !v)} />
+                  <ViewerBtn icon={<FlipVertical size={18} />} label={t("flip_v")} actionId="flip-v" onClick={() => setFlipV((v) => !v)} />
+                  <ViewerBtn icon={<Undo2 size={18} />} label={t("reset")} actionId="reset" onClick={resetAll} />
                 </div>
 
                 <div className="mt-2 flex gap-2">
@@ -642,10 +643,10 @@ function MediaViewer({
               </>
             ) : (
               <div className="grid grid-cols-6 gap-1">
-                <ViewerBtn icon={<Pencil size={18} />} label={t("edit")} onClick={() => setEditMode(true)} />
-                <ViewerBtn icon={<RotateCw size={18} />} label={t("rotate_right")} onClick={() => setRotation((r) => r + 90)} />
-                <ViewerBtn icon={<RotateCcw size={18} />} label={t("rotate_left")} onClick={() => setRotation((r) => r - 90)} />
-                <ViewerBtn icon={<Info size={18} />} label={t("details")} onClick={() => setDetailsOpen(true)} />
+                <ViewerBtn icon={<Pencil size={18} />} label={t("edit")} actionId="edit" onClick={() => setEditMode(true)} />
+                <ViewerBtn icon={<RotateCw size={18} />} label={t("rotate_right")} actionId="rotate-right" onClick={() => setRotation((r) => r + 90)} />
+                <ViewerBtn icon={<RotateCcw size={18} />} label={t("rotate_left")} actionId="rotate-left" onClick={() => setRotation((r) => r - 90)} />
+                <ViewerBtn icon={<Info size={18} />} label={t("details")} actionId="details" onClick={() => setDetailsOpen(true)} />
                 <ViewerBtn
                   icon={busy ? <Loader2 size={18} className="animate-spin" /> : <ImgIcon size={18} />}
                   label={t("set_wallpaper")}
@@ -966,14 +967,16 @@ async function renderEdited(
 }
 
 function ViewerBtn({
-  icon, label, onClick, destructive, active,
+  icon, label, onClick, destructive, active, actionId,
 }: {
   icon: React.ReactNode; label: string; onClick: () => void;
-  destructive?: boolean; active?: boolean;
+  destructive?: boolean; active?: boolean; actionId?: string;
 }) {
   return (
     <button
       onClick={onClick}
+      aria-label={label}
+      data-viewer-action={actionId}
       className={`tap flex flex-col items-center justify-center gap-1 rounded-2xl py-2 text-white/90 hover:bg-white/10 ${active ? "bg-white/15" : ""}`}
     >
       <span className={destructive ? "text-red-400" : ""}>{icon}</span>
