@@ -31,6 +31,7 @@ import { guessMimeFromName } from "@/lib/device-scan";
 import { ViewOptionsMenu } from "@/components/ViewOptionsMenu";
 import { useViewPrefs, sortRows } from "@/lib/view-prefs";
 import { galleryGridRange, galleryGridScrollTarget, galleryGridViewport, galleryGridTileSize } from "@/lib/gallery-grid-scroll";
+import { encodeCanvasJpegBase64 } from "@/lib/canvas-encode";
 
 export const Route = createFileRoute("/gallery/$folder")({
   head: () => ({
@@ -964,8 +965,9 @@ async function renderEdited(
 
   // "Compress" trades quality for a much smaller file.
   const quality = edits.preset === "compress" ? 0.45 : 0.92;
-  const dataUrl = canvas.toDataURL("image/jpeg", quality);
-  return dataUrl.slice(dataUrl.indexOf("base64,") + 7);
+  // Avoid the synchronous full-image JPEG serialization which previously
+  // blocked touch/paint while exporting large photos in Android WebView.
+  return encodeCanvasJpegBase64(canvas, quality);
 }
 
 function ViewerBtn({

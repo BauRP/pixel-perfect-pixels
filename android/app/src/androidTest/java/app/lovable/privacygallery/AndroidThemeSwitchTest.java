@@ -114,10 +114,14 @@ public class AndroidThemeSwitchTest {
         try {
             awaitWebView("three navigation tabs",
                     "!!document.querySelector('[data-bottom-nav] a[href*=\"settings\"]')");
-            assertTrue("Could not open real Settings route", evaluate(
-                    "(function(){document.querySelector('[data-bottom-nav] " +
-                    "a[href*=\"settings\"]').click();return true;})()"));
-            awaitWebView("Settings screen", "!!document.querySelector('[data-theme-select-trigger]')");
+            // Require the actual Settings screen, not a possibly dropped
+            // evaluateJavascript click callback on an older Android WebView.
+            awaitWebView("Settings screen after real tab tap", "(function(){" +
+                    "if(document.querySelector('[data-theme-select-trigger]'))return true;" +
+                    "var link=document.querySelector('[data-bottom-nav] a[href*=\\\"settings\\\"]');" +
+                    "if(link&&location.pathname.indexOf('/settings')<0&&" +
+                    "location.hash.indexOf('/settings')<0)link.click();" +
+                    "return false;})()");
 
             select("light");
             scenario.getScenario().onActivity(activity -> {

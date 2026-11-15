@@ -94,10 +94,15 @@ public class AndroidArabicLayoutTest {
     public void arabicTextIsRtlButControlsStayLtrAndLanguageSurvivesRestart() throws Exception {
         try {
             awaitUi("bottom navigation", "!!document.querySelector('[data-bottom-nav] a[href*=\"settings\"]')");
-            assertTrue("Could not open Settings", evaluate(
-                    "(function(){document.querySelector('[data-bottom-nav] " +
-                    "a[href*=\"settings\"]').click();return true;})()"));
-            awaitUi("language selector", "!!document.querySelector('[data-language-select-trigger]')");
+            // A lost evaluateJavascript callback is not proof that the real
+            // navigation tap failed. Retry the REAL bottom-tab link only
+            // while the router has not entered Settings; require actual DOM.
+            awaitUi("language selector after Settings tab", "(function(){" +
+                    "if(document.querySelector('[data-language-select-trigger]'))return true;" +
+                    "var link=document.querySelector('[data-bottom-nav] a[href*=\\\"settings\\\"]');" +
+                    "if(link&&location.pathname.indexOf('/settings')<0&&" +
+                    "location.hash.indexOf('/settings')<0)link.click();" +
+                    "return false;})()");
             selectLanguage("ar");
             String base = "document.documentElement.lang==='ar'&&" +
                     "document.documentElement.dir==='ltr'&&" +
