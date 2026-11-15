@@ -3,6 +3,7 @@ package app.lovable.privacygallery;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Canvas;
@@ -63,6 +64,8 @@ public final class AndroidPhotoViewerTest {
     private Uri mediaUri;
     private File legacyFile;
     private String filename;
+    private String editedFilename;
+    private Uri editedUri;
 
     private static WebView findWebView(View v) {
         if (v instanceof WebView) return (WebView) v;
@@ -159,6 +162,42 @@ public final class AndroidPhotoViewerTest {
         }
     }
 
+    /**
+     * Verify that the actual native SaveImage plugin published a readable
+     * exported JPEG into Android's MediaStore. Never count a JS toast or a
+     * returned file path alone as a successful edit export.
+     */
+    private void awaitPublishedEditedJpeg() throws Exception {
+        editedFilename = filename.replace(".jpg", "_edited.jpg");
+        ContentResolver resolver = InstrumentationRegistry.getInstrumentation()
+                .getTargetContext().getContentResolver();
+        long deadline = SystemClock.elapsedRealtime() + 28_000L;
+        while (SystemClock.elapsedRealtime() < deadline) {
+            try (android.database.Cursor cursor = resolver.query(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    new String[] { MediaStore.Images.Media._ID, MediaStore.Images.Media.SIZE },
+                    MediaStore.Images.Media.DISPLAY_NAME + "=?",
+                    new String[] { editedFilename }, null)) {
+                if (cursor != null && cursor.moveToFirst() && cursor.getLong(1) > 0) {
+                    editedUri = android.content.ContentUris.withAppendedId(
+                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cursor.getLong(0));
+                    break;
+                }
+            }
+            SystemClock.sleep(300);
+        }
+        assertNotNull("Edited JPEG was not published into Android MediaStore", editedUri);
+        BitmapFactory.Options dimensions = new BitmapFactory.Options();
+        dimensions.inJustDecodeBounds = true;
+        try (java.io.InputStream stream = resolver.openInputStream(editedUri)) {
+            assertNotNull("Exported JPEG cannot be read", stream);
+            BitmapFactory.decodeStream(stream, null, dimensions);
+        }
+        assertEquals("Rotated JPEG must have swapped width", 112, dimensions.outWidth);
+        assertEquals("Rotated JPEG must have swapped height", 160, dimensions.outHeight);
+        assertEquals("Export format must be JPEG", "image/jpeg", dimensions.outMimeType);
+    }
+
     private void cleanupOwnImage() {
         if (filename == null || !filename.startsWith("nova-ci-photo-")) return;
         try {
@@ -167,6 +206,22 @@ public final class AndroidPhotoViewerTest {
                         .getContentResolver().delete(mediaUri, null, null);
             }
         } catch (Exception ignored) { /* Cleanup only the disposable CI asset. */ }
+        // Only our test-specific edited output, never unrelated media.
+        // A publish may succeed but the test may fail before indexing; in
+        // that case use the exact UUID-derived path on legacy Android.
+        if (editedFilename != null && editedFilename.equals(
+                filename.replace(".jpg", "_edited.jpg"))) {
+            ContentResolver resolver = InstrumentationRegistry.getInstrumentation()
+                    .getTargetContext().getContentResolver();
+            try {
+                if (editedUri != null) resolver.delete(editedUri, null, null);
+            } catch (Exception ignored) { /* Best-effort own test output cleanup. */ }
+            if (Build.VERSION.SDK_INT < 29) {
+                File generated = new File(Environment.getExternalStoragePublicDirectory(
+                        Environment.DIRECTORY_PICTURES), "NovaGallery/" + editedFilename);
+                if (generated.isFile()) generated.delete();
+            }
+        }
         if (legacyFile != null && legacyFile.getName().equals(filename)) {
             legacyFile.delete();
             File dir = legacyFile.getParentFile();
@@ -237,8 +292,25 @@ public final class AndroidPhotoViewerTest {
                         RenderedSurfaceProbe.hasUiContrast(screenshot));
             } finally { screenshot.recycle(); }
 
-            // Rotation, flip and reset are previews only until Apply is used.
-            // Opening/previewing must not delete, overwrite or export the image.
+            // Apply a real rotation and demand a published, decodable JPEG.
+            // Reset above verified preview undo; this next rotation is saved
+            // as a *new* file, not written over the original.
+            assertTrue("Could not rotate edited image", eval(
+                    "(function(){document.querySelector('[data-viewer-action=rotate-right]')" +
+                    ".click();return true;})()"));
+            until("export rotation preview",
+                    "(function(){var i=document.querySelector('img[data-viewer-media]');" +
+                    "return i&&i.style.transform.indexOf('rotate(90deg)')>=0;})()");
+            until("real Apply button", "!!document.querySelector('[data-viewer-apply]')");
+            assertTrue("Could not invoke native image export", eval(
+                    "(function(){document.querySelector('[data-viewer-apply]')" +
+                    ".click();return true;})()"));
+            awaitPublishedEditedJpeg();
+            until("editor exits after saved image",
+                    "!!document.querySelector('[data-viewer-action=edit]')");
+
+            // The original remains exactly as before SaveImage made the new
+            // file. Deletion/corruption of the source is a test failure.
             ContentResolver resolver = InstrumentationRegistry.getInstrumentation()
                     .getTargetContext().getContentResolver();
             try (android.database.Cursor c = resolver.query(mediaUri,

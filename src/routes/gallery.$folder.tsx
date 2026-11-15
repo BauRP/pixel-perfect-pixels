@@ -632,6 +632,7 @@ function MediaViewer({
                     {t("cancel")}
                   </button>
                   <button
+                    data-viewer-apply
                     onClick={applyEdits}
                     disabled={busy}
                     className="tap flex-1 rounded-full py-2.5 text-sm font-semibold disabled:opacity-60"
