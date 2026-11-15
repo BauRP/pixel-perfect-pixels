@@ -99,21 +99,31 @@ public class AndroidArabicLayoutTest {
                     "a[href*=\"settings\"]').click();return true;})()"));
             awaitUi("language selector", "!!document.querySelector('[data-language-select-trigger]')");
             selectLanguage("ar");
-            String layout = "(function(){" +
-                "var root=document.documentElement,nav=document.querySelector('[data-bottom-nav]');" +
-                "var heading=document.querySelector('h1[data-localized-text]');" +
-                "var labels=nav&&nav.querySelectorAll('a [data-localized-text]');" +
-                "var links=nav&&nav.querySelectorAll('a');" +
-                "if(!nav||!heading||!labels||labels.length!==3||links.length!==3)return false;" +
-                "var bounds=Array.from(links).map(function(x){return x.getBoundingClientRect()});" +
-                "return root.lang==='ar'&&root.dir==='ltr'&&" +
-                "getComputedStyle(nav).direction==='ltr'&&" +
-                "getComputedStyle(heading).direction==='rtl'&&" +
-                "heading.textContent.indexOf('الإعدادات')>=0&&" +
-                "Array.from(labels).every(function(x){return getComputedStyle(x).direction==='rtl'})&&" +
-                "bounds[0].left<bounds[1].left&&bounds[1].left<bounds[2].left&&" +
-                "bounds.every(function(x){return x.width>35&&x.height>=48});})()";
-            awaitUi("Arabic text / three LTR tabs", layout);
+            String base = "document.documentElement.lang==='ar'&&" +
+                    "document.documentElement.dir==='ltr'&&" +
+                    "!!document.querySelector('h1[data-localized-text]')&&" +
+                    "!!document.querySelector('[data-bottom-nav]')";
+            awaitUi("Arabic document locale and heading", base);
+            String heading = "(function(){" +
+                    "var e=document.querySelector('h1[data-localized-text]');" +
+                    "return e.textContent.indexOf('الإعدادات')>=0&&" +
+                    "getComputedStyle(e).direction==='rtl';})()";
+            awaitUi("Arabic settings heading text direction", heading);
+            String labels = "(function(){" +
+                    "var nav=document.querySelector('[data-bottom-nav]');" +
+                    "var xs=nav.querySelectorAll('a [data-localized-text]');" +
+                    "return getComputedStyle(nav).direction==='ltr'&&xs.length===3&&" +
+                    "Array.from(xs).every(function(x){" +
+                    "return getComputedStyle(x).direction==='rtl';});})()";
+            awaitUi("Arabic text on three bottom tabs", labels);
+            String positions = "(function(){" +
+                    "var nav=document.querySelector('[data-bottom-nav]');" +
+                    "var links=nav.querySelectorAll('a');" +
+                    "if(links.length!==3)return false;" +
+                    "var xs=Array.from(links).map(function(x){return x.getBoundingClientRect();});" +
+                    "return xs[0].left<xs[1].left&&xs[1].left<xs[2].left&&" +
+                    "xs.every(function(x){return x.width>35&&x.height>=48;});})()";
+            awaitUi("LTR three-tab order and 48px targets", positions);
 
             // Pixel evidence complements the DOM contract: CSS-only checks
             // can pass with an entirely black compositor on API29/33.
@@ -137,7 +147,9 @@ public class AndroidArabicLayoutTest {
                     "!!document.querySelector('[data-language-select-trigger]')&&" +
                     "localStorage.getItem('vault.lang')==='ar'&&" +
                     "document.documentElement.lang==='ar'");
-            awaitUi("RTL layout after reload", layout);
+            awaitUi("Arabic heading after reload", heading);
+            awaitUi("Arabic tab labels after reload", labels);
+            awaitUi("LTR tab geometry after reload", positions);
         } finally {
             // Disposable CI emulator: restore default test locale, never
             // touch media, PIN, password or user-protected storage.
