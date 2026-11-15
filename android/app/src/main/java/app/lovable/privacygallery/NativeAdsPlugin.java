@@ -65,7 +65,6 @@ public class NativeAdsPlugin extends Plugin {
 
     private static final String TAG = "NativeAds";
     /** Google's official native-advanced test unit — used for every debuggable build. */
-    private static final String TEST_NATIVE_AD_UNIT_ID = "ca-app-pub-3940256099942544/2247696110";
 
     private NativeAd nativeAd = null;
     private boolean loading = false;
@@ -354,7 +353,7 @@ public class NativeAdsPlugin extends Plugin {
             call.resolve(ret);
             return;
         }
-        final String adId = BuildConfig.USE_TEST_ADS ? TEST_NATIVE_AD_UNIT_ID : prodId;
+        final String adId = NativeAdUnitPolicy.select(BuildConfig.USE_TEST_ADS, prodId);
         loading = true;
         ret.put("started", true);
         call.resolve(ret);
