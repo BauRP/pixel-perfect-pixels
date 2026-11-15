@@ -17,10 +17,14 @@ POLICY = ROOT / "android/app/src/main/java/app/lovable/privacygallery/NativeAdUn
 def branch(body: str, name: str) -> str:
     # Gradle buildTypes contain nested braces in interpolated values.
     # Use a brace-aware parser rather than a one-level regular expression.
-    match = re.search(r"(?m)^\s*" + re.escape(name) + r"\s*\{", body)
+    # Restrict matching to buildTypes: signingConfigs also has a release block.
+    build_types = re.search(r"\bbuildTypes\s*\{", body)
+    if build_types is None:
+        raise AssertionError("Missing Android buildTypes block")
+    match = re.search(r"(?m)^\s*" + re.escape(name) + r"\s*\{", body[build_types.end():])
     if match is None:
         raise AssertionError(f"Missing Android {name} build type")
-    start = match.end()
+    start = build_types.end() + match.end()
     depth = 1
     for offset in range(start, len(body)):
         if body[offset] == "{":
