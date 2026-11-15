@@ -32,3 +32,13 @@ export function galleryGridRange(
     Math.max(startRow + 1, Math.ceil((viewportBottom - gridTop) / height) + overscan));
   return [startRow * cols, Math.min(count, endRow * cols)];
 }
+
+/**
+ * A zero-width hidden/unmeasured Android WebView must not produce negative
+ * thumbnail heights. Keep the last valid size until layout becomes measurable.
+ */
+export function galleryGridTileSize(width: number, columns: number, previousSize = 120): number {
+  if (!Number.isFinite(width) || width <= 0) return previousSize;
+  const cols = Math.max(1, Math.floor(columns));
+  return Math.max(48, Math.floor(width / cols) - 4);
+}

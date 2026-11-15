@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { galleryGridRange, galleryGridScrollTarget, galleryGridViewport } from "./gallery-grid-scroll";
+import { galleryGridRange, galleryGridScrollTarget, galleryGridViewport, galleryGridTileSize } from "./gallery-grid-scroll";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -46,6 +46,16 @@ describe("gallery album virtual scrolling", () => {
     expect(galleryGridRange(5, 3, 124, -2500, 35, 535)).toEqual([3, 5]);
     expect(galleryGridRange(0, 3, 124, -2500, 35, 535)).toEqual([0, 0]);
     expect(galleryGridRange(2, 3, 124, 120, 35, 535)).toEqual([0, 2]);
+  });
+
+  it("never collapses image tiles when an Android WebView briefly reports zero width", () => {
+    expect(galleryGridTileSize(0, 3, 120)).toBe(120);
+    expect(galleryGridTileSize(-8, 3, 116)).toBe(116);
+    expect(galleryGridTileSize(Number.NaN, 3, 112)).toBe(112);
+    expect(galleryGridTileSize(352, 3, 120)).toBe(113);
+    expect(galleryGridTileSize(80, 3, 120)).toBe(48);
+    expect(galleryGridRange(1, 3, galleryGridTileSize(0, 3, 120) + 4, 0, 0, 580))
+      .toEqual([0, 1]);
   });
 
   it("falls back to window scrolling in a website without the persistent Android frame", () => {

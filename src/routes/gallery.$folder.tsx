@@ -30,7 +30,7 @@ import {
 import { guessMimeFromName } from "@/lib/device-scan";
 import { ViewOptionsMenu } from "@/components/ViewOptionsMenu";
 import { useViewPrefs, sortRows } from "@/lib/view-prefs";
-import { galleryGridRange, galleryGridScrollTarget, galleryGridViewport } from "@/lib/gallery-grid-scroll";
+import { galleryGridRange, galleryGridScrollTarget, galleryGridViewport, galleryGridTileSize } from "@/lib/gallery-grid-scroll";
 
 export const Route = createFileRoute("/gallery/$folder")({
   head: () => ({
@@ -1016,13 +1016,21 @@ function VirtualizedGrid({
     const el = wrapRef.current;
     if (!el) return;
     const measure = () => {
-      const w = el.clientWidth - 8; // account for p-1 padding
-      setTile(Math.floor(w / cols) - 4);
+      const width = el.clientWidth - 8; // account for p-1 padding
+      setTile(current => galleryGridTileSize(width, cols, current));
     };
     measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
+    // ResizeObserver can be missing or late on older Android WebViews.
+    // Window/visualViewport resize acts as a bounded, event-driven fallback.
+    const ro = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    window.addEventListener("resize", measure);
+    window.visualViewport?.addEventListener("resize", measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", measure);
+      window.visualViewport?.removeEventListener("resize", measure);
+    };
   }, [cols]);
 
   useEffect(() => {

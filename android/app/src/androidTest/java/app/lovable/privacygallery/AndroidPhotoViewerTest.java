@@ -104,8 +104,17 @@ public final class AndroidPhotoViewerTest {
             if (eval(expression)) return;
             SystemClock.sleep(300);
         }
+        // Diagnostics contain only booleans/counts, never personal filenames or
+        // private file paths. A missing tile is NOT silently retried as success.
+        String detail = "";
+        if ("media thumbnail in album".equals(step) || "album route after card tap".equals(step)) {
+            detail = " (albumRoute=" + eval("location.pathname.indexOf('/gallery/')>=0 || location.hash.indexOf('/gallery/')>=0") +
+                    ", rootAlbumLinks=" + eval("document.querySelectorAll('a[href*=\\\"/gallery/\\\"]').length>0") +
+                    ", mediaTiles=" + eval("document.querySelectorAll('button[aria-label]').length>4") +
+                    ", appContent=" + eval("!!document.querySelector('[data-app-content]')") + ")";
+        }
         fail("Genuine Android photo viewer failed at " + step +
-                " on API " + Build.VERSION.SDK_INT);
+                " on API " + Build.VERSION.SDK_INT + detail);
     }
 
     private void createOwnImage() throws Exception {
@@ -250,6 +259,8 @@ public final class AndroidPhotoViewerTest {
                     "return e.textContent.indexOf('Nova-CI-Viewer')>=0;})[0];" +
                     "a.click();return true;})()"));
 
+            until("album route after card tap",
+                    "location.pathname.indexOf('/gallery/')>=0 || location.hash.indexOf('/gallery/')>=0");
             final String tile = "button[aria-label=" + jsString(filename) + "]";
             until("media thumbnail in album", "!!document.querySelector(" + jsString(tile) + ")");
             assertTrue("Could not open real image", eval(
