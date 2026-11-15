@@ -302,7 +302,7 @@ export function ScreenHeader({
         <div className="min-w-0 flex items-center gap-3">
           {back}
           <div className="min-w-0">
-            <h1 className="truncate text-lg font-semibold leading-tight">{title}</h1>
+            <h1 data-localized-text className="truncate text-lg font-semibold leading-tight">{title}</h1>
             {subtitle && (
               <p className="truncate text-[11px] text-muted-foreground leading-tight">{subtitle}</p>
             )}

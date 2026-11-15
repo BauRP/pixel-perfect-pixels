@@ -54,7 +54,7 @@ function SettingsScreen() {
             label={t("language")}
             right={
               <Select value={lang} onValueChange={(v) => setLang(v as Lang)}>
-                <SelectTrigger className="w-[140px] rounded-xl h-9 border-0" style={{ background: "var(--color-muted)" }}>
+                <SelectTrigger data-language-select-trigger className="w-[140px] rounded-xl h-9 border-0" style={{ background: "var(--color-muted)" }}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent
@@ -67,7 +67,7 @@ function SettingsScreen() {
                   className="rounded-2xl max-h-[min(13.5rem,var(--radix-select-content-available-height))] overscroll-contain [scroll-behavior:smooth] [-webkit-overflow-scrolling:touch]"
                 >
                   {LANGS.map((l) => (
-                    <SelectItem key={l.code} value={l.code}>{l.native}</SelectItem>
+                    <SelectItem key={l.code} data-language-option={l.code} value={l.code}>{l.native}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -137,7 +137,7 @@ function SettingsScreen() {
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section>
-      <h2 className="px-2 pb-1 text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">
+      <h2 data-localized-text className="px-2 pb-1 text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">
         {title}
       </h2>
       <div className="rounded-2xl overflow-hidden" style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}>
@@ -158,8 +158,8 @@ function Row({
         {icon}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium truncate">{label}</div>
-        {description && <div className="text-[10px] text-muted-foreground truncate">{description}</div>}
+        <div data-localized-text className="text-sm font-medium truncate">{label}</div>
+        {description && <div data-localized-text className="text-[10px] text-muted-foreground truncate">{description}</div>}
       </div>
       {right}
     </div>

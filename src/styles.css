@@ -159,6 +159,13 @@
     font-family: var(--font-display);
     letter-spacing: -0.02em;
   }
+  /* Explicit, backward-compatible RTL for localized text only. Old Android
+   * WebViews do not reliably support :has(), so the selector below preserves
+   * Arabic reading order without mirroring flex/grid/tab layout or icons. */
+  html:lang(ar) [data-localized-text] {
+    direction: rtl;
+    unicode-bidi: isolate;
+  }
   /* Arabic changes the reading direction of text leaves, never layout hosts. */
   html:lang(ar) :is(h1, h2, h3, h4, h5, h6, p, small, dt, dd, label, span, button, a, div):not(:has(> *)):not(:empty),
   html:lang(ar) :is(input:not([type="file"]):not([type="range"]), textarea) {
