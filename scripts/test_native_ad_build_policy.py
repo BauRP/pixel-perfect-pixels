@@ -15,11 +15,21 @@ POLICY = ROOT / "android/app/src/main/java/app/lovable/privacygallery/NativeAdUn
 
 
 def branch(body: str, name: str) -> str:
-    match = re.search(r"(?m)^\s*" + name + r"\s*\{([^{}]+)\}", body)
+    # Gradle buildTypes contain nested braces in interpolated values.
+    # Use a brace-aware parser rather than a one-level regular expression.
+    match = re.search(r"(?m)^\s*" + re.escape(name) + r"\s*\{", body)
     if match is None:
         raise AssertionError(f"Missing Android {name} build type")
-    return match.group(1)
-
+    start = match.end()
+    depth = 1
+    for offset in range(start, len(body)):
+        if body[offset] == "{":
+            depth += 1
+        elif body[offset] == "}":
+            depth -= 1
+            if depth == 0:
+                return body[start:offset]
+    raise AssertionError(f"Unclosed Android {name} build type")
 
 class NativeAdBuildPolicyTest(unittest.TestCase):
     def test_debug_and_release_build_type_contract(self):
