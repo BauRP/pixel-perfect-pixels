@@ -292,15 +292,22 @@ public final class AndroidPhotoViewerTest {
                         RenderedSurfaceProbe.hasUiContrast(screenshot));
             } finally { screenshot.recycle(); }
 
-            // Apply a real rotation and demand a published, decodable JPEG.
-            // Reset above verified preview undo; this next rotation is saved
-            // as a *new* file, not written over the original.
+            // The rotate buttons are in viewer mode; exit editor first,
+            // rotate the original preview, then reopen the editor and Apply.
+            until("editor cancel button", "!!document.querySelector('[data-viewer-cancel]')");
+            assertTrue("Could not exit editor after Reset", eval(
+                    "(function(){document.querySelector('[data-viewer-cancel]')" +
+                    ".click();return true;})()"));
+            until("viewer rotation control", "!!document.querySelector('[data-viewer-action=rotate-right]')");
             assertTrue("Could not rotate edited image", eval(
                     "(function(){document.querySelector('[data-viewer-action=rotate-right]')" +
                     ".click();return true;})()"));
             until("export rotation preview",
                     "(function(){var i=document.querySelector('img[data-viewer-media]');" +
                     "return i&&i.style.transform.indexOf('rotate(90deg)')>=0;})()");
+            assertTrue("Could not reopen photo editor before saving", eval(
+                    "(function(){document.querySelector('[data-viewer-action=edit]')" +
+                    ".click();return true;})()"));
             until("real Apply button", "!!document.querySelector('[data-viewer-apply]')");
             assertTrue("Could not invoke native image export", eval(
                     "(function(){document.querySelector('[data-viewer-apply]')" +

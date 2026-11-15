@@ -626,6 +626,7 @@ function MediaViewer({
 
                 <div className="mt-2 flex gap-2">
                   <button
+                    data-viewer-cancel
                     onClick={() => { setEditMode(false); setTool("none"); }}
                     className="tap flex-1 rounded-full bg-white/10 py-2.5 text-sm font-semibold"
                   >
