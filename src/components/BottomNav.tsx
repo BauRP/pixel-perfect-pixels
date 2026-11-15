@@ -1,13 +1,14 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { Images, Lock, Settings as SettingsIcon } from "lucide-react";
-import { useT } from "@/lib/i18n";
+import { useT, useLang } from "@/lib/i18n";
 
 const useNavMeasureEffect =
   import.meta.env.VITE_CAPACITOR_BUILD === "1" ? useLayoutEffect : useEffect;
 
 export function BottomNav() {
   const t = useT();
+  const [lang] = useLang();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navRef = useRef<HTMLElement>(null);
 
@@ -103,7 +104,7 @@ export function BottomNav() {
                 >
                   <Icon size={18} strokeWidth={active ? 2.4 : 1.8} />
                 </span>
-                <span data-localized-text className="max-w-full truncate text-[9px] font-medium tracking-wide uppercase leading-none">{label}</span>
+                <span data-localized-text dir={lang === "ar" ? "rtl" : "ltr"} className="max-w-full truncate text-[9px] font-medium tracking-wide uppercase leading-none">{label}</span>
               </Link>
             </li>
           );

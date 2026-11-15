@@ -296,15 +296,16 @@ function MeasuredAppFrame({ children }: { children: ReactNode }) {
 export function ScreenHeader({
   title, subtitle, right, back,
 }: { title: string; subtitle?: string; right?: ReactNode; back?: ReactNode }) {
+  const [lang] = useLang();
   return (
     <header className="sticky top-0 z-40 glass-strong px-4 pt-2 pb-2">
       <div className="flex min-h-8 items-center justify-between gap-3">
         <div className="min-w-0 flex items-center gap-3">
           {back}
           <div className="min-w-0">
-            <h1 data-localized-text className="truncate text-lg font-semibold leading-tight">{title}</h1>
+            <h1 data-localized-text dir={lang === "ar" ? "rtl" : "ltr"} className="truncate text-lg font-semibold leading-tight">{title}</h1>
             {subtitle && (
-              <p className="truncate text-[11px] text-muted-foreground leading-tight">{subtitle}</p>
+              <p dir={lang === "ar" ? "rtl" : "ltr"} className="truncate text-[11px] text-muted-foreground leading-tight">{subtitle}</p>
             )}
           </div>
         </div>
