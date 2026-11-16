@@ -8,7 +8,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { Suspense, useEffect, type ReactNode } from "react";
+import { Suspense, useEffect, useLayoutEffect, type ReactNode } from "react";
 import { AppShell } from "../components/AppShell";
 import { nativeRouteUsesPersistentFrame } from "../lib/native-route-frame";
 
@@ -204,6 +204,12 @@ function RootComponent() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const nativeFrame = import.meta.env.VITE_CAPACITOR_BUILD === "1" &&
     nativeRouteUsesPersistentFrame(pathname);
+
+  useLayoutEffect(() => {
+    if (import.meta.env.VITE_CAPACITOR_BUILD === "1") {
+      console.info("[NovaBoot] root-route-committed");
+    }
+  }, []);
 
   // The Android Vite entry uses createRoot(), not hydrateRoot(). Unlike
   // TanStack Start SSR on the website, the native shell has no server tree
