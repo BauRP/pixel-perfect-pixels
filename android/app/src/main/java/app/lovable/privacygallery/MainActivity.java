@@ -249,13 +249,32 @@ public class MainActivity extends BridgeActivity {
                 + "+',tabs='+has('[data-bottom-nav]')"
                 + "+',pending='+has('[data-nova-route-pending]')"
                 + "+',recovery='+has('[data-nova-react-recovery]')"
+                + "+',bootPhase='+String(r.dataset.novaBootPhase||'unset')"
+                + "+',rootChildren='+(d.getElementById('root')?d.getElementById('root').childElementCount:-1)"
                 + "+',insets='+String(r.dataset.novaInsetsReady==='true')"
                 + "+',size='+innerWidth+'x'+innerHeight;"
                 + "}catch(e){return 'probe-error'}})()";
+        // Missing callbacks distinguish a stalled renderer from a returned
+        // false. Emulator-only diagnostic; no media metadata is collected.
+        final java.util.concurrent.atomic.AtomicBoolean completed =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
+        final Runnable timeout = () -> {
+            if (completed.compareAndSet(false, true)) {
+                Log.w("NovaGalleryBoot", "DOM probe stage=" + stage
+                        + " result=CALLBACK_TIMEOUT");
+            }
+        };
+        mainHandler.postDelayed(timeout, 3500L);
         try {
-            web.evaluateJavascript(probe, value ->
-                    Log.w("NovaGalleryBoot", "DOM probe stage=" + stage + " result=" + value));
+            web.evaluateJavascript(probe, value -> {
+                if (completed.compareAndSet(false, true)) {
+                    mainHandler.removeCallbacks(timeout);
+                    Log.w("NovaGalleryBoot", "DOM probe stage=" + stage + " result=" + value);
+                }
+            });
         } catch (RuntimeException ignored) {
+            completed.set(true);
+            mainHandler.removeCallbacks(timeout);
             Log.w("NovaGalleryBoot", "DOM probe unavailable stage=" + stage);
         }
     }
