@@ -1,4 +1,5 @@
 import { useEffect, useState, type ComponentType } from "react";
+import { flushSync } from "react-dom";
 import { useNativeFirstPaint } from "../lib/native-first-paint";
 
 /**
@@ -19,7 +20,9 @@ export function NativeFirstPaintRouter({ onRouterLoaded }: { onRouterLoaded: () 
     void import("../native-router-provider").then(({ NativeRouterProvider }) => {
       if (!active) return;
       onRouterLoaded();
-      setProvider(() => NativeRouterProvider);
+      // First router mount must not depend on a deferred React scheduler
+      // turn after the offline startup surface had its paint opportunity.
+      flushSync(() => setProvider(() => NativeRouterProvider));
     }).catch(() => {
       if (active) setFailed(true);
     });
