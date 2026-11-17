@@ -21,6 +21,7 @@ import { useSyncExternalStore } from "react";
 import { backoffDelay } from "./backoff";
 import { createLatestAsyncDispatcher } from "./native-ad-placement";
 import { waitForNativePlugin } from "./native-ad-bridge-ready";
+import { afterMeasuredGalleryLayout } from "./gallery-boot-gate";
 
 export { cssColorToHex } from "./css-color";
 import { cssColorToHex } from "./css-color";
@@ -140,32 +141,31 @@ let starting: Promise<void> | null = null;
 let startRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let bridgeRetryCount = 0;
 let canRequestAds = false;
-let bootReadyObserver: MutationObserver | null = null;
+let bootReadyCancel: (() => void) | null = null;
 
-// Ad requests must not compete with the first React/WebView paint. Preserve
-// consent setup immediately; defer only the optional native ad allocation.
+// On affected Google emulator WebViews, the initial JS bridge stalled during
+// five optional NativeAds.addListener calls, BEFORE SystemInsets.getInsets
+// could return and the gallery could paint. Let the mandatory gallery/insets
+// bridge establish the real UI first. This only changes startup ordering:
+// the same UMP gate, Native Advanced slot and native ad configuration remain.
 function hasMeasuredGalleryLayout(): boolean {
   return typeof document !== "undefined" &&
     document.documentElement.dataset.novaBootPhase === "gallery-layout-ready";
 }
+function startAdsAfterLayout() {
+  if (!isNativeAdSupported() || screenActive === 0 || !hasMeasuredGalleryLayout()) return;
+  void start().then(() => {
+    if (screenActive === 0 || state === "LOADED" || !canRequestAds) return;
+    if (net !== "online") onNetwork(net);
+    else if (!requestInFlight && retryTimer === null) void requestAd();
+  });
+}
 function watchGalleryLayout() {
-  if (bootReadyObserver || typeof MutationObserver === "undefined" ||
-      typeof document === "undefined") return;
-  const root = document.documentElement;
-  bootReadyObserver = new MutationObserver(() => {
-    if (!hasMeasuredGalleryLayout()) return;
-    bootReadyObserver?.disconnect();
-    bootReadyObserver = null;
-    void requestAd();
+  if (bootReadyCancel || typeof document === "undefined") return;
+  bootReadyCancel = afterMeasuredGalleryLayout(() => {
+    bootReadyCancel = null;
+    startAdsAfterLayout();
   });
-  bootReadyObserver.observe(root, {
-    attributes: true, attributeFilter: ["data-nova-boot-phase"],
-  });
-  if (hasMeasuredGalleryLayout()) {
-    bootReadyObserver.disconnect();
-    bootReadyObserver = null;
-    void requestAd();
-  }
 }
 
 function clearRetry() {
@@ -409,15 +409,14 @@ function start(): Promise<void> {
 export function activateNativeAdSlot(): () => void {
   screenActive += 1;
   if (isNativeAdSupported()) {
-    void start().then(() => {
-      if (state === "LOADED" || !canRequestAds) return;
-      if (net !== "online") onNetwork(net);
-      else if (!requestInFlight && retryTimer === null) void requestAd();
-    });
+    if (hasMeasuredGalleryLayout()) startAdsAfterLayout();
+    else watchGalleryLayout();
   }
   return () => {
     screenActive = Math.max(0, screenActive - 1);
     if (screenActive === 0) {
+      bootReadyCancel?.();
+      bootReadyCancel = null;
       clearRetry();
       if (startRetryTimer !== null) clearTimeout(startRetryTimer);
       startRetryTimer = null;
