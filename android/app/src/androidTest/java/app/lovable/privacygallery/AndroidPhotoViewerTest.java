@@ -259,8 +259,19 @@ public final class AndroidPhotoViewerTest {
                     "return e.textContent.indexOf('Nova-CI-Viewer')>=0;})[0];" +
                     "a.click();return true;})()"));
 
+            // On older Android WebViews one synthetic bridge click can be
+            // dropped even while the gallery is visibly responsive. Retry
+            // the SAME real album link at most once per 1500ms, never force a
+            // route or bypass its normal onClick handler. The real album
+            // screen and decoded photo remain mandatory PASS conditions.
             until("album route after card tap",
-                    "location.pathname.indexOf('/gallery/')>=0 || location.hash.indexOf('/gallery/')>=0");
+                    "(function(){if(location.pathname.indexOf('/gallery/')>=0||" +
+                    "location.hash.indexOf('/gallery/')>=0)return true;" +
+                    "var now=Date.now(),last=window.__novaCiLastAlbumTap||0;" +
+                    "if(now-last<1500)return false;window.__novaCiLastAlbumTap=now;" +
+                    "var link=Array.from(document.querySelectorAll('a[href*=\\\"/gallery/\\\"]'))" +
+                    ".filter(function(e){return e.textContent.indexOf('Nova-CI-Viewer')>=0;})[0];" +
+                    "if(link)link.click();return false;})()");
             final String tile = "button[aria-label=" + jsString(filename) + "]";
             until("media thumbnail in album", "!!document.querySelector(" + jsString(tile) + ")");
             assertTrue("Could not open real image", eval(

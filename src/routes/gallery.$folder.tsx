@@ -31,6 +31,7 @@ import { guessMimeFromName } from "@/lib/device-scan";
 import { ViewOptionsMenu } from "@/components/ViewOptionsMenu";
 import { useViewPrefs, sortRows } from "@/lib/view-prefs";
 import { galleryGridRange, galleryGridScrollTarget, galleryGridViewport, galleryGridTileSize } from "@/lib/gallery-grid-scroll";
+import { ViewerVideo } from "@/components/ViewerVideo";
 import { encodeCanvasJpegBase64 } from "@/lib/canvas-encode";
 
 export const Route = createFileRoute("/gallery/$folder")({
@@ -491,16 +492,11 @@ function MediaViewer({
             />
           </div>
         ) : (
-          <video
+          <ViewerVideo
+            key={item.id}
             src={item.url}
-            controls
-            autoPlay
-            onLoadedMetadata={(e) => {
-              const v = e.currentTarget;
-              setDims({ w: v.videoWidth, h: v.videoHeight });
-            }}
-            className="max-h-full max-w-full"
-            style={{ transform }}
+            onDimensions={(w, h) => setDims({ w, h })}
+            transform={transform}
           />
         )}
       </div>

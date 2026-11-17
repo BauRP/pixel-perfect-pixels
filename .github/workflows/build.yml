@@ -113,6 +113,15 @@ jobs:
           test -x android/gradlew || chmod +x android/gradlew
           test -n "${ANDROID_HOME:-}"
 
+      # Verify REAL debug/release BuildConfig values in separately compiled
+      # Android JVM runtimes, without installing or signing a release APK.
+      # Debug device instrumentation tests remain the on-emulator proof.
+      - name: Run compiled debug and release native-ad variant unit tests
+        working-directory: ./android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest :app:testReleaseUnitTest --stacktrace --no-daemon
+
       - name: Build Android APK
         working-directory: ./android
         env:
