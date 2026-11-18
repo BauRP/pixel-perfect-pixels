@@ -73,6 +73,9 @@ const KEY = "vault.lang";
 
 let listeners: (() => void)[] = [];
 const emit = () => listeners.forEach((l) => l());
+// In-app language selection must remain usable even if a WebView temporarily
+// rejects localStorage writes. No sensitive data is kept in this cache.
+let sessionLang: Lang | null = null;
 
 function isLang(v: unknown): v is Lang {
   return typeof v === "string" && SUPPORTED.has(v);
@@ -113,11 +116,13 @@ export function detectDeviceLang(): Lang {
 }
 
 export function hasLang(): boolean {
+  if (sessionLang !== null) return true;
   if (typeof window === "undefined") return false;
   try { return isLang(localStorage.getItem(KEY)); } catch { return false; }
 }
 
 export function getLang(): Lang {
+  if (sessionLang !== null) return sessionLang;
   if (typeof window === "undefined") return DEFAULT_LANG;
   try {
     const stored = localStorage.getItem(KEY);
@@ -129,6 +134,7 @@ export function getLang(): Lang {
 
 export function setLang(l: Lang) {
   const next: Lang = isLang(l) ? l : DEFAULT_LANG;
+  sessionLang = next;
   try { localStorage.setItem(KEY, next); } catch { /* private mode */ }
   applyDocumentDirection(next);
   emit();
@@ -158,9 +164,26 @@ export function ensureLangResolved(): Lang {
   return detected;
 }
 
+function onLangStorage(event: StorageEvent) {
+  if (event.key !== null && event.key !== KEY) return;
+  const previous = getLang();
+  // A true cross-tab storage event invalidates the session cache. This
+  // avoids an old language selection fighting a newer choice in another tab.
+  sessionLang = null;
+  const next = getLang();
+  applyDocumentDirection(next);
+  if (next !== previous) emit();
+}
+
 function subscribe(cb: () => void) {
+  if (listeners.length === 0 && typeof window !== "undefined")
+    window.addEventListener("storage", onLangStorage);
   listeners.push(cb);
-  return () => { listeners = listeners.filter((x) => x !== cb); };
+  return () => {
+    listeners = listeners.filter((x) => x !== cb);
+    if (listeners.length === 0 && typeof window !== "undefined")
+      window.removeEventListener("storage", onLangStorage);
+  };
 }
 
 export function useLang(): [Lang, (l: Lang) => void] {

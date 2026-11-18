@@ -189,6 +189,15 @@ async function rescanHandle(handle: FileSystemDirectoryHandle) {
       revokeAll();
       set({ albums: nextAlbums, scanned: true });
     }
+  } catch {
+    // A directory grant can be revoked between window focus and traversal.
+    // Stop automatic retries instead of producing uncaught rejections on
+    // every visibilitychange. Existing gallery items remain displayed.
+    if (watchedHandle === handle) {
+      watchedHandle = null;
+      try { fsObserver?.disconnect(); } catch { /* obsolete observer */ }
+      fsObserver = null;
+    }
   } finally {
     // Every unchanged scan previously leaked one Blob URL per photo on
     // focus/pageshow. Partial/failed walks leaked them too. Cleanup only
@@ -222,8 +231,14 @@ function startWatch(handle: FileSystemDirectoryHandle) {
       const obs = new Ctor(() => {
         if (watchedHandle) void rescanHandle(watchedHandle);
       });
-      void obs.observe(handle, { recursive: true });
       fsObserver = obs;
+      void obs.observe(handle, { recursive: true }).catch(() => {
+        // FileSystemObserver is optional; window focus remains a fallback.
+        if (fsObserver === obs) {
+          obs.disconnect();
+          fsObserver = null;
+        }
+      });
     } catch {
       fsObserver = null;
     }
