@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useSafePin } from "@/lib/pin-store";
 import { SafePinGate } from "@/components/SafePinGate";
+import { ViewerVideo } from "@/components/ViewerVideo";
 import { useBackHandler } from "@/lib/back-handler";
 import { toast } from "sonner";
 import { useDeviceScan, materializeFile, deviceScan, type ScannedItem } from "@/lib/device-scan";
@@ -68,10 +69,18 @@ function SafeFolderView() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [viewer, setViewer] = useState<{ file: EncryptedFile; url: string } | null>(null);
   const [confirmFile, setConfirmFile] = useState<EncryptedFile | null>(null);
+  // Closing a Safe preview also invalidates any slower previous decrypt.
+  // Authorization by key epoch alone does not detect an ordinary Close tap.
+  const previewGeneration = useRef(0);
+  const closeViewer = useCallback(() => {
+    previewGeneration.current++;
+    setViewer(null);
+  }, []);
+  useEffect(() => () => { previewGeneration.current++; }, []);
 
   // Hardware back: fullscreen media first, then the picker, then one level
   // up from the Safe folder to the Safe root.
-  useBackHandler(viewer !== null, useCallback(() => { setViewer(null); return true; }, []));
+  useBackHandler(viewer !== null, useCallback(() => { closeViewer(); return true; }, [closeViewer]));
   useBackHandler(viewer === null && pickerOpen,
     useCallback(() => { setPickerOpen(false); return true; }, []));
   useBackHandler(viewer === null && !pickerOpen,
@@ -95,10 +104,10 @@ function SafeFolderView() {
   // cleanup effect revokes plaintext object URLs after viewer closes.
   useEffect(() => {
     if (!gate) return;
-    setViewer(null);
+    closeViewer();
     setConfirmFile(null);
     setPickerOpen(false);
-  }, [gate]);
+  }, [gate, closeViewer]);
 
   // Async operations are authorized for one key epoch only. A later lock or
   // password change invalidates the token, including an immediate re-unlock.
@@ -200,15 +209,21 @@ function SafeFolderView() {
   };
 
   const openFile = async (f: EncryptedFile) => {
+    if (operationPending.current) return;
+    const request = ++previewGeneration.current;
     const accessToken = vault.captureAccessToken();
     try {
       requireSafeSession(accessToken);
       const blob = await vault.decryptFile(f);
       requireSafeSession(accessToken);
+      // A user may close, select another file, or lock the Safe while the
+      // older decrypt was running. Never revive a stale plaintext preview.
+      if (request !== previewGeneration.current) return;
       const url = URL.createObjectURL(blob);
-      setViewer({ file: f, url });
+      if (request !== previewGeneration.current) URL.revokeObjectURL(url);
+      else setViewer({ file: f, url });
     } catch {
-      toast.error(t("decryption_failed"));
+      if (request === previewGeneration.current) toast.error(t("decryption_failed"));
     }
   };
 
@@ -242,16 +257,19 @@ function SafeFolderView() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url; a.download = f.name; a.click();
-        // Some browsers begin the actual download after this event turn.
+        // Browsers do not expose whether a Save dialog was cancelled or the
+        // download was blocked. Keep the only encrypted copy in the Safe.
         setTimeout(() => URL.revokeObjectURL(url), 30_000);
       }
       // If the Safe locks while Android is writing the restored file,
       // preserve the encrypted original. A duplicate is recoverable; a
       // deleted only copy is not.
       requireSafeSession(accessToken);
-      vault.deleteFile(folder.id, f.id);
-      setViewer(null);
-      if (isNative()) void deviceScan.scan();
+      if (isNative()) {
+        vault.deleteFile(folder.id, f.id);
+        void deviceScan.scan();
+      }
+      closeViewer();
       toast.success(t("restored"));
     } catch (e) {
       toast.error((e as Error).message ?? t("restore_failed"));
@@ -484,7 +502,7 @@ function SafeFolderView() {
               </button>
               <button
                 type="button"
-                onClick={() => setViewer(null)}
+                onClick={closeViewer}
                 className="tap grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/10"
                 aria-label={t("close")}
                 title={t("close")}
@@ -497,7 +515,7 @@ function SafeFolderView() {
           <div className="flex flex-1 items-center justify-center overflow-hidden px-2"
             style={{ paddingBottom: "calc(var(--app-safe-bottom) + 0.5rem)" }}>
             {viewer.file.type.startsWith("video/") ? (
-              <video src={viewer.url} controls autoPlay className="max-h-full max-w-full" />
+              <ViewerVideo src={viewer.url} transform="" onDimensions={() => {}} />
             ) : viewer.file.type.startsWith("image/") ? (
               <img
                 src={viewer.url}
@@ -524,7 +542,7 @@ function SafeFolderView() {
           onConfirm={() => {
             vault.deleteFile(folder.id, confirmFile.id);
             setConfirmFile(null);
-            setViewer(null);
+            closeViewer();
             toast.success(t("deleted"));
           }}
         />

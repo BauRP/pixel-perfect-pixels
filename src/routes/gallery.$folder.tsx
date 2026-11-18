@@ -138,8 +138,15 @@ function FolderView() {
         toast.success(t("deleted_count", { n: confirmed.size }));
         if (isNative()) deviceScan.requestRescan();
       }
-      if (confirmed.size < targets.length) toast.error("Android could not confirm deletion. Files remain in the gallery.");
-      cancelSelect();
+      if (confirmed.size < targets.length) {
+        // Leave still-existing files selected so the user can retry after
+        // cancelling Android's system permission dialog. Never treat a
+        // cancelled deletion as a successful batch removal.
+        setSelected(new Set(targets.filter((it) => !confirmed.has(it.id)).map((it) => it.id)));
+        toast.error("Android could not confirm deletion. Files remain in the gallery.");
+      } else {
+        cancelSelect();
+      }
       setConfirmDelete(false);
     } finally {
       deletePending.current = false;

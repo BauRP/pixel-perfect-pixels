@@ -7,7 +7,7 @@ import { deviceScan, useDeviceScan, type ScannedAlbum } from "@/lib/device-scan"
 import { Loader2, Play, ImagePlus } from "lucide-react";
 import { useLang } from "@/lib/i18n";
 import { mediaAccessCopy } from "@/lib/media-access-copy";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ViewOptionsMenu } from "@/components/ViewOptionsMenu";
 import { useViewPrefs, sortRows } from "@/lib/view-prefs";
 import { resolveAdaptiveGridColumns } from "@/lib/adaptive-grid-columns";
@@ -37,13 +37,13 @@ function GalleryIndex() {
   const mediaPermission = useDeviceScan((s) => s.mediaPermission);
   const [lang] = useLang();
   const mediaText = mediaAccessCopy[lang];
-  const bootstrapped = useRef(false);
   const [filter, setFilter] = useState<Filter>("all");
 
   useEffect(() => {
-    if (bootstrapped.current) return;
-    bootstrapped.current = true;
     if (typeof window === "undefined") return;
+    // Effect cleanup always cancels the previous scan timer and listeners.
+    // A sticky bootstrapped ref suppressed the second StrictMode setup,
+    // leaving the gallery permanently empty in development/preview.
     // Always trigger a scan on mount. Object URLs, in-memory File handles
     // and (on Android) MediaStore permission grants do NOT survive an app
     // process kill or system-reclaimed restart, so rescan every cold-start
