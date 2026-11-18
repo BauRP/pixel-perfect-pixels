@@ -38,6 +38,33 @@ describe("Android fullscreen video decoder lifecycle", () => {
     expect(video.hasAttribute("src")).toBe(false);
   });
 
+  it("pauses the playing decoder while the app is backgrounded without discarding the video", () => {
+    const onDimensions = vi.fn();
+    const { container, unmount } = render(
+      <ViewerVideo src="blob:background" transform="" onDimensions={onDimensions} />,
+    );
+    const video = container.querySelector("video")!;
+    Object.defineProperty(video, "paused", { configurable: true, value: false });
+    const pause = vi.spyOn(video, "pause").mockImplementation(() => {});
+    const play = vi.spyOn(video, "play").mockResolvedValue(undefined);
+    const load = vi.spyOn(video, "load").mockImplementation(() => {});
+    const originalHidden = Object.getOwnPropertyDescriptor(document, "hidden");
+    try {
+      Object.defineProperty(document, "hidden", { configurable: true, value: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(pause).toHaveBeenCalledTimes(1);
+      expect(video.getAttribute("src")).toBe("blob:background");
+      Object.defineProperty(document, "hidden", { configurable: true, value: false });
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(play).toHaveBeenCalledTimes(1);
+    } finally {
+      if (originalHidden) Object.defineProperty(document, "hidden", originalHidden);
+      else delete (document as { hidden?: boolean }).hidden;
+      unmount();
+      expect(load).toHaveBeenCalledTimes(1);
+    }
+  });
+
   it("does not erase a newer URL if a video element is reused", () => {
     const onDimensions = vi.fn();
     const { container, rerender, unmount } = render(

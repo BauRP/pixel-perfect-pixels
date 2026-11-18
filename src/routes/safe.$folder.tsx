@@ -62,6 +62,9 @@ function SafeFolderView() {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [busy, setBusy] = useState(false);
+  // Synchronous guard: state updates alone cannot stop two simultaneous
+  // Safe imports or a restore racing with an import.
+  const operationPending = useRef(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [viewer, setViewer] = useState<{ file: EncryptedFile; url: string } | null>(null);
   const [confirmFile, setConfirmFile] = useState<EncryptedFile | null>(null);
@@ -113,24 +116,27 @@ function SafeFolderView() {
     );
   }
 
-  const onPick = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
+  const onPick = async (files: File[]) => {
+    if (files.length === 0 || operationPending.current) return;
+    operationPending.current = true;
     const accessToken = vault.captureAccessToken();
     setBusy(true);
     try {
       requireSafeSession(accessToken);
-      await vault.addFiles(folder.id, Array.from(files));
+      await vault.addFiles(folder.id, files);
       requireSafeSession(accessToken);
       toast.success(t("encrypted_count", { n: files.length }));
     } catch (e) {
       toast.error((e as Error).message ?? t("encryption_failed"));
     } finally {
+      operationPending.current = false;
       setBusy(false);
     }
   };
 
   const addFromGallery = async (items: ScannedItem[]) => {
-    if (items.length === 0) return;
+    if (items.length === 0 || operationPending.current) return;
+    operationPending.current = true;
     const accessToken = vault.captureAccessToken();
     setBusy(true);
     try {
@@ -188,6 +194,7 @@ function SafeFolderView() {
     } catch (e) {
       toast.error((e as Error).message ?? t("encryption_failed"));
     } finally {
+      operationPending.current = false;
       setBusy(false);
     }
   };
@@ -211,7 +218,8 @@ function SafeFolderView() {
    * gallery and to every other app again.
    */
   const restoreFromSafe = async (f: EncryptedFile) => {
-    if (busy) return;
+    if (operationPending.current) return;
+    operationPending.current = true;
     const accessToken = vault.captureAccessToken();
     setBusy(true);
     try {
@@ -221,17 +229,21 @@ function SafeFolderView() {
       if (isNative()) {
         const base64 = await blobToBase64(blob);
         requireSafeSession(accessToken);
-        await restoreToPublic({
+        const publishedPath = await restoreToPublic({
           base64,
           name: f.name,
           mime: f.type,
           relativePath: publicRelativeDir(f),
         });
+        // Never delete the only encrypted original when a broken bridge
+        // acknowledges a restore but provides no published public media.
+        if (!publishedPath) throw new Error(t("restore_failed"));
       } else {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url; a.download = f.name; a.click();
-        URL.revokeObjectURL(url);
+        // Some browsers begin the actual download after this event turn.
+        setTimeout(() => URL.revokeObjectURL(url), 30_000);
       }
       // If the Safe locks while Android is writing the restored file,
       // preserve the encrypted original. A duplicate is recoverable; a
@@ -244,6 +256,7 @@ function SafeFolderView() {
     } catch (e) {
       toast.error((e as Error).message ?? t("restore_failed"));
     } finally {
+      operationPending.current = false;
       setBusy(false);
     }
   };
@@ -371,7 +384,13 @@ function SafeFolderView() {
         multiple
         accept="image/*,video/*"
         className="hidden"
-        onChange={(e) => onPick(e.target.files)}
+        onChange={(e) => {
+          const files = Array.from(e.currentTarget.files ?? []);
+          // Reset after copying. Selecting the same file again must work,
+          // including after a denied permission or a failed import.
+          e.currentTarget.value = "";
+          void onPick(files);
+        }}
       />
 
       <GalleryPicker

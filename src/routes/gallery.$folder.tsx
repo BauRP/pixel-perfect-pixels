@@ -74,6 +74,9 @@ function FolderView() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [viewer, setViewer] = useState<ScannedItem | null>(null);
+  // Android has one system deletion dialog at a time. Keep UI operations
+  // single-flight as well, so repeated taps do not close another viewer.
+  const deletePending = useRef(false);
   const [prefs] = useViewPrefs("media");
 
   // Sorted media list — recomputed whenever the folder or the sort changes.
@@ -121,19 +124,26 @@ function FolderView() {
   const cancelSelect = () => { setSelectMode(false); setSelected(new Set()); };
 
   const doDelete = async () => {
+    if (deletePending.current) return;
     if (selected.size === 0) { cancelSelect(); setConfirmDelete(false); return; }
-    const targets = folder.items.filter((i) => selected.has(i.id));
-    const deleted = await purgeFromDevice(targets);
-    const confirmed = new Set(targets.filter((it) =>
-      deleted.has(it.nativeUri ?? it.path)).map((it) => it.id));
-    if (confirmed.size > 0) {
-      if (confirmed.size === folder.items.length) navigate({ to: "/" });
-      deviceScan.removeItems(folder.id, confirmed);
-      toast.success(t("deleted_count", { n: confirmed.size }));
+    deletePending.current = true;
+    try {
+      const targets = folder.items.filter((i) => selected.has(i.id));
+      const deleted = await purgeFromDevice(targets);
+      const confirmed = new Set(targets.filter((it) =>
+        deleted.has(it.nativeUri ?? it.path)).map((it) => it.id));
+      if (confirmed.size > 0) {
+        if (confirmed.size === folder.items.length) navigate({ to: "/" });
+        deviceScan.removeItems(folder.id, confirmed);
+        toast.success(t("deleted_count", { n: confirmed.size }));
+        if (isNative()) deviceScan.requestRescan();
+      }
+      if (confirmed.size < targets.length) toast.error("Android could not confirm deletion. Files remain in the gallery.");
+      cancelSelect();
+      setConfirmDelete(false);
+    } finally {
+      deletePending.current = false;
     }
-    if (confirmed.size < targets.length) toast.error("Android could not confirm deletion. Files remain in the gallery.");
-    cancelSelect();
-    setConfirmDelete(false);
   };
 
   /**
@@ -157,15 +167,24 @@ function FolderView() {
    * re-renders against a missing album and shows "Album unavailable".
    */
   const deleteFromViewer = async (item: ScannedItem) => {
-    const last = rawFolder ? rawFolder.items.length <= 1 : true;
-    setViewer(null);
-    const deleted = await purgeFromDevice([item]);
-    if (deleted.has(item.nativeUri ?? item.path)) {
-      if (last) navigate({ to: "/" });
-      deviceScan.removeItems(folder.id, new Set([item.id]));
-      toast.success(t("deleted"));
-    } else {
-      toast.error("Android could not confirm deletion. Files remain in the gallery.");
+    if (deletePending.current) return;
+    deletePending.current = true;
+    try {
+      const last = rawFolder ? rawFolder.items.length <= 1 : true;
+      const deleted = await purgeFromDevice([item]);
+      if (deleted.has(item.nativeUri ?? item.path)) {
+        // Never close the fullscreen viewer when Android's system delete
+        // consent was denied/cancelled: the original file still exists.
+        setViewer(null);
+        if (last) navigate({ to: "/" });
+        deviceScan.removeItems(folder.id, new Set([item.id]));
+        toast.success(t("deleted"));
+        if (isNative()) deviceScan.requestRescan();
+      } else {
+        toast.error("Android could not confirm deletion. Files remain in the gallery.");
+      }
+    } finally {
+      deletePending.current = false;
     }
   };
 

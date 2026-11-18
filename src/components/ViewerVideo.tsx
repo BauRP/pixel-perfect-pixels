@@ -17,7 +17,21 @@ export function ViewerVideo({ src, transform, onDimensions }: ViewerVideoProps) 
 
   useEffect(() => {
     const video = media.current;
+    if (!video) return;
+    let resumeWhenVisible = false;
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        resumeWhenVisible = !video.paused;
+        try { video.pause(); } catch { /* Suspended decoder. */ }
+      } else if (resumeWhenVisible) {
+        resumeWhenVisible = false;
+        // Resume only a player that was running before backgrounding.
+        void video.play().catch(() => { /* Browser can require a tap. */ });
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       if (!video) return;
       try { video.pause(); } catch { /* Older WebView can reject a stopped decoder. */ }
       // Guard against a changed URL on a reused element; never clear the new

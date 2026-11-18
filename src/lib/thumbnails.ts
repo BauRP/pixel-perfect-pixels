@@ -92,6 +92,16 @@ function waitForVideoEvent(video: HTMLVideoElement, eventName: string, limitMs: 
 }
 
 function boundedCanvasBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  // Older WebViews can decode images and draw canvas without canvas.toBlob.
+  // Our previews are at most 256px, so a small PNG fallback is safe here.
+  if (typeof canvas.toBlob !== "function") {
+    const data = canvas.toDataURL("image/png");
+    if (!data.startsWith("data:image/png;base64,")) return Promise.reject(new Error("thumbnail encoding failed"));
+    const binary = atob(data.slice("data:image/png;base64,".length));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return Promise.resolve(new Blob([bytes], { type: "image/png" }));
+  }
   return new Promise<Blob>((resolve, reject) => {
     let finished = false;
     const timer = setTimeout(() => {
@@ -108,8 +118,46 @@ function boundedCanvasBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   });
 }
 
+// Legacy Android Chromium versions can lack createImageBitmap entirely.
+async function renderLegacyImage(file: File): Promise<Blob> {
+  const url = URL.createObjectURL(file);
+  const image = new Image();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      let finished = false;
+      const done = (error?: Error) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        image.onload = null;
+        image.onerror = null;
+        if (error) reject(error); else resolve();
+      };
+      const timer = setTimeout(() => done(new Error("image decode timeout")), 8000);
+      image.onload = () => done();
+      image.onerror = () => done(new Error("image decode failed"));
+      image.src = url;
+    });
+    if (!image.naturalWidth || !image.naturalHeight) throw new Error("empty image");
+    const scale = Math.min(1, MAX_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no 2d ctx");
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return await boundedCanvasBlob(canvas);
+  } finally {
+    image.removeAttribute("src");
+    URL.revokeObjectURL(url);
+  }
+}
+
 async function renderImage(file: File): Promise<Blob> {
-  const bitmap = await createImageBitmap(file);
+  if (typeof createImageBitmap !== "function") return renderLegacyImage(file);
+  let bitmap: ImageBitmap;
+  try { bitmap = await createImageBitmap(file); }
+  catch { return renderLegacyImage(file); }
   try {
     const { width, height } = bitmap;
     const scale = Math.min(1, MAX_EDGE / Math.max(width, height));

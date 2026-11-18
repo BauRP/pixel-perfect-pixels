@@ -98,8 +98,10 @@ export function NativeAdTile({ columns }: { columns: number }) {
     overlayObserver.observe(document.body, {
       childList: true, subtree: true, attributes: true, attributeFilter: ["data-state"],
     });
-    const resize = new ResizeObserver(schedule);
-    resize.observe(el);
+    // Android 7-era WebViews can omit ResizeObserver. Window and viewport
+    // resize events remain functional, without breaking native ad placement.
+    const resize = typeof ResizeObserver === "function" ? new ResizeObserver(schedule) : null;
+    resize?.observe(el);
     scroller?.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", schedule);
     window.visualViewport?.addEventListener("resize", schedule);
@@ -114,7 +116,7 @@ export function NativeAdTile({ columns }: { columns: number }) {
       if (fallbackTimer !== null) clearTimeout(fallbackTimer);
       themeObserver.disconnect();
       overlayObserver.disconnect();
-      resize.disconnect();
+      resize?.disconnect();
       scroller?.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
       window.visualViewport?.removeEventListener("resize", schedule);
