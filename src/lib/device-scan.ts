@@ -254,12 +254,22 @@ async function scanWithPicker(): Promise<boolean> {
   }
   set({ scanning: true });
   const collected: { item: ScannedItem; path: string }[] = [];
-  await walkDir(root, root.name, collected);
-  const nextAlbums = groupMediaItems(collected);
-  dropRemovedThumbnails(nextAlbums);
-  revokeAll();
-  set({ albums: nextAlbums, scanning: false, scanned: true });
-  startWatch(root);
+  let published = false;
+  try {
+    await walkDir(root, root.name, collected);
+    const nextAlbums = groupMediaItems(collected);
+    dropRemovedThumbnails(nextAlbums);
+    revokeAll();
+    published = true;
+    set({ albums: nextAlbums, scanning: false, scanned: true });
+    startWatch(root);
+  } catch {
+    // Revoked browser folder permission cannot strand the loading spinner
+    // or erase a previously displayed album.
+    set({ scanning: false, scanned: true });
+  } finally {
+    if (!published) revokeObjectUrls(collected.map(({ item }) => item));
+  }
   return true;
 }
 
@@ -273,21 +283,29 @@ function scanWithInput(): Promise<void> {
     input.style.display = "none";
     input.onchange = async () => {
       const files = Array.from(input.files ?? []);
-      if (files.length === 0) { resolve(); return; }
-      set({ scanning: true });
-      await new Promise((r) => setTimeout(r, 0));
       const collected: { item: ScannedItem; path: string }[] = [];
-      for (const f of files) {
-        const path = (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
-        const item = toItem(f, path);
-        if (item) collected.push({ item, path });
+      let published = false;
+      try {
+        if (files.length === 0) return;
+        set({ scanning: true });
+        await new Promise(resolve => setTimeout(resolve, 0));
+        for (const f of files) {
+          const path = (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
+          const item = toItem(f, path);
+          if (item) collected.push({ item, path });
+        }
+        const nextAlbums = groupMediaItems(collected);
+        dropRemovedThumbnails(nextAlbums);
+        revokeAll();
+        published = true;
+        set({ albums: nextAlbums, scanning: false, scanned: true });
+      } catch {
+        set({ scanning: false, scanned: true });
+      } finally {
+        if (!published) revokeObjectUrls(collected.map(({ item }) => item));
+        input.remove();
+        resolve();
       }
-      const nextAlbums = groupMediaItems(collected);
-      dropRemovedThumbnails(nextAlbums);
-      revokeAll();
-      set({ albums: nextAlbums, scanning: false, scanned: true });
-      document.body.removeChild(input);
-      resolve();
     };
     input.oncancel = () => { document.body.removeChild(input); resolve(); };
     document.body.appendChild(input);

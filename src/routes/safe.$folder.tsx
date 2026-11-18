@@ -6,7 +6,7 @@ import {
   ArrowLeft, FileIcon, MoreVertical, Plus, Pencil, Trash2,
   ImageIcon, FileText, Film, Loader2, ArrowLeftToLine, X,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -19,9 +19,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useSafePin } from "@/lib/pin-store";
+import { safePin, useSafePin } from "@/lib/pin-store";
 import { SafePinGate } from "@/components/SafePinGate";
 import { ViewerVideo } from "@/components/ViewerVideo";
+import { encodeSafeRestoreBlob } from "@/lib/safe-restore-encode";
+import { nextSafePickerPage } from "@/lib/safe-picker-pagination";
 import { useBackHandler } from "@/lib/back-handler";
 import { toast } from "sonner";
 import { useDeviceScan, materializeFile, deviceScan, type ScannedItem } from "@/lib/device-scan";
@@ -242,7 +244,7 @@ function SafeFolderView() {
       const blob = await vault.decryptFile(f);
       requireSafeSession(accessToken);
       if (isNative()) {
-        const base64 = await blobToBase64(blob);
+        const base64 = await encodeSafeRestoreBlob(blob);
         requireSafeSession(accessToken);
         const publishedPath = await restoreToPublic({
           base64,
@@ -579,10 +581,23 @@ function GalleryPicker({
   const albums = useDeviceScan((s) => s.albums);
   const scanning = useDeviceScan((s) => s.scanning);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const flat: ScannedItem[] = [];
-  for (const a of albums) for (const it of a.items) flat.push(it);
+  const [pageSize, setPageSize] = useState(90);
+  // Render just a bounded initial page even with thousands of gallery files.
+  // Further files remain reachable by scrolling without losing selection.
+  const flat = useMemo(() => albums.flatMap(a => a.items), [albums]);
+  const shown = useMemo(() => flat.slice(0, pageSize), [flat, pageSize]);
 
-  useEffect(() => { if (!open) setSelected(new Set()); }, [open]);
+  useEffect(() => {
+    if (!open) { setSelected(new Set()); setPageSize(90); }
+  }, [open]);
+
+  const revealNextPage = (event: UIEvent<HTMLDivElement>) => {
+    const list = event.currentTarget;
+    if (list.scrollHeight - list.scrollTop - list.clientHeight <
+        Math.max(200, list.clientHeight / 2)) {
+      setPageSize(count => nextSafePickerPage(flat.length, count));
+    }
+  };
 
   const toggle = (id: string) => setSelected((prev) => {
     const n = new Set(prev);
@@ -598,14 +613,14 @@ function GalleryPicker({
             {t("select_media", { n: selected.size })}
           </PickerDialogTitle>
         </PickerDialogHeader>
-        <div className="max-h-[60vh] overflow-y-auto px-2">
+        <div className="max-h-[60vh] overflow-y-auto px-2" onScroll={revealNextPage}>
           {flat.length === 0 ? (
             <div className="p-8 text-center text-sm text-muted-foreground">
               {scanning ? t("scanning_device") : t("no_media_found")}
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-1 pb-3">
-              {flat.map((it) => {
+              {shown.map((it) => {
                 const isSel = selected.has(it.id);
                 return (
                   <button
@@ -649,17 +664,6 @@ function GalleryPicker({
       </PickerDialogContent>
     </PickerDialog>
   );
-}
-
-/** Read a Blob as raw base64 (no data-url prefix). */
-async function blobToBase64(blob: Blob): Promise<string> {
-  const buf = new Uint8Array(await blob.arrayBuffer());
-  let bin = "";
-  const CHUNK = 0x8000;
-  for (let i = 0; i < buf.length; i += CHUNK) {
-    bin += String.fromCharCode(...buf.subarray(i, i + CHUNK));
-  }
-  return btoa(bin);
 }
 
 /**
