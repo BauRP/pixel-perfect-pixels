@@ -206,7 +206,9 @@ async function rescanHandle(handle: FileSystemDirectoryHandle) {
     rescanInFlight = false;
     if (rescanQueued) {
       rescanQueued = false;
-      void rescanHandle(handle);
+      // A rejected directory permission invalidates the old handle.
+      // Never queue another read of that revoked directory indefinitely.
+      if (watchedHandle === handle) void rescanHandle(handle);
     }
   }
 }
@@ -322,7 +324,7 @@ function scanWithInput(): Promise<void> {
         resolve();
       }
     };
-    input.oncancel = () => { document.body.removeChild(input); resolve(); };
+    input.oncancel = () => { input.remove(); resolve(); };
     document.body.appendChild(input);
     input.click();
   });

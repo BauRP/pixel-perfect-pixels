@@ -18,5 +18,8 @@ describe("large Safe gallery picker", () => {
     expect(nextSafePickerPage(28, 90)).toBe(28);
     expect(nextSafePickerPage(120, 90)).toBe(120);
     expect(nextSafePickerPage(200, -1)).toBe(90);
+    expect(nextSafePickerPage(5000, 90, 90)).toBe(180);
+    expect(nextSafePickerPage(5000, 180, 90)).toBe(270);
+    expect(nextSafePickerPage(5000, 4990, 90)).toBe(5000);
   });
 });

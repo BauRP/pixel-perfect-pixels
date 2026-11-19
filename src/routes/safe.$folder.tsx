@@ -582,6 +582,7 @@ function GalleryPicker({
   const scanning = useDeviceScan((s) => s.scanning);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pageSize, setPageSize] = useState(90);
+  const pickerScrollRef = useRef<HTMLDivElement | null>(null);
   // Render just a bounded initial page even with thousands of gallery files.
   // Further files remain reachable by scrolling without losing selection.
   const flat = useMemo(() => albums.flatMap(a => a.items), [albums]);
@@ -599,6 +600,21 @@ function GalleryPicker({
     }
   };
 
+  useEffect(() => {
+    if (!open || pageSize >= flat.length) return;
+    // The first 90 items might not overflow a large tablet window. In that
+    // case no scroll event fires and all later files become unreachable.
+    // Reveal another bounded page only when the layout cannot scroll.
+    const frame = requestAnimationFrame(() => {
+      const list = pickerScrollRef.current;
+      if (list && list.clientHeight > 0 &&
+          list.scrollHeight <= list.clientHeight + 2) {
+        setPageSize(count => nextSafePickerPage(flat.length, count));
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open, pageSize, flat.length]);
+
   const toggle = (id: string) => setSelected((prev) => {
     const n = new Set(prev);
     if (n.has(id)) n.delete(id); else n.add(id);
@@ -613,7 +629,7 @@ function GalleryPicker({
             {t("select_media", { n: selected.size })}
           </PickerDialogTitle>
         </PickerDialogHeader>
-        <div className="max-h-[60vh] overflow-y-auto px-2" onScroll={revealNextPage}>
+        <div ref={pickerScrollRef} className="max-h-[60vh] overflow-y-auto px-2" onScroll={revealNextPage}>
           {flat.length === 0 ? (
             <div className="p-8 text-center text-sm text-muted-foreground">
               {scanning ? t("scanning_device") : t("no_media_found")}
