@@ -523,6 +523,12 @@ export const deviceScan = {
    */
   requestRescan() {
     if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+    if (!Capacitor.isNativePlatform()) {
+      // Browser focus/pageshow is NOT a user gesture. Never open another
+      // directory picker automatically; reuse the already-granted handle.
+      if (watchedHandle) void rescanHandle(watchedHandle);
+      return;
+    }
     if (rescanTimer !== null) clearTimeout(rescanTimer);
     rescanTimer = setTimeout(() => {
       rescanTimer = null;
@@ -534,6 +540,12 @@ export const deviceScan = {
     }, RESCAN_DEBOUNCE_MS);
   },
   async scan() {
+    if (!Capacitor.isNativePlatform() && watchedHandle) {
+      // A mounted route or focus after choosing a folder should rescan that
+      // same directory, not ask for a fresh permission grant on every visit.
+      await rescanHandle(watchedHandle);
+      return;
+    }
     if (state.scanning) {
       pendingAfterScan = true;
       return;

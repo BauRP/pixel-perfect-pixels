@@ -208,18 +208,35 @@ function FolderView() {
       toast.error(t("share_failed"));
       return;
     }
+    // Without Web Share level 2, only a single-file fallback was ever
+    // supported. Do not materialize an entire video album into JS memory
+    // just to share its first item.
+    const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
+    if (!nav.canShare) {
+      if (!nav.share) { toast.info(t("sharing_unsupported")); return; }
+      for (const it of folder.items) {
+        try {
+          const first = await materializeFile(it);
+          await nav.share({ files: [first], title: first.name });
+          return;
+        } catch {
+          // Cancelled share is not distinguishable from unsupported share
+          // without canShare(). Do not unexpectedly open another chooser.
+          return;
+        }
+      }
+      toast.info(t("sharing_unsupported"));
+      return;
+    }
     const files: File[] = [];
     for (const it of folder.items) {
       try { files.push(await materializeFile(it)); } catch { /* skip unreadable */ }
     }
-    // Native intent: Web Share API level 2 for files, mirroring Android
-    // ACTION_SEND_MULTIPLE / iOS UIActivityViewController.
-    const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
-    if (nav.canShare && nav.canShare({ files })) {
-      try { await nav.share({ files, title: folder.name }); return; } catch { /* cancelled */ return; }
+    if (files.length > 0 && nav.canShare({ files })) {
+      try { await nav.share({ files, title: folder.name }); return; } catch { return; }
     }
     if (files[0]) {
-      try { await nav.share?.({ files: [files[0]], title: files[0].name }); return; } catch { /* cancelled */ return; }
+      try { await nav.share?.({ files: [files[0]], title: files[0].name }); return; } catch { return; }
     }
     toast.info(t("sharing_unsupported"));
   };
