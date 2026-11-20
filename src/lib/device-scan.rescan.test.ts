@@ -81,11 +81,16 @@ describe("web gallery directory watcher keeps only live Blob URLs", () => {
     Object.defineProperty(document, "visibilityState", {
       value: "visible", configurable: true,
     });
-    const urls = [
-      "blob:kept-photo", "blob:kept-video",
-      "blob:temporary-photo", "blob:temporary-video", "blob:added-photo",
-    ];
-    URL.createObjectURL = vi.fn(() => urls.shift()!);
+    const reads = new Map<string, number>();
+    URL.createObjectURL = vi.fn((file: Blob) => {
+      const name = (file as File).name;
+      const count = reads.get(name) ?? 0;
+      reads.set(name, count + 1);
+      if (name === "new.jpg") return "blob:added-photo";
+      return count === 0
+        ? (name === "old.jpg" ? "blob:kept-photo" : "blob:kept-video")
+        : (name === "old.jpg" ? "blob:temporary-photo" : "blob:temporary-video");
+    });
     const revoke = vi.fn();
     URL.revokeObjectURL = revoke;
     const first = new File(["a"], "old.jpg", { type: "image/jpeg", lastModified: 1 });
