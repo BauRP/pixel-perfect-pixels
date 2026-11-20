@@ -75,11 +75,20 @@ const guessMime = guessMimeFromName;
  * or encrypted import, caching the whole media file can keep hundreds of MB
  * alive indefinitely. Small photos remain cached for convenient reuse.
  */
+// Share and Safe import may request the SAME native video at the same time.
+// One in-flight read/decode per item avoids duplicate full-size base64 copies
+// in the WebView. The promise is discarded after completion or failure;
+// large decoded Files are never kept alive by this map.
+const materializing = new WeakMap<ScannedItem, Promise<File>>();
+
 export async function materializeFile(item: ScannedItem): Promise<File> {
   if (item.file) return item.file;
+  const pending = materializing.get(item);
+  if (pending) return pending;
   if (!item.nativeUri) {
     throw new Error("Cannot read this file — no native URI available");
   }
+  const task = (async (): Promise<File> => {
   const res = await Filesystem.readFile({ path: item.nativeUri });
   // A single atob() of a large video creates a second, full-size binary
   // string and blocks the WebView JS thread until every byte is copied.
@@ -96,6 +105,15 @@ export async function materializeFile(item: ScannedItem): Promise<File> {
     (item as { file: File | null }).file = file;
   }
   return file;
+  })();
+  materializing.set(item, task);
+  try {
+    return await task;
+  } finally {
+    // Failed reads must be retryable, and completed large videos must not
+    // remain referenced by a settled promise in long-lived gallery state.
+    if (materializing.get(item) === task) materializing.delete(item);
+  }
 }
 
 // Retained handle for event-driven re-scan (native OS MediaStore observer analog).
@@ -176,6 +194,9 @@ async function rescanHandle(handle: FileSystemDirectoryHandle) {
   let adopted = false;
   try {
     await walkDir(handle, handle.name, collected);
+    // An older folder observer can finish after the user has replaced the
+    // directory grant. Its results must never overwrite the newer gallery.
+    if (watchedHandle !== handle) return;
     const nextIds = new Set(collected.map((c) => c.item.id));
     const currentIds = new Set(state.albums.flatMap((a) => a.items.map((i) => i.id)));
     const changed =
@@ -208,7 +229,7 @@ async function rescanHandle(handle: FileSystemDirectoryHandle) {
       rescanQueued = false;
       // A rejected directory permission invalidates the old handle.
       // Never queue another read of that revoked directory indefinitely.
-      if (watchedHandle === handle) void rescanHandle(handle);
+      if (watchedHandle) void rescanHandle(watchedHandle);
     }
   }
 }

@@ -46,4 +46,34 @@ describe("materialization cache of native media", () => {
     expect(await materializeFile(media)).toBe(media.file);
     expect(native.readFile).not.toHaveBeenCalled();
   });
+  it("coalesces simultaneous share and Safe reads without retaining large Files", async () => {
+    let complete!: (value: { data: string }) => void;
+    native.readFile.mockImplementationOnce(() => new Promise((resolve) => {
+      complete = resolve;
+    }));
+    const { materializeFile } = await import("./device-scan");
+    const media = item(20 * 1024 * 1024);
+    const share = materializeFile(media);
+    const safeImport = materializeFile(media);
+    expect(native.readFile).toHaveBeenCalledTimes(1);
+    complete({ data: "AQIDBA==" });
+    const [shared, imported] = await Promise.all([share, safeImport]);
+    expect(imported).toBe(shared);
+    expect(media.file).toBeNull();
+    await materializeFile(media);
+    expect(native.readFile).toHaveBeenCalledTimes(2);
+  });
+  it("releases failed in-flight reads so a permission retry can succeed", async () => {
+    native.readFile.mockRejectedValueOnce(new Error("transient read failure"));
+    const { materializeFile } = await import("./device-scan");
+    const media = item(20 * 1024 * 1024);
+    const first = materializeFile(media);
+    const second = materializeFile(media);
+    await expect(first).rejects.toThrow("transient read failure");
+    await expect(second).rejects.toThrow("transient read failure");
+    expect(native.readFile).toHaveBeenCalledTimes(1);
+    await expect(materializeFile(media)).resolves.toBeInstanceOf(File);
+    expect(native.readFile).toHaveBeenCalledTimes(2);
+  });
+
 });

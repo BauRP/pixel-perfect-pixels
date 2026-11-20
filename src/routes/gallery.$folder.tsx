@@ -60,6 +60,14 @@ function FolderView() {
   const t = useT();
   const navigate = useNavigate();
   const albums = useDeviceScan((s) => s.albums);
+  const scanned = useDeviceScan((s) => s.scanned);
+  const scanning = useDeviceScan((s) => s.scanning);
+  // Android may restore the app directly inside an album after process death.
+  // The root gallery is not mounted in that case, so it cannot start the
+  // MediaStore scan on our behalf. Restore the index once, without a picker.
+  useEffect(() => {
+    if (isNative() && !scanned && !scanning) void deviceScan.scan();
+  }, [scanned, scanning]);
   const rawFolder = albums.find((a) => a.id === folderId) ?? deviceScan.getAlbum(folderId);
   // Inherit the parent gallery filter strictly — photo tab hides all
   // videos and vice versa, matching the sibling folder grid on "/".
@@ -95,6 +103,16 @@ function FolderView() {
   useBackHandler(viewer === null, backToGallery);
 
   if (!folder) {
+    if (isNative() && (!scanned || scanning)) {
+      return (
+        <AppShell>
+          <ScreenHeader title={t("gallery")} />
+          <div className="flex justify-center px-8 pt-16">
+            <Loader2 size={22} className="animate-spin text-muted-foreground" />
+          </div>
+        </AppShell>
+      );
+    }
     return (
       <AppShell>
         <ScreenHeader

@@ -50,4 +50,31 @@ describe("web gallery directory watcher keeps only live Blob URLs", () => {
     expect(revokeUrl).toHaveBeenCalledWith("blob:first-displayed");
     expect(revokeUrl).not.toHaveBeenCalledWith("blob:changed-displayed");
   });
+  it("stops retrying a revoked folder and keeps the previous albums visible", async () => {
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible", configurable: true,
+    });
+    const revokeUrl = vi.fn();
+    URL.createObjectURL = vi.fn(() => "blob:displayed");
+    URL.revokeObjectURL = revokeUrl;
+    let grantRevoked = false;
+    const file = new File(["still here"], "camera.jpg", { lastModified: 11 });
+    const folder = {
+      name: "Pictures",
+      async *entries() {
+        if (grantRevoked) throw new Error("permission revoked");
+        yield ["camera.jpg", { kind: "file", getFile: async () => file }] as const;
+      },
+    } as unknown as FileSystemDirectoryHandle;
+    vi.stubGlobal("showDirectoryPicker", async () => folder);
+    const { deviceScan } = await import("./device-scan");
+    await deviceScan.scan();
+    const displayed = deviceScan.getAlbum("Pictures")?.items[0].url;
+    grantRevoked = true;
+    window.dispatchEvent(new Event("focus"));
+    await vi.waitFor(() => expect(deviceScan.getAlbum("Pictures")?.items[0].url).toBe(displayed));
+    // No gallery data or displayed URL should be removed when access expires.
+    expect(revokeUrl).not.toHaveBeenCalledWith(displayed);
+  });
+
 });
