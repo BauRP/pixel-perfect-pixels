@@ -151,4 +151,44 @@ describe("real Safe operations reject stale crypto results", () => {
     const saved = JSON.parse(localStorage.getItem("vault.store.v3") || "{}");
     expect(saved.folders[0].files).toEqual([]);
   });
+  it("protects a restored encrypted file and its folder until the native write completes", async () => {
+    mockCrypto.encrypt.mockResolvedValue({ iv: "iv", cipher: "ciphertext" });
+    const vault = await unlockedVault();
+    const folderId = vault.createFolder("Trips");
+    await vault.addFiles(folderId, [{
+      name: "trip.jpg", size: 3, type: "image/jpeg",
+      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+    } as File]);
+    const stored = JSON.parse(localStorage.getItem("vault.store.v3") || "{}");
+    const fileId = stored.folders[0].files[0].id as string;
+    const before = localStorage.getItem("vault.store.v3");
+    const release = vault.beginFileRestore(folderId, fileId);
+    expect(() => vault.beginFileRestore(folderId, fileId)).toThrow("already being restored");
+    expect(() => vault.deleteFile(folderId, fileId)).toThrow("being restored");
+    expect(() => vault.deleteFolder(folderId)).toThrow("being restored");
+    expect(localStorage.getItem("vault.store.v3")).toBe(before);
+    release();
+    release(); // finally cleanup must be safe even if called twice
+    vault.deleteFile(folderId, fileId);
+    expect(JSON.parse(localStorage.getItem("vault.store.v3") || "{}").folders[0].files).toEqual([]);
+  });
+
+  it("allows cancelling a pending Safe restore after a lock without deleting the original", async () => {
+    mockCrypto.encrypt.mockResolvedValue({ iv: "iv", cipher: "ciphertext" });
+    const vault = await unlockedVault();
+    const folderId = vault.createFolder("Private");
+    await vault.addFiles(folderId, [{
+      name: "movie.mp4", size: 2, type: "video/mp4",
+      arrayBuffer: async () => new Uint8Array([1, 2]).buffer,
+    } as File]);
+    const fileId = JSON.parse(localStorage.getItem("vault.store.v3") || "{}").folders[0].files[0].id;
+    const release = vault.beginFileRestore(folderId, fileId);
+    vault.lock();
+    expect(() => vault.deleteFile(folderId, fileId)).toThrow("locked");
+    release();
+    mockCrypto.unlock.mockResolvedValue(fileKey);
+    expect(await vault.verifyPassword("correct")).toBe(true);
+    expect(JSON.parse(localStorage.getItem("vault.store.v3") || "{}").folders[0].files).toHaveLength(1);
+  });
+
 });

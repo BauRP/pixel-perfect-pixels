@@ -84,6 +84,14 @@ let liveFileKey: CryptoKey | null = null;
 // Never allow a completed PBKDF2/decrypt request to reopen a locked Safe.
 let keyEpoch = 0;
 
+// While Android publishes a restored photo/video, the encrypted original is
+// the only verified copy. Prevent any other screen from deleting its folder
+// or file until the native write has succeeded or failed.
+const pendingRestores = new Set<string>();
+const restoreId = (folderId: string, fileId: string) => folderId + "/" + fileId;
+const folderHasPendingRestore = (folderId: string) =>
+  [...pendingRestores].some(id => id.startsWith(folderId + "/"));
+
 function persist(next: State) {
   if (typeof window === "undefined") return;
   const { unlocked: _u, ...rest } = next;
@@ -214,6 +222,8 @@ export const vault = {
   },
   deleteFolder: (id: string) => {
     requireUnlockedSafe();
+    if (folderHasPendingRestore(id))
+      throw new Error("Safe folder is being restored");
     const folder = state.folders.find((f) => f.id === id);
     if (!folder) return;
     // Commit the index first. On a storage failure the ciphertext remains
@@ -307,6 +317,8 @@ export const vault = {
   },
   deleteFile: (folderId: string, fileId: string) => {
     requireUnlockedSafe();
+    if (pendingRestores.has(restoreId(folderId, fileId)))
+      throw new Error("Safe file is being restored");
     const target = state.folders
       .find((f) => f.id === folderId)?.files.find((x) => x.id === fileId);
     if (!target) return;
@@ -317,6 +329,24 @@ export const vault = {
       ),
     }));
     if (target.blobPath) void removeBlob(target.blobPath);
+  },
+  /** Hold an encrypted original against concurrent deletion during an
+   * asynchronous restore. The caller MUST release it in finally, including
+   * on lock, navigation or a failed native restore. Never persisted. */
+  beginFileRestore: (folderId: string, fileId: string): (() => void) => {
+    requireUnlockedSafe();
+    if (!state.folders.some(folder => folder.id === folderId &&
+        folder.files.some(file => file.id === fileId)))
+      throw new Error("Safe file no longer exists");
+    const id = restoreId(folderId, fileId);
+    if (pendingRestores.has(id)) throw new Error("Safe file is already being restored");
+    pendingRestores.add(id);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      pendingRestores.delete(id);
+    };
   },
   /** Decrypt an encrypted file into a Blob for viewing. Requires unlock. */
   decryptFile: async (file: EncryptedFile): Promise<Blob> => {

@@ -432,8 +432,9 @@ async function walkNative(path: string, ctx: WalkCtx, isRoot: boolean): Promise<
 const isPermissionError = (m: string) => /permission|denied|EACCES|not allowed|security/i.test(m);
 const isMissingError = (m: string) => /does not exist|not found|ENOENT|no such/i.test(m);
 
-/** Resolves the media permission, asking at most once per scan; never reads storage without it. */
-async function ensureMediaPermission(): Promise<boolean> {
+/** Permission refusal and a broken native bridge are different outcomes.
+ * A temporary bridge failure must not erase previously displayed albums. */
+async function ensureMediaPermission(): Promise<"allowed" | "denied" | "unavailable"> {
   const { SecureVault } = await import("./native-vault");
   try {
     let { state: st } = await SecureVault.checkMediaPermission();
@@ -443,16 +444,21 @@ async function ensureMediaPermission(): Promise<boolean> {
     }
     set({ mediaPermission: st });
     console.info(SCAN_TAG, "media permission:", st);
-    return st === "granted" || st === "partial";
+    return st === "granted" || st === "partial" ? "allowed" : "denied";
   } catch (e) {
+    // No Android permission decision was received: keep the previous
+    // permission state and photos, and let the next foreground scan retry.
     console.warn(SCAN_TAG, "permission check unavailable:", errText(e));
-    set({ mediaPermission: "denied" });
-    return false;
+    return "unavailable";
   }
 }
 
 async function runNativeScan(): Promise<ScanResult> {
-  if (!(await ensureMediaPermission())) {
+  const permission = await ensureMediaPermission();
+  if (permission === "unavailable") {
+    return { status: "unavailable", albums: [], errors: ["media permission bridge unavailable"], roots: [] };
+  }
+  if (permission === "denied") {
     return { status: "permission_denied", albums: [], errors: ["media permission not granted"], roots: [] };
   }
   const { SecureVault } = await import("./native-vault");

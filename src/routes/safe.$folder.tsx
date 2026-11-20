@@ -238,9 +238,11 @@ function SafeFolderView() {
     if (operationPending.current) return;
     operationPending.current = true;
     const accessToken = vault.captureAccessToken();
+    let releaseRestore: (() => void) | null = null;
     setBusy(true);
     try {
       requireSafeSession(accessToken);
+      releaseRestore = vault.beginFileRestore(folder.id, f.id);
       const blob = await vault.decryptFile(f);
       requireSafeSession(accessToken);
       if (isNative()) {
@@ -268,6 +270,11 @@ function SafeFolderView() {
       // deleted only copy is not.
       requireSafeSession(accessToken);
       if (isNative()) {
+        // The original is removed only AFTER native publication and session
+        // validation. Release the deletion lease immediately before the
+        // synchronous metadata commit; another UI event cannot interleave.
+        releaseRestore?.();
+        releaseRestore = null;
         vault.deleteFile(folder.id, f.id);
         void deviceScan.scan();
       }
@@ -276,14 +283,20 @@ function SafeFolderView() {
     } catch (e) {
       toast.error((e as Error).message ?? t("restore_failed"));
     } finally {
+      releaseRestore?.();
       operationPending.current = false;
       setBusy(false);
     }
   };
 
   const doDeleteFolder = () => {
-    vault.deleteFolder(folder.id);
-    navigate({ to: "/safe" });
+    if (operationPending.current) return;
+    try {
+      vault.deleteFolder(folder.id);
+      navigate({ to: "/safe" });
+    } catch (e) {
+      toast.error((e as Error).message ?? t("delete"));
+    }
   };
 
   const openRename = () => {
@@ -333,7 +346,8 @@ function SafeFolderView() {
                 <Pencil size={16} className="mr-2" /> {t("rename")}
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => setConfirmDelete(true)}
+                disabled={busy}
+                onClick={() => { if (!operationPending.current) setConfirmDelete(true); }}
                 className="text-destructive focus:text-destructive"
               >
                 <Trash2 size={16} className="mr-2" /> {t("delete")}
@@ -386,8 +400,9 @@ function SafeFolderView() {
                   </div>
                 </button>
                 <button
-                  onClick={() => setConfirmFile(f)}
-                  className="tap grid place-items-center rounded-full text-destructive"
+                  onClick={() => { if (!operationPending.current) setConfirmFile(f); }}
+                  disabled={busy}
+                  className="tap grid place-items-center rounded-full text-destructive disabled:opacity-50"
                   aria-label={t("delete")}
                 >
                   <Trash2 size={18} />
@@ -495,8 +510,9 @@ function SafeFolderView() {
               </button>
               <button
                 type="button"
-                onClick={() => setConfirmFile(viewer.file)}
-                className="tap grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/10 text-red-400"
+                onClick={() => { if (!operationPending.current) setConfirmFile(viewer.file); }}
+                disabled={busy}
+                className="tap grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/10 text-red-400 disabled:opacity-50"
                 aria-label={t("delete")}
                 title={t("delete")}
               >
@@ -542,10 +558,15 @@ function SafeFolderView() {
           cancelLabel={t("cancel")}
           onCancel={() => setConfirmFile(null)}
           onConfirm={() => {
-            vault.deleteFile(folder.id, confirmFile.id);
-            setConfirmFile(null);
-            closeViewer();
-            toast.success(t("deleted"));
+            if (operationPending.current) return;
+            try {
+              vault.deleteFile(folder.id, confirmFile.id);
+              setConfirmFile(null);
+              closeViewer();
+              toast.success(t("deleted"));
+            } catch (e) {
+              toast.error((e as Error).message ?? t("delete"));
+            }
           }}
         />
       )}
@@ -580,6 +601,7 @@ function GalleryPicker({
   const t = useT();
   const albums = useDeviceScan((s) => s.albums);
   const scanning = useDeviceScan((s) => s.scanning);
+  const scanned = useDeviceScan((s) => s.scanned);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pageSize, setPageSize] = useState(90);
   const pickerScrollRef = useRef<HTMLDivElement | null>(null);
@@ -591,6 +613,12 @@ function GalleryPicker({
   useEffect(() => {
     if (!open) { setSelected(new Set()); setPageSize(90); }
   }, [open]);
+
+  useEffect(() => {
+    // The Safe can be opened directly after a cold Android start, without
+    // visiting the Gallery root that normally starts the MediaStore scan.
+    if (open && isNative() && !scanned && !scanning) void deviceScan.scan();
+  }, [open, scanned, scanning]);
 
   const revealNextPage = (event: UIEvent<HTMLDivElement>) => {
     const list = event.currentTarget;
