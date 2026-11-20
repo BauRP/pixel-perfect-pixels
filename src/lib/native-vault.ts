@@ -88,7 +88,14 @@ export async function deleteOriginals(paths: string[]): Promise<DeleteResult> {
     return { deleted: [], failed: paths };
   deleteInFlight = true;
   try {
-    return await SecureVault.deleteOriginals({ paths });
+    const requested = [...new Set(paths.filter(Boolean))];
+    const result = await SecureVault.deleteOriginals({ paths: requested });
+    // A malformed, late or partial bridge reply is never permission to
+    // remove any other item from the gallery or its encrypted index.
+    const reported = new Set(Array.isArray(result?.deleted) ? result.deleted : []);
+    const deleted = requested.filter(path => reported.has(path));
+    const confirmed = new Set(deleted);
+    return { deleted, failed: requested.filter(path => !confirmed.has(path)) };
   } catch {
     return { deleted: [], failed: paths };
   } finally {

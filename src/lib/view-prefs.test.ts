@@ -52,4 +52,16 @@ describe("gallery/media view preference resilience", () => {
     const written = JSON.parse(store.get("vault.viewprefs.v1")!);
     expect(written).toEqual({ folders: getPrefs("folders"), media: getPrefs("media") });
   });
+  it("keeps gallery sorting deterministic when MediaStore supplies invalid times or sizes", async () => {
+    const { sortRows } = await import("./view-prefs");
+    const items = [
+      { name: "a", size: Number.NaN, mtime: Number.POSITIVE_INFINITY, createdAt: 7 },
+      { name: "b", size: 10, mtime: 3 },
+      { name: "c", size: 20, mtime: 5 },
+    ];
+    expect(sortRows(items, "size", "asc").map(x => x.name)).toEqual(["a", "b", "c"]);
+    expect(sortRows(items, "modified", "asc").map(x => x.name)).toEqual(["b", "c", "a"]);
+    expect(items.map(x => x.name)).toEqual(["a", "b", "c"]);
+  });
+
 });

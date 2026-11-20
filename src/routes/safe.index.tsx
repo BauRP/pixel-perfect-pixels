@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/safe/")({
   head: () => ({
@@ -67,10 +68,14 @@ function SafeContent() {
   const create = () => {
     const n = newName.trim();
     if (!n) return;
-    const id = vault.createFolder(n);
-    setNewName("");
-    setCreateOpen(false);
-    navigate({ to: "/safe/$folder", params: { folder: id } });
+    try {
+      const id = vault.createFolder(n);
+      setNewName("");
+      setCreateOpen(false);
+      navigate({ to: "/safe/$folder", params: { folder: id } });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("encryption_failed"));
+    }
   };
 
   const openRename = () => {
@@ -81,15 +86,25 @@ function SafeContent() {
   const doRename = () => {
     const n = renameValue.trim();
     if (!n || !ctxTarget) return;
-    vault.renameFolder(ctxTarget.id, n);
-    setRenameOpen(false);
-    setCtxTarget(null);
+    try {
+      vault.renameFolder(ctxTarget.id, n);
+      setRenameOpen(false);
+      setCtxTarget(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("encryption_failed"));
+    }
   };
   const doDelete = () => {
     if (!ctxTarget) return;
-    vault.deleteFolder(ctxTarget.id);
-    setConfirmDelete(false);
-    setCtxTarget(null);
+    try {
+      // Another Safe view might currently be restoring this folder. The
+      // central store blocks deletion until the encrypted copy is safe.
+      vault.deleteFolder(ctxTarget.id);
+      setConfirmDelete(false);
+      setCtxTarget(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("encryption_failed"));
+    }
   };
 
   return (

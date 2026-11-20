@@ -36,4 +36,29 @@ describe("one outstanding system delete confirmation", () => {
       deleted: ["content://media/two"], failed: [],
     });
   });
+  it("accepts only actually requested native deletion confirmations", async () => {
+    mock.nativeDelete.mockResolvedValueOnce({
+      deleted: ["content://media/one", "content://media/foreign"],
+      failed: [],
+    });
+    const { deleteOriginals } = await import("./native-vault");
+    expect(await deleteOriginals(["content://media/one", "content://media/two"])).toEqual({
+      deleted: ["content://media/one"],
+      failed: ["content://media/two"],
+    });
+  });
+  it("treats malformed native delete replies as unconfirmed, then permits retry", async () => {
+    mock.nativeDelete.mockResolvedValueOnce({ deleted: null, failed: [] });
+    const { deleteOriginals } = await import("./native-vault");
+    expect(await deleteOriginals(["content://media/one"])).toEqual({
+      deleted: [], failed: ["content://media/one"],
+    });
+    mock.nativeDelete.mockResolvedValueOnce({
+      deleted: ["content://media/one"], failed: [],
+    });
+    expect(await deleteOriginals(["content://media/one"])).toEqual({
+      deleted: ["content://media/one"], failed: [],
+    });
+  });
+
 });

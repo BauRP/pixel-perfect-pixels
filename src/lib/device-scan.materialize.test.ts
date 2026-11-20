@@ -76,4 +76,13 @@ describe("materialization cache of native media", () => {
     expect(native.readFile).toHaveBeenCalledTimes(2);
   });
 
+  it("recognizes valid photos and videos when a MediaStore provider omits MIME", async () => {
+    const { inferNativeMediaKind } = await import("./device-scan");
+    expect(inferNativeMediaKind("", "Camera/IMG_0001.HEIC")).toBe("image");
+    expect(inferNativeMediaKind(null, "movie.MP4")).toBe("video");
+    expect(inferNativeMediaKind("application/octet-stream", "photo.webp")).toBe("image");
+    expect(inferNativeMediaKind("video/mp4", "unusual_extension")).toBe("video");
+    expect(inferNativeMediaKind("", "document.pdf")).toBeNull();
+  });
+
 });

@@ -69,6 +69,16 @@ export function guessMimeFromName(name: string): string {
 }
 const guessMime = guessMimeFromName;
 
+/** MediaStore providers sometimes omit MIME; keep known photo/video files
+ * available by their extension without accepting unknown binary formats. */
+export function inferNativeMediaKind(mime: string | null | undefined, name: string): ScannedItem["kind"] | null {
+  if (mime?.startsWith("image/")) return "image";
+  if (mime?.startsWith("video/")) return "video";
+  if (IMG.test(name)) return "image";
+  if (VID.test(name)) return "video";
+  return null;
+}
+
 /**
  * Lazily materialise a native-scanned item into a real File object.
  * Never retain a large decoded video in gallery album state: after a share
@@ -486,7 +496,7 @@ async function runNativeScan(): Promise<ScanResult> {
   const response = await SecureVault.getMediaItems();
   const entries: { item: ScannedItem; path: string }[] = [];
   await processInBatches(response.items, (media) => {
-    const kind = media.mime.startsWith("video/") ? "video" : media.mime.startsWith("image/") ? "image" : null;
+    const kind = inferNativeMediaKind(media.mime, media.name);
     if (!kind) return;
     const folder = media.relativePath.replace(/^\/+|\/+$/g, "") || "Pictures";
     const path = folder + "/" + media.name;

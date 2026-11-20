@@ -80,6 +80,14 @@ function FolderView() {
 
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const availableIds = useMemo(
+    () => new Set(folder?.items.map(item => item.id) ?? []),
+    [folder],
+  );
+  const liveSelected = useMemo(
+    () => new Set([...selected].filter(id => availableIds.has(id))),
+    [selected, availableIds],
+  );
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [viewer, setViewer] = useState<ScannedItem | null>(null);
   // Android has one system deletion dialog at a time. Keep UI operations
@@ -143,10 +151,10 @@ function FolderView() {
 
   const doDelete = async () => {
     if (deletePending.current) return;
-    if (selected.size === 0) { cancelSelect(); setConfirmDelete(false); return; }
+    if (liveSelected.size === 0) { cancelSelect(); setConfirmDelete(false); return; }
     deletePending.current = true;
     try {
-      const targets = folder.items.filter((i) => selected.has(i.id));
+      const targets = folder.items.filter((i) => liveSelected.has(i.id));
       const deleted = await purgeFromDevice(targets);
       const confirmed = new Set(targets.filter((it) =>
         deleted.has(it.nativeUri ?? it.path)).map((it) => it.id));
@@ -287,7 +295,7 @@ function FolderView() {
   return (
     <AppShell>
       <ScreenHeader
-        title={selectMode ? `${selected.size} ${t("selected")}` : folder.name}
+        title={selectMode ? `${liveSelected.size} ${t("selected")}` : folder.name}
         subtitle={selectMode ? undefined : `${folder.items.length} ${t("elements")}`}
         back={
           selectMode ? (
@@ -309,7 +317,7 @@ function FolderView() {
           selectMode ? (
             <button
               onClick={() => setConfirmDelete(true)}
-              disabled={selected.size === 0}
+              disabled={liveSelected.size === 0}
               className="tap grid h-10 w-10 place-items-center rounded-full disabled:opacity-50"
               style={{ background: "var(--color-surface)", color: "hsl(var(--destructive))" }}
               aria-label={t("delete")}
@@ -339,7 +347,7 @@ function FolderView() {
         items={sortedItems}
         columns={prefs.columns}
         selectMode={selectMode}
-        selected={selected}
+        selected={liveSelected}
         onTap={(item) => (selectMode ? toggle(item.id) : setViewer(item))}
         onLongTap={(item) => { if (!selectMode) { enterSelect(); toggle(item.id); } }}
       />
@@ -350,7 +358,7 @@ function FolderView() {
           <AlertDialogHeader>
             <AlertDialogTitle>{t("delete")}?</AlertDialogTitle>
             <AlertDialogDescription>
-              {t("delete_files_confirm", { n: selected.size })}
+              {t("delete_files_confirm", { n: liveSelected.size })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

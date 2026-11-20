@@ -144,13 +144,18 @@ export type Sortable = {
   size?: number;
 };
 
+function finiteOrZero(...values: (number | undefined)[]): number {
+  for (const value of values) if (typeof value === "number" && Number.isFinite(value)) return value;
+  return 0;
+}
+
 function valueOf(row: Sortable, field: SortField): number | string {
   switch (field) {
     case "name": return row.name.toLowerCase();
-    case "size": return row.size ?? 0;
-    case "modified": return row.mtime ?? row.createdAt ?? 0;
+    case "size": return finiteOrZero(row.size);
+    case "modified": return finiteOrZero(row.mtime, row.createdAt);
     case "created":
-    default: return row.createdAt ?? row.mtime ?? 0;
+    default: return finiteOrZero(row.createdAt, row.mtime);
   }
 }
 
