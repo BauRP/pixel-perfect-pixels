@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextSafePickerPage } from "./safe-picker-pagination";
+import { nextSafePickerPage, liveSafePickerIds } from "./safe-picker-pagination";
 
 describe("large Safe gallery picker", () => {
   it("makes 2500 items accessible without skipping or reordering", () => {
@@ -21,5 +21,16 @@ describe("large Safe gallery picker", () => {
     expect(nextSafePickerPage(5000, 90, 90)).toBe(180);
     expect(nextSafePickerPage(5000, 180, 90)).toBe(270);
     expect(nextSafePickerPage(5000, 4990, 90)).toBe(5000);
+  });
+});
+
+
+describe("Safe picker selection after gallery refresh", () => {
+  it("does not confirm media whose access was revoked or which were removed", () => {
+    const ids = liveSafePickerIds(new Set(["old", "new", "also-new"]), new Set(["new", "also-new"]));
+    expect([...ids]).toEqual(["new", "also-new"]);
+  });
+  it("shows no selected files after a full MediaStore permission revocation", () => {
+    expect(liveSafePickerIds(new Set(["private"]), new Set()).size).toBe(0);
   });
 });

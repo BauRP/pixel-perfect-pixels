@@ -5,3 +5,8 @@ export function nextSafePickerPage(total: number, visible: number, pageSize = 90
   const step = Number.isFinite(pageSize) ? Math.max(1, Math.floor(pageSize)) : 90;
   return Math.min(max, current + step);
 }
+
+/** Ignore ids no longer present after a gallery permission change or re-scan. */
+export function liveSafePickerIds(selected: ReadonlySet<string>, available: ReadonlySet<string>): Set<string> {
+  return new Set([...selected].filter(id => available.has(id)));
+}

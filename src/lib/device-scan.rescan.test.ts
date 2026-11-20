@@ -77,4 +77,46 @@ describe("web gallery directory watcher keeps only live Blob URLs", () => {
     expect(revokeUrl).not.toHaveBeenCalledWith(displayed);
   });
 
+  it("keeps live photo URLs and object identity when another photo appears", async () => {
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible", configurable: true,
+    });
+    const urls = [
+      "blob:kept-photo", "blob:kept-video",
+      "blob:temporary-photo", "blob:temporary-video", "blob:added-photo",
+    ];
+    URL.createObjectURL = vi.fn(() => urls.shift()!);
+    const revoke = vi.fn();
+    URL.revokeObjectURL = revoke;
+    const first = new File(["a"], "old.jpg", { type: "image/jpeg", lastModified: 1 });
+    const second = new File(["b"], "old.mp4", { type: "video/mp4", lastModified: 2 });
+    const third = new File(["c"], "new.jpg", { type: "image/jpeg", lastModified: 3 });
+    const listing = [first, second];
+    const folder = {
+      name: "Pictures",
+      async *entries() {
+        for (const file of listing) {
+          yield [file.name, { kind: "file", getFile: async () => file }] as const;
+        }
+      },
+    } as unknown as FileSystemDirectoryHandle;
+    vi.stubGlobal("showDirectoryPicker", async () => folder);
+    const { deviceScan } = await import("./device-scan");
+    await deviceScan.scan();
+    const originals = deviceScan.getAlbum("Pictures")!.items;
+    const originalPhoto = originals.find(i => i.name === "old.jpg")!;
+    const originalVideo = originals.find(i => i.name === "old.mp4")!;
+    listing.push(third);
+    window.dispatchEvent(new Event("focus"));
+    await vi.waitFor(() => expect(deviceScan.getAlbum("Pictures")?.items).toHaveLength(3));
+    const displayed = deviceScan.getAlbum("Pictures")!.items;
+    expect(displayed.find(i => i.name === "old.jpg")).toBe(originalPhoto);
+    expect(displayed.find(i => i.name === "old.mp4")).toBe(originalVideo);
+    expect(revoke).toHaveBeenCalledWith("blob:temporary-photo");
+    expect(revoke).toHaveBeenCalledWith("blob:temporary-video");
+    expect(revoke).not.toHaveBeenCalledWith("blob:kept-photo");
+    expect(revoke).not.toHaveBeenCalledWith("blob:kept-video");
+    expect(displayed.find(i => i.name === "new.jpg")?.url).toBe("blob:added-photo");
+  });
+
 });

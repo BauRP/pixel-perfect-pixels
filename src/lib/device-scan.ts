@@ -203,11 +203,29 @@ async function rescanHandle(handle: FileSystemDirectoryHandle) {
       nextIds.size !== currentIds.size ||
       [...nextIds].some((id) => !currentIds.has(id));
     if (changed) {
+      // Reusing unchanged items also reuses their live blob: URLs. Revoking
+      // every displayed URL on each new photo used to break an OPEN viewer
+      // and force all existing thumbnails to reload unnecessarily.
+      const previous = new Map(state.albums.flatMap(album =>
+        album.items.map(item => [item.id, item] as const)));
+      for (const entry of collected) {
+        const old = previous.get(entry.item.id);
+        if (!old || old.path !== entry.item.path) continue;
+        // A fresh scan generated a temporary URL, but the original still
+        // points to the same file revision and is used by active viewers.
+        if (entry.item.url.startsWith("blob:")) URL.revokeObjectURL(entry.item.url);
+        entry.item = old;
+      }
       const nextAlbums = groupMediaItems(collected);
-      // These URLs are now owned by the displayed album state.
+      const retainedUrls = new Set(collected.map(entry => entry.item.url));
+      // Only URLs which have actually disappeared may be revoked.
+      for (const old of previous.values()) {
+        if (old.url.startsWith("blob:") && !retainedUrls.has(old.url)) {
+          URL.revokeObjectURL(old.url);
+        }
+      }
       adopted = true;
       dropRemovedThumbnails(nextAlbums);
-      revokeAll();
       set({ albums: nextAlbums, scanned: true });
     }
   } catch {
@@ -444,7 +462,10 @@ async function ensureMediaPermission(): Promise<"allowed" | "denied" | "unavaila
     }
     set({ mediaPermission: st });
     console.info(SCAN_TAG, "media permission:", st);
-    return st === "granted" || st === "partial" ? "allowed" : "denied";
+    // "prompt" means Android has NOT decided yet, which is not the same
+    // as the user explicitly denying access. Never clear prior albums.
+    if (st === "granted" || st === "partial") return "allowed";
+    return st === "denied" ? "denied" : "unavailable";
   } catch (e) {
     // No Android permission decision was received: keep the previous
     // permission state and photos, and let the next foreground scan retry.

@@ -23,7 +23,7 @@ import { safePin, useSafePin } from "@/lib/pin-store";
 import { SafePinGate } from "@/components/SafePinGate";
 import { ViewerVideo } from "@/components/ViewerVideo";
 import { encodeSafeRestoreBlob } from "@/lib/safe-restore-encode";
-import { nextSafePickerPage } from "@/lib/safe-picker-pagination";
+import { liveSafePickerIds, nextSafePickerPage } from "@/lib/safe-picker-pagination";
 import { useBackHandler } from "@/lib/back-handler";
 import { toast } from "sonner";
 import { useDeviceScan, materializeFile, deviceScan, type ScannedItem } from "@/lib/device-scan";
@@ -608,6 +608,8 @@ function GalleryPicker({
   // Render just a bounded initial page even with thousands of gallery files.
   // Further files remain reachable by scrolling without losing selection.
   const flat = useMemo(() => albums.flatMap(a => a.items), [albums]);
+  const availableIds = useMemo(() => new Set(flat.map(item => item.id)), [flat]);
+  const liveSelected = useMemo(() => liveSafePickerIds(selected, availableIds), [selected, availableIds]);
   const shown = useMemo(() => flat.slice(0, pageSize), [flat, pageSize]);
 
   useEffect(() => {
@@ -654,7 +656,7 @@ function GalleryPicker({
       <PickerDialogContent className="rounded-3xl max-w-md p-0 overflow-hidden">
         <PickerDialogHeader className="px-4 pt-4 pb-2">
           <PickerDialogTitle className="text-base">
-            {t("select_media", { n: selected.size })}
+            {t("select_media", { n: liveSelected.size })}
           </PickerDialogTitle>
         </PickerDialogHeader>
         <div ref={pickerScrollRef} className="max-h-[60vh] overflow-y-auto px-2" onScroll={revealNextPage}>
@@ -665,7 +667,7 @@ function GalleryPicker({
           ) : (
             <div className="grid grid-cols-3 gap-1 pb-3">
               {shown.map((it) => {
-                const isSel = selected.has(it.id);
+                const isSel = liveSelected.has(it.id);
                 return (
                   <button
                     key={it.id}
@@ -699,10 +701,10 @@ function GalleryPicker({
         <PickerDialogFooter className="px-4 pb-3">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>{t("cancel")}</Button>
           <Button
-            onClick={() => onConfirm(flat.filter((f) => selected.has(f.id)))}
-            disabled={selected.size === 0}
+            onClick={() => onConfirm(flat.filter((f) => liveSelected.has(f.id)))}
+            disabled={liveSelected.size === 0}
           >
-            {selected.size > 0 ? t("add_with_count", { n: selected.size }) : t("add")}
+            {liveSelected.size > 0 ? t("add_with_count", { n: liveSelected.size }) : t("add")}
           </Button>
         </PickerDialogFooter>
       </PickerDialogContent>
