@@ -87,6 +87,10 @@ describe("web gallery directory watcher keeps only live Blob URLs", () => {
       const count = reads.get(name) ?? 0;
       reads.set(name, count + 1);
       if (name === "new.jpg") return "blob:added-photo";
+      // Other tests may leave a focus watcher attached in another module
+      // instance. Its unrelated camera.jpg must not reuse this test's URLs.
+      if (name !== "old.jpg" && name !== "old.mp4")
+        return `blob:unrelated-${name}-${count}`;
       return count === 0
         ? (name === "old.jpg" ? "blob:kept-photo" : "blob:kept-video")
         : (name === "old.jpg" ? "blob:temporary-photo" : "blob:temporary-video");
