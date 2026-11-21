@@ -229,6 +229,72 @@ public class AndroidCompatibilitySmokeTest {
         throw new AssertionError("unreachable");
     }
 
+    /**
+     * A genuine native ad failure must never prevent the actual gallery from
+     * opening Settings and returning. Only injects a test error on the live
+     * in-app NativeAds plugin, never requests a real ad or changes consent.
+     */
+    @Test
+    public void failingNativeAdCannotBlockGalleryNavigation() throws Exception {
+        awaitNativeLayout();
+        final AtomicReference<Throwable> failure = new AtomicReference<>();
+        scenario.getScenario().onActivity(activity -> {
+            try {
+                Object bridge = activity.getBridge();
+                assertNotNull(bridge);
+                Object handle = bridge.getClass()
+                        .getMethod("getPlugin", String.class).invoke(bridge, "NativeAds");
+                assertNotNull("NativeAds bridge must be registered", handle);
+                Object plugin = handle.getClass().getMethod("getInstance").invoke(handle);
+                assertTrue("Wrong live native ad instance", plugin instanceof NativeAdsPlugin);
+                java.lang.reflect.Method report = NativeAdsPlugin.class
+                        .getDeclaredMethod("reportAdFailure", int.class, String.class);
+                report.setAccessible(true);
+                report.invoke(plugin, -1999, "CI_NATIVE_AD_LOAD_FAILURE");
+            } catch (Throwable t) { failure.set(t); }
+        });
+        assertNull("Could not inject native SDK failure", failure.get());
+        assertTrue("Gallery DOM disappeared after an ad error",
+                webJsTrue("!!document.querySelector('[data-bottom-nav]')&&" +
+                        "!!document.querySelector('[data-ad-state]')"));
+        assertTrue("Settings nav did not accept tap after native ad error",
+                webJsTrue("(function(){var a=document.querySelector(" +
+                        "'[data-bottom-nav] a[href*=\\\"/settings\\\"]');" +
+                        "if(!a)return false;a.click();return true;})()"));
+        long deadline = SystemClock.elapsedRealtime() + 24_000L;
+        boolean settingsOpened = false;
+        while (SystemClock.elapsedRealtime() < deadline) {
+            if (webJsTrue("!!document.querySelector('[data-language-select-trigger]')" +
+                    "&&(location.pathname.indexOf('/settings')>=0||" +
+                    "location.hash.indexOf('/settings')>=0)")) {
+                settingsOpened = true;
+                break;
+            }
+            SystemClock.sleep(300);
+        }
+        assertTrue("Ad error blocked actual Settings navigation", settingsOpened);
+        Bitmap shot = androidx.test.platform.app.InstrumentationRegistry
+                .getInstrumentation().getUiAutomation().takeScreenshot();
+        assertNotNull("No painted Settings after native ad failure", shot);
+        try { assertTrue(RenderedSurfaceProbe.hasUiContrast(shot)); }
+        finally { shot.recycle(); }
+    }
+
+    private boolean webJsTrue(String expression) throws Exception {
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<String> response = new AtomicReference<>("");
+        scenario.getScenario().onActivity(activity -> {
+            WebView web = findWebView(activity.getWindow().getDecorView());
+            if (web == null) { done.countDown(); return; }
+            web.evaluateJavascript("(function(){try{return !!(" + expression +
+                    ");}catch(e){return false;}})()", value -> {
+                response.set(value);
+                done.countDown();
+            });
+        });
+        return done.await(2500L, TimeUnit.MILLISECONDS) && "true".equals(response.get());
+    }
+
     @Test
     public void webAppSafeAreaVariablesAndNavigationRender() throws Exception {
         com.getcapacitor.JSObject ui = awaitNativeLayout();

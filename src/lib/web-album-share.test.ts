@@ -52,3 +52,28 @@ describe("browser album sharing without unnecessary media decoding", () => {
     expect(share).toHaveBeenCalledTimes(1);
   });
 });
+
+
+describe("unavailable browser sharing permission", () => {
+  it("tries the lightweight single-file fallback when multi-file canShare throws", async () => {
+    const files = [new File(["a"], "a.jpg"), new File(["b"], "b.jpg")];
+    const canShare = vi.fn((d: ShareData) => {
+      if ((d.files?.length ?? 0) > 1) throw new DOMException("blocked", "SecurityError");
+      return true;
+    });
+    const share = vi.fn(async () => {});
+    const read = vi.fn();
+    expect(await shareWebAlbum(files.map(f => item(f.name, f)),
+      { canShare, share }, "Album", read)).toBe("shared");
+    expect(read).not.toHaveBeenCalled();
+    expect(share).toHaveBeenCalledWith({ files: [files[0]], title: "a.jpg" });
+  });
+  it("does not crash or open a share chooser if canShare always throws", async () => {
+    const file = new File(["a"], "a.jpg");
+    const share = vi.fn(async () => {});
+    expect(await shareWebAlbum([item(file.name, file)], {
+      share, canShare: () => { throw new Error("Web Share API unavailable"); },
+    }, "Album", async () => file)).toBe("unsupported");
+    expect(share).not.toHaveBeenCalled();
+  });
+});

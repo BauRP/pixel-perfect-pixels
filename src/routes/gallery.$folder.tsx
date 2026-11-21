@@ -597,6 +597,7 @@ function MediaViewer({
                     {(["none", "vintage", "bw", "compress"] as FilterPreset[]).map((p) => (
                       <button
                         key={p}
+                        data-filter-preset={p}
                         onClick={() => setPreset(p)}
                         className="tap shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold"
                         style={{

@@ -7,6 +7,14 @@ type ShareHost = {
 
 export type WebAlbumShareResult = "shared" | "cancelled" | "unsupported";
 
+// canShare can itself throw on restricted or old WebView browser contexts.
+// An error here must not escape the share button or leave the gallery stuck.
+function canShareFiles(host: ShareHost, files: File[]): boolean {
+  if (!host.canShare) return true;
+  try { return host.canShare({ files }); }
+  catch { return false; }
+}
+
 /** Try all already-open browser Files at once; never decode an entire
  * native-sized album to ask whether the browser can share it. If the browser
  * cannot share a whole album, try just one accessible File. A cancelled share
@@ -21,7 +29,7 @@ export async function shareWebAlbum(
   const files = items.map(item => item.file);
   if (host.canShare && files.every((file): file is File => file !== null)) {
     const allFiles = files as File[];
-    if (host.canShare({ files: allFiles })) {
+    if (canShareFiles(host, allFiles)) {
       try {
         await host.share({ files: allFiles, title });
         return "shared";
@@ -39,7 +47,7 @@ export async function shareWebAlbum(
     } catch {
       continue;
     }
-    if (host.canShare && !host.canShare({ files: [file] })) continue;
+    if (!canShareFiles(host, [file])) continue;
     try {
       await host.share({ files: [file], title: file.name });
       return "shared";

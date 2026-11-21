@@ -200,6 +200,10 @@ public class NativeAdsPlugin extends Plugin {
     }
 
     private void onConsentResolved() {
+        // The debug-only timeout is temporary. A real UMP response (including
+        // a denial or a privacy-options change) supersedes it immediately.
+        // Without this reset a late refusal could still allow test ad loads.
+        debugConsentFallback = false;
         consentResolved = true;
         if (consentInfo != null && consentInfo.canRequestAds()) initSdk();
         notifyListeners("consentUpdated", consentStatus(), true);
@@ -239,9 +243,14 @@ public class NativeAdsPlugin extends Plugin {
         call.resolve(consentStatus());
     }
 
+    static boolean effectiveAdPermission(boolean useTestAds, boolean debugFallback,
+            boolean umpAllowsAds) {
+        return umpAllowsAds || (useTestAds && debugFallback);
+    }
+
     private boolean canRequestAds() {
-        if (BuildConfig.USE_TEST_ADS && debugConsentFallback) return true;
-        return consentInfo != null && consentInfo.canRequestAds();
+        return effectiveAdPermission(BuildConfig.USE_TEST_ADS, debugConsentFallback,
+                consentInfo != null && consentInfo.canRequestAds());
     }
 
     @PluginMethod

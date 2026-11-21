@@ -43,6 +43,18 @@ public class NativeAdBuildPolicyTest {
     }
 
     @Test
+    public void realUmpDenialOverridesExpiredDebugPermission() {
+        assertTrue("Pending debug request may show test ad",
+                NativeAdsPlugin.effectiveAdPermission(true, true, false));
+        assertFalse("Debug fallback cleared by a completed UMP refusal",
+                NativeAdsPlugin.effectiveAdPermission(true, false, false));
+        assertFalse("Release never allows debug fallback",
+                NativeAdsPlugin.effectiveAdPermission(false, true, false));
+        assertTrue("Real permitted consent still works",
+                NativeAdsPlugin.effectiveAdPermission(false, false, true));
+    }
+
+    @Test
     public void consentSettingsAndBuildInfoMatchDebugPolicy() {
         // A different network type or launcher mode must never select an
         // actual production unit inside an unsigned debug APK.

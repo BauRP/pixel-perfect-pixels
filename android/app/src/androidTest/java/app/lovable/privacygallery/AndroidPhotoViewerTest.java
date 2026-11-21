@@ -219,6 +219,19 @@ public final class AndroidPhotoViewerTest {
                 for (int x = 0; x < decoded.getWidth(); x += 9)
                     if (decoded.getPixel(x, y) != firstPixel) otherPixels++;
             assertTrue("Exported photo has no visible fixture detail", otherPixels > 8);
+            // Also prove that the editor's black/white filter was actually
+            // baked into exported JPEG pixels, not merely CSS preview.
+            int gray = 0, total = 0;
+            for (int y = 8; y < decoded.getHeight() - 8; y += 11) {
+                for (int x = 8; x < decoded.getWidth() - 8; x += 11) {
+                    int pixel = decoded.getPixel(x, y);
+                    if (Math.abs(Color.red(pixel) - Color.green(pixel)) <= 12
+                            && Math.abs(Color.green(pixel) - Color.blue(pixel)) <= 12) gray++;
+                    total++;
+                }
+            }
+            assertTrue("Black-and-white filter was not exported into JPEG pixels",
+                    total > 20 && gray * 100 >= total * 90);
         } finally { decoded.recycle(); }
     }
 
@@ -346,6 +359,17 @@ public final class AndroidPhotoViewerTest {
                     "(function(){document.querySelector('[data-viewer-action=edit]')" +
                     ".click();return true;})()"));
             until("real Apply button", "!!document.querySelector('[data-viewer-apply]')");
+            assertTrue("Could not open real photo filters", eval(
+                    "(function(){document.querySelector('[data-viewer-action=filters]')" +
+                    ".click();return true;})()"));
+            until("black-and-white filter option",
+                    "!!document.querySelector('[data-filter-preset=bw]')");
+            assertTrue("Could not choose black-and-white", eval(
+                    "(function(){document.querySelector('[data-filter-preset=bw]')" +
+                    ".click();return true;})()"));
+            until("grayscale photo preview",
+                    "(function(){var img=document.querySelector('img[data-viewer-media]');" +
+                    "return !!(img&&img.style.filter.indexOf('grayscale(1)')>=0);})()");
             assertTrue("Could not invoke native image export", eval(
                     "(function(){document.querySelector('[data-viewer-apply]')" +
                     ".click();return true;})()"));
