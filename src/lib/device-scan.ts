@@ -19,6 +19,7 @@ import { processInBatches } from "./scan-batching";
 import { decodeBase64InBatches } from "./base64-batching";
 import { groupMediaItems, groupMediaItemsInBatches } from "./media-grouping";
 import { createRemovalMatcher } from "./media-removal-match";
+import { normalizeNativeMedia } from "./native-media-normalize";
 
 export type ScannedItem = {
   id: string;
@@ -72,8 +73,12 @@ const guessMime = guessMimeFromName;
 /** MediaStore providers sometimes omit MIME; keep known photo/video files
  * available by their extension without accepting unknown binary formats. */
 export function inferNativeMediaKind(mime: string | null | undefined, name: string): ScannedItem["kind"] | null {
-  if (mime?.startsWith("image/")) return "image";
-  if (mime?.startsWith("video/")) return "video";
+  const mimeValue = mime?.trim().toLowerCase() ?? "";
+  if (mimeValue.startsWith("image/")) return "image";
+  if (mimeValue.startsWith("video/")) return "video";
+  // Explicitly reported documents are not photos even if an OEM gives
+  // them an incorrect .jpg display name.
+  if (mimeValue && mimeValue !== "application/octet-stream") return null;
   if (IMG.test(name)) return "image";
   if (VID.test(name)) return "video";
   return null;
@@ -494,8 +499,13 @@ async function runNativeScan(): Promise<ScanResult> {
   }
   const { SecureVault } = await import("./native-vault");
   const response = await SecureVault.getMediaItems();
+  // A failed bridge response is not proof that all photos were deleted.
+  if (!response || !Array.isArray(response.items))
+    throw new Error("Android returned an invalid media list");
   const entries: { item: ScannedItem; path: string }[] = [];
-  await processInBatches(response.items, (media) => {
+  await processInBatches(response.items, (raw) => {
+    const media = normalizeNativeMedia(raw);
+    if (!media) return;
     const kind = inferNativeMediaKind(media.mime, media.name);
     if (!kind) return;
     const folder = media.relativePath.replace(/^\/+|\/+$/g, "") || "Pictures";

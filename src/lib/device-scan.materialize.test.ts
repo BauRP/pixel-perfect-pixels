@@ -83,6 +83,8 @@ describe("materialization cache of native media", () => {
     expect(inferNativeMediaKind("application/octet-stream", "photo.webp")).toBe("image");
     expect(inferNativeMediaKind("video/mp4", "unusual_extension")).toBe("video");
     expect(inferNativeMediaKind("", "document.pdf")).toBeNull();
+    expect(inferNativeMediaKind("application/pdf", "photo.jpg")).toBeNull();
+    expect(inferNativeMediaKind("IMAGE/JPEG", "photo")).toBe("image");
   });
 
 });
