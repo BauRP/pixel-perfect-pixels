@@ -176,6 +176,19 @@ export async function shareNativeAlbum(uris: string[], title: string): Promise<b
   return !!result.success;
 }
 
+/** A native bridge result is not automatically proof that an encrypted
+ * original can be discarded. Accept only public MediaStore image/video items
+ * or public Android storage destinations returned on Android 7-9. */
+export function isPublishedMediaDestination(path: unknown): path is string {
+  if (typeof path !== "string" || !path || /[\\x00-\\x1f\\x7f]/.test(path)) return false;
+  if (/^content:\/\/media\/[^/?#]+\/(?:images|video)\/media\/[1-9][0-9]*$/.test(path))
+    return true;
+  if (!/^\/(?:storage|sdcard|mnt\/sdcard)\//.test(path)) return false;
+  if (path.endsWith("/") || path.includes("//") ||
+      path.split("/").some(part => part === "." || part === "..")) return false;
+  return true;
+}
+
 /**
  * Write decrypted bytes back into public storage at their original relative
  * folder (e.g. "DCIM/Camera") and re-register them with the MediaStore.
@@ -188,8 +201,7 @@ export async function restoreToPublic(opts: {
   const path = res?.path;
   // Android 10+ returns a MediaStore URI, Android 7-9 an absolute path.
   // A bogus bridge reply must never authorize deleting the encrypted copy.
-  if (typeof path !== "string" ||
-      !(path.startsWith("content://") || path.startsWith("/")))
+  if (!isPublishedMediaDestination(path))
     throw new Error("Android did not confirm a published restored file");
   return path;
 }

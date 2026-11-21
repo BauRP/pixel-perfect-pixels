@@ -71,10 +71,19 @@ describe("native restore acknowledgement", () => {
     await expect(restoreToPublic(request)).resolves.toBe("content://media/external/images/media/77");
     mock.nativeRestore.mockResolvedValueOnce({path:"/storage/emulated/0/DCIM/photo.jpg"});
     await expect(restoreToPublic(request)).resolves.toBe("/storage/emulated/0/DCIM/photo.jpg");
+    mock.nativeRestore.mockResolvedValueOnce({path:"content://media/external_primary/video/media/321"});
+    await expect(restoreToPublic(request)).resolves.toBe("content://media/external_primary/video/media/321");
   });
   it("rejects fake and missing receipts so the Safe original is retained", async () => {
     const { restoreToPublic } = await import("./native-vault");
-    for (const value of [{path:"ok"},{path:""},{},null]) {
+    for (const value of [{path:"ok"},{path:""},{},null,
+      {path:"content://evilprovider/secret/1"},
+      {path:"content://media/external/images/media/not-an-id"},
+      {path:"content://media/external/images/media/1?anything"},
+      {path:"/data/data/app.private/secret.jpg"},
+      {path:"/"},
+      {path:"/storage/emulated/0/../private.jpg"},
+      {path:"/storage/emulated/0//Pictures/photo.jpg"}]) {
       mock.nativeRestore.mockResolvedValueOnce(value);
       await expect(restoreToPublic(request)).rejects.toThrow("did not confirm");
     }

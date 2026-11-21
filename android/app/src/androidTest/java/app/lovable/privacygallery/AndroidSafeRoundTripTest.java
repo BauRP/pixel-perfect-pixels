@@ -88,8 +88,21 @@ public final class AndroidSafeRoundTripTest {
             if (js(expression)) return;
             SystemClock.sleep(260L);
         }
+        // Only anonymous booleans: no private filenames, PIN, AES blobs,
+        // localStorage contents or native file paths in CI diagnostics.
+        String diagnostic = "";
+        if (stage.contains("encrypted metadata")) {
+            diagnostic = " (folderSaved=" + js("(function(){var x=JSON.parse(localStorage.getItem('vault.store.v3')||'{}');return !!(x.folders&&x.folders.some(function(f){return f.name==='Nova-CI-Safe'&&f.files.length>0}));})()") +
+                    ", nativeBlob=" + js("(function(){var x=JSON.parse(localStorage.getItem('vault.store.v3')||'{}');return !!(x.folders&&x.folders.some(function(f){return f.name==='Nova-CI-Safe'&&f.files.some(function(y){return !!y.blobPath})}));})()") +
+                    ", fileTile=" + js("!!document.querySelector('[data-safe-private-file]')") + ")";
+        } else if (stage.contains("AES decrypted")) {
+            diagnostic = " (viewer=" + js("!!document.querySelector('[data-safe-restore]')") +
+                    ", image=" + js("!!document.querySelector('[data-safe-decrypted-image]')") +
+                    ", imageLoaded=" + js("(function(){var x=document.querySelector('[data-safe-decrypted-image]');return !!(x&&x.complete&&x.naturalWidth>0);})()") +
+                    ", pinGate=" + js("!!document.querySelector('[data-safe-pin-gate]')") + ")";
+        }
         fail("Safe full round-trip failed at " + stage + " on Android API "
-                + Build.VERSION.SDK_INT);
+                + Build.VERSION.SDK_INT + diagnostic);
     }
 
     private void enterPin() throws Exception {
@@ -188,12 +201,19 @@ public final class AndroidSafeRoundTripTest {
             enterPin();
             until("encrypted file indexed after restart",
                     "!!document.querySelector('[data-safe-private-file]')");
-            assertTrue("Cannot open encrypted file", js(
-                    "(function(){document.querySelector('[data-safe-private-file]')" +
-                    ".click();return true;})()"));
+            // Older WebViews can drop a synthetic click without opening the
+            // real Safe tile. Retry through the normal onClick handler at
+            // most twice; never bypass PIN/AES or directly assign the viewer.
+            assertTrue("Cannot find encrypted Safe tile", js(
+                    "!!document.querySelector('[data-safe-private-file]')"));
             until("AES decrypted PNG visible in private viewer",
                     "(function(){var x=document.querySelector('[data-safe-decrypted-image]');" +
-                    "return !!(x&&x.complete&&x.naturalWidth===2&&x.naturalHeight===2);})()");
+                    "if(x)return !!(x.complete&&x.naturalWidth===2&&x.naturalHeight===2);" +
+                    "var now=Date.now(),n=window.__novaSafeTapCount||0,last=window.__novaSafeTapAt||0;" +
+                    "if(n<3&&now-last>1500){" +
+                    "window.__novaSafeTapAt=now;window.__novaSafeTapCount=n+1;" +
+                    "var b=document.querySelector('[data-safe-private-file]');if(b)b.click();}" +
+                    "return false;})()");
             assertTrue("Restore button did not respond", js(
                     "(function(){document.querySelector('[data-safe-restore]')" +
                     ".click();return true;})()"));
