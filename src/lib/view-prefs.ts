@@ -76,10 +76,21 @@ function load(): Record<Scope, ViewPrefs> {
 }
 
 function save(next: Record<Scope, ViewPrefs>) {
-  cache = next;
+  const previous = load();
+  // Repeatedly choosing the same layout should not write to localStorage
+  // or notify every gallery tile again.
+  if (samePrefs(previous.folders, next.folders) &&
+      samePrefs(previous.media, next.media)) return;
   if (typeof window !== "undefined") {
-    try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* quota */ }
+    try {
+      localStorage.setItem(KEY, JSON.stringify(next));
+    } catch {
+      // A full or inaccessible WebView storage must not pretend the change
+      // has been saved. Keep the last known durable snapshot unchanged.
+      return;
+    }
   }
+  cache = next;
   emit();
 }
 

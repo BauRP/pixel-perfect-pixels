@@ -10,6 +10,8 @@ const SESSION_KEY = "vault.safe.unlocked.session";
 
 type Stored = { salt: string; hash: string };
 let listeners: (() => void)[] = [];
+// Invalidates slow PIN hashes when the Safe locks or its PIN changes.
+let pinGeneration = 0;
 const emit = () => listeners.forEach((l) => l());
 
 function read(): Stored | null {
@@ -35,17 +37,25 @@ function randSalt(): string {
 export const safePin = {
   hasPin(): boolean { return read() !== null; },
   async setPin(pin: string): Promise<void> {
+    const generation = pinGeneration;
     const salt = randSalt();
     const h = await hash(pin, salt);
+    if (generation !== pinGeneration) throw new Error("Safe was locked during PIN update");
     localStorage.setItem(KEY, JSON.stringify({ salt, hash: h }));
+    pinGeneration++;
     sessionStorage.setItem(SESSION_KEY, "1");
     emit();
   },
   async verify(pin: string): Promise<boolean> {
+    const generation = pinGeneration;
     const s = read();
     if (!s) return false;
     const h = await hash(pin, s.salt);
-    const ok = h === s.hash;
+    // A slow hash must never re-enable a session after lock/reset, or
+    // after the PIN changes in another window.
+    const current = read();
+    const ok = generation === pinGeneration && current?.salt === s.salt &&
+      current?.hash === s.hash && h === s.hash;
     if (ok) sessionStorage.setItem(SESSION_KEY, "1");
     return ok;
   },
@@ -61,6 +71,7 @@ export const safePin = {
     }
   },
   lock(): void {
+    pinGeneration++;
     if (typeof window === "undefined") return;
     sessionStorage.removeItem(SESSION_KEY);
     // UI lock MUST also invalidate the in-memory AES key and any in-flight
@@ -69,6 +80,7 @@ export const safePin = {
     emit();
   },
   reset(): void {
+    pinGeneration++;
     localStorage.removeItem(KEY);
     sessionStorage.removeItem(SESSION_KEY);
     vault.lock();

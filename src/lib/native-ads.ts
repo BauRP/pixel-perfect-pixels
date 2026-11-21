@@ -179,7 +179,8 @@ function clearDeadline() {
 const eligible = () => foreground && screenActive > 0 && state !== "LOADED";
 
 function scheduleRetry() {
-  if (retryTimer !== null || !eligible() || net !== "online") return;
+  // A late SDK error cannot create another timer after UMP consent is gone.
+  if (!canRequestAds || retryTimer !== null || !eligible() || net !== "online") return;
   const delay = backoffDelay(attempt);
   attempt += 1;
   retryTimer = setTimeout(() => {
@@ -217,7 +218,8 @@ function onAdLoaded() {
   attempt = 0;
   // A late ad must never be displayed after consent changes.
   if (!canRequestAds) {
-    setState("CONSENT_REQUIRED", "late ad discarded after consent changed");
+    if (state !== "CONSENT_REQUIRED" && state !== "CONSENT_PENDING")
+      setState("CONSENT_REQUIRED", "late ad discarded after consent changed");
     void NativeAds.destroy().catch(() => {});
     return;
   }
@@ -258,6 +260,9 @@ function onAdGone() {
 function onAdFailed(noFill: boolean, detail = "") {
   requestInFlight = false;
   clearDeadline();
+  // SDK callbacks can arrive after the user withdraws consent. Keep the
+  // actual UMP status instead of presenting an unrelated network/ad error.
+  if (!canRequestAds || state === "CONSENT_REQUIRED" || state === "CONSENT_PENDING") return;
   if (state === "LOADED") return;
   if (net === "none") setState("NO_INTERNET", detail);
   else if (net === "unvalidated") setState("WAITING_FOR_NETWORK", detail);

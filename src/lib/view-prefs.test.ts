@@ -1,13 +1,21 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 const store = new Map<string, string>();
+let writes = 0;
+let blocked = false;
 beforeEach(() => {
   vi.resetModules();
   store.clear();
+  writes = 0;
+  blocked = false;
   vi.stubGlobal("window", {});
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => store.get(key) ?? null,
-    setItem: (key: string, value: string) => { store.set(key, value); },
+    setItem: (key: string, value: string) => {
+      writes++;
+      if (blocked) throw new Error("quota exceeded");
+      store.set(key, value);
+    },
   });
 });
 afterEach(() => { vi.unstubAllGlobals(); });
@@ -62,6 +70,28 @@ describe("gallery/media view preference resilience", () => {
     expect(sortRows(items, "size", "asc").map(x => x.name)).toEqual(["a", "b", "c"]);
     expect(sortRows(items, "modified", "asc").map(x => x.name)).toEqual(["b", "c", "a"]);
     expect(items.map(x => x.name)).toEqual(["a", "b", "c"]);
+  });
+
+  it("keeps saved layout settings unchanged when storage rejects a write", async () => {
+    const { getPrefs, setPrefs } = await import("./view-prefs");
+    setPrefs("folders", { columns: 4 });
+    const before = getPrefs("folders");
+    blocked = true;
+    setPrefs("folders", { columns: 2 });
+    expect(getPrefs("folders")).toEqual(before);
+    blocked = false;
+    setPrefs("folders", { columns: 2 });
+    expect(getPrefs("folders").columns).toBe(2);
+  });
+
+  it("does not re-save or notify for a repeated identical grid preference", async () => {
+    const { getPrefs, setPrefs } = await import("./view-prefs");
+    setPrefs("media", { field: "name" });
+    expect(writes).toBe(1);
+    const reference = getPrefs("media");
+    setPrefs("media", { field: "name" });
+    expect(writes).toBe(1);
+    expect(getPrefs("media")).toBe(reference);
   });
 
 });
