@@ -205,6 +205,21 @@ public final class AndroidPhotoViewerTest {
         assertEquals("Rotated JPEG must have swapped width", 112, dimensions.outWidth);
         assertEquals("Rotated JPEG must have swapped height", 160, dimensions.outHeight);
         assertEquals("Export format must be JPEG", "image/jpeg", dimensions.outMimeType);
+        Bitmap decoded;
+        try (java.io.InputStream stream = resolver.openInputStream(editedUri)) {
+            assertNotNull("Exported JPEG cannot be decoded", stream);
+            decoded = BitmapFactory.decodeStream(stream);
+        }
+        assertNotNull("Exported JPEG has no pixels", decoded);
+        try {
+            assertEquals(112, decoded.getWidth());
+            assertEquals(160, decoded.getHeight());
+            int firstPixel = decoded.getPixel(4, 4), otherPixels = 0;
+            for (int y = 0; y < decoded.getHeight(); y += 9)
+                for (int x = 0; x < decoded.getWidth(); x += 9)
+                    if (decoded.getPixel(x, y) != firstPixel) otherPixels++;
+            assertTrue("Exported photo has no visible fixture detail", otherPixels > 8);
+        } finally { decoded.recycle(); }
     }
 
     private void cleanupOwnImage() {

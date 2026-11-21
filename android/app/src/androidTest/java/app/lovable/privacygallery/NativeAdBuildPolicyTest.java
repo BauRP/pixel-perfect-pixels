@@ -34,6 +34,15 @@ public class NativeAdBuildPolicyTest {
     }
 
     @Test
+    public void resolvedConsentDenialCannotEnableDebugAdFallback() {
+        assertTrue(NativeAdsPlugin.canUsePendingDebugFallback(true, 10_000L, false, false));
+        assertFalse(NativeAdsPlugin.canUsePendingDebugFallback(true, 10_000L, true, false));
+        assertFalse(NativeAdsPlugin.canUsePendingDebugFallback(false, 10_000L, false, false));
+        assertFalse(NativeAdsPlugin.canUsePendingDebugFallback(true, 0L, false, false));
+        assertFalse(NativeAdsPlugin.canUsePendingDebugFallback(true, 10_000L, false, true));
+    }
+
+    @Test
     public void consentSettingsAndBuildInfoMatchDebugPolicy() {
         // A different network type or launcher mode must never select an
         // actual production unit inside an unsigned debug APK.

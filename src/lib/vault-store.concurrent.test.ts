@@ -191,4 +191,36 @@ describe("real Safe operations reject stale crypto results", () => {
     expect(JSON.parse(localStorage.getItem("vault.store.v3") || "{}").folders[0].files).toHaveLength(1);
   });
 
+  it("does not delete the destination while two encrypted imports are active", async () => {
+    const vault = await unlockedVault();
+    const id = vault.createFolder("Family");
+    let finishFirst!: (bytes: ArrayBuffer) => void;
+    let finishSecond!: (bytes: ArrayBuffer) => void;
+    mockCrypto.encrypt.mockResolvedValue({ iv: "iv", cipher: "encrypted" });
+    const media = (name: string, save: (f: (bytes: ArrayBuffer) => void) => void) =>
+      ({ name, type: "image/jpeg", size: 3,
+        arrayBuffer: () => new Promise<ArrayBuffer>(resolve => save(resolve)) }) as File;
+    const one = vault.addFiles(id, [media("one.jpg", f => { finishFirst = f; })]);
+    const two = vault.addFiles(id, [media("two.jpg", f => { finishSecond = f; })]);
+    expect(() => vault.deleteFolder(id)).toThrow("being imported");
+    finishFirst(new Uint8Array([1,2,3]).buffer);
+    await one;
+    expect(() => vault.deleteFolder(id)).toThrow("being imported");
+    finishSecond(new Uint8Array([4,5,6]).buffer);
+    await two;
+    expect(JSON.parse(localStorage.getItem("vault.store.v3") || "{}").folders[0].files).toHaveLength(2);
+    vault.deleteFolder(id);
+    expect(JSON.parse(localStorage.getItem("vault.store.v3") || "{}").folders).toEqual([]);
+  });
+  it("allows deleting a Safe folder after a failed encrypted import", async () => {
+    const vault = await unlockedVault();
+    const id = vault.createFolder("Retry");
+    mockCrypto.encrypt.mockRejectedValueOnce(new Error("cipher error"));
+    const media = { name: "bad.jpg", type: "image/jpeg", size: 1,
+      arrayBuffer: async () => new Uint8Array([7]).buffer } as File;
+    await expect(vault.addFiles(id, [media])).rejects.toThrow("cipher error");
+    vault.deleteFolder(id);
+    expect(JSON.parse(localStorage.getItem("vault.store.v3") || "{}").folders).toEqual([]);
+  });
+
 });

@@ -88,6 +88,8 @@ let keyEpoch = 0;
 // the only verified copy. Prevent any other screen from deleting its folder
 // or file until the native write has succeeded or failed.
 const pendingRestores = new Set<string>();
+const pendingImports = new Map<string, number>();
+const folderHasPendingImport = (id: string) => (pendingImports.get(id) ?? 0) > 0;
 const restoreId = (folderId: string, fileId: string) => folderId + "/" + fileId;
 const folderHasPendingRestore = (folderId: string) =>
   [...pendingRestores].some(id => id.startsWith(folderId + "/"));
@@ -224,6 +226,8 @@ export const vault = {
     requireUnlockedSafe();
     if (folderHasPendingRestore(id))
       throw new Error("Safe folder is being restored");
+    if (folderHasPendingImport(id))
+      throw new Error("Safe folder is being imported");
     const folder = state.folders.find((f) => f.id === id);
     if (!folder) return;
     // Commit the index first. On a storage failure the ciphertext remains
@@ -251,6 +255,7 @@ export const vault = {
     if (!importKey || !state.unlocked) throw new Error("Vault is locked");
     if (!state.folders.some((f) => f.id === folderId))
       throw new Error("Vault folder no longer exists");
+    pendingImports.set(folderId, (pendingImports.get(folderId) ?? 0) + 1);
     const encrypted: EncryptedFile[] = [];
     const writtenBlobs: string[] = [];
     // Cancel at every awaited boundary. Previously a lock during a large
@@ -313,6 +318,10 @@ export const vault = {
       // import's newly written ciphertext. Existing Safe files untouched.
       for (const blobPath of writtenBlobs) await removeBlob(blobPath);
       throw error;
+    } finally {
+      const count = (pendingImports.get(folderId) ?? 1) - 1;
+      if (count > 0) pendingImports.set(folderId, count);
+      else pendingImports.delete(folderId);
     }
   },
   deleteFile: (folderId: string, fileId: string) => {

@@ -195,8 +195,13 @@ public final class AndroidVideoViewerTest {
             until("actual decoded video playback advances", "(function(){" +
                     "var v=document.querySelector('video[data-viewer-media]');" +
                     "return !!(v&&!v.paused&&v.currentTime>0.15&&v.videoWidth===64);})()");
-            assertNotNull("Actual video was not painted to Android compositor",
-                    InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot());
+            android.graphics.Bitmap screenshot = InstrumentationRegistry.getInstrumentation()
+                    .getUiAutomation().takeScreenshot();
+            assertNotNull("Actual video was not painted to Android compositor", screenshot);
+            try {
+                assertTrue("Video player did not paint native pixels",
+                        RenderedSurfaceProbe.hasUiContrast(screenshot));
+            } finally { screenshot.recycle(); }
         } finally {
             cleanupOwnVideo();
         }

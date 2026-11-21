@@ -175,7 +175,10 @@ public class NativeAdsPlugin extends Plugin {
         // allow TEST ad requests so development is not blocked. Release value is 0 → disabled.
         if (BuildConfig.USE_TEST_ADS && BuildConfig.DEBUG_CONSENT_FALLBACK_MS > 0) {
             mainHandler.postDelayed(() -> {
-                if (consentResolved && canRequestAds()) return;
+                // Fallback is ONLY for unresolved UMP in debug. A completed
+                // refusal must never be overturned by a delayed timer.
+                if (!canUsePendingDebugFallback(BuildConfig.USE_TEST_ADS,
+                        BuildConfig.DEBUG_CONSENT_FALLBACK_MS, consentResolved, canRequestAds())) return;
                 Log.w(TAG, "consent unresolved after " + BuildConfig.DEBUG_CONSENT_FALLBACK_MS
                         + " ms — DEBUG fallback: allowing test ad requests");
                 debugConsentFallback = true;
@@ -184,6 +187,11 @@ public class NativeAdsPlugin extends Plugin {
                 notifyListeners("consentUpdated", consentStatus(), true);
             }, BuildConfig.DEBUG_CONSENT_FALLBACK_MS);
         }
+    }
+
+    static boolean canUsePendingDebugFallback(boolean testAds, long timeoutMs,
+            boolean resolved, boolean allowed) {
+        return testAds && timeoutMs > 0L && !resolved && !allowed;
     }
 
     private boolean privacyOptionsRequired() {
