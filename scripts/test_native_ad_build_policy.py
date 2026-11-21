@@ -52,7 +52,11 @@ class NativeAdBuildPolicyTest(unittest.TestCase):
         plugin = PLUGIN.read_text(encoding="utf-8")
         policy = POLICY.read_text(encoding="utf-8")
         self.assertIn('NativeAdUnitPolicy.select(BuildConfig.USE_TEST_ADS, prodId)', plugin)
-        self.assertIn('BuildConfig.USE_TEST_ADS && debugConsentFallback', plugin)
+        # The permission gate now uses one explicit helper so a completed UMP
+        # refusal can revoke a temporary debug-only fallback.
+        self.assertIn('effectiveAdPermission(BuildConfig.USE_TEST_ADS, debugConsentFallback,', plugin)
+        self.assertIn('debugConsentFallback = false;', plugin)
+        self.assertIn('return umpAllowsAds || (useTestAds && debugFallback);', plugin)
         self.assertIn('GOOGLE_TEST_NATIVE_UNIT', policy)
         self.assertIn('return useTestAds ? GOOGLE_TEST_NATIVE_UNIT : productionUnit;', policy)
         self.assertNotIn('BuildConfig.DEBUG ?', plugin)
