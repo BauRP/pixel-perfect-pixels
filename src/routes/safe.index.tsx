@@ -123,6 +123,7 @@ function SafeContent() {
         ))}
         <button
           onClick={() => setCreateOpen(true)}
+          data-safe-create-folder
           className="flex flex-col items-center justify-center gap-2 rounded-3xl aspect-square p-4 animate-fade-up active:scale-[0.98] transition-transform"
           style={{
             background: "var(--color-surface)",
@@ -150,6 +151,7 @@ function SafeContent() {
           <Input
             autoFocus
             placeholder={t("new_folder")}
+            data-safe-folder-name
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && create()}
@@ -157,7 +159,7 @@ function SafeContent() {
           />
           <DialogFooter>
             <Button variant="ghost" onClick={() => setCreateOpen(false)}>{t("cancel")}</Button>
-            <Button onClick={create} disabled={!newName.trim()}>{t("create_folder")}</Button>
+            <Button data-safe-create-submit onClick={create} disabled={!newName.trim()}>{t("create_folder")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

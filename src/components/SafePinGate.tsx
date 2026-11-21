@@ -115,6 +115,8 @@ export function SafePinGate({
 
   return (
     <div
+      data-safe-pin-gate
+      data-safe-pin-stage={isSetup ? stage : "unlock"}
       className="fixed inset-0 z-[70] flex flex-col overflow-y-auto overflow-x-hidden"
       style={{
         background: "var(--color-background)",
@@ -177,10 +179,10 @@ export function SafePinGate({
 
         <div className="mt-3 mx-auto w-full max-w-[220px] grid grid-cols-3 gap-2">
           {["1","2","3","4","5","6","7","8","9"].map((d) => (
-            <KeypadBtn key={d} onClick={() => press(d)}>{d}</KeypadBtn>
+            <KeypadBtn key={d} data-safe-pin-key={d} onClick={() => press(d)}>{d}</KeypadBtn>
           ))}
           <span />
-          <KeypadBtn onClick={() => press("0")}>0</KeypadBtn>
+          <KeypadBtn data-safe-pin-key="0" onClick={() => press("0")}>0</KeypadBtn>
           <KeypadBtn onClick={backspace} aria-label={t("backspace")}>
             <Delete size={22} />
           </KeypadBtn>

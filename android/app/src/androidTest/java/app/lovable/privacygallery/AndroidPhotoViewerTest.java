@@ -281,11 +281,13 @@ public final class AndroidPhotoViewerTest {
                     "(function(){var a=Array.from(document.querySelectorAll(" +
                     "'a[href*=\\\"/gallery/\\\"]')).filter(function(e){" +
                     "return e.textContent.indexOf('Nova-CI-Viewer')>=0;});return a.length===1;})()");
-            assertTrue("Could not click the real MediaStore album", eval(
-                    "(function(){var a=Array.from(document.querySelectorAll(" +
+            // A first synthetic click can be dropped by the Android
+            // WebView even when the album is present. The following bounded
+            // route waiter retries the real link and checks navigation.
+            eval("(function(){var a=Array.from(document.querySelectorAll(" +
                     "'a[href*=\\\"/gallery/\\\"]')).filter(function(e){" +
                     "return e.textContent.indexOf('Nova-CI-Viewer')>=0;})[0];" +
-                    "a.click();return true;})()"));
+                    "if(a)a.click();return !!a;})()");
 
             // On older Android WebViews one synthetic bridge click can be
             // dropped even while the gallery is visibly responsive. Retry

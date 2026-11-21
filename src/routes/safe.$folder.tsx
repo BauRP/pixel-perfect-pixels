@@ -391,6 +391,7 @@ function SafeFolderView() {
               >
                 <button
                   onClick={() => openFile(f)}
+                  data-safe-private-file={f.name}
                   className="flex items-center gap-3 min-w-0 flex-1 text-left tap"
                 >
                   <span className="grid h-11 w-11 place-items-center rounded-xl shrink-0" style={{ background: "var(--color-muted)" }}>
@@ -419,6 +420,7 @@ function SafeFolderView() {
 
       <input
         ref={fileInput}
+        data-safe-file-input
         type="file"
         multiple
         accept="image/*,video/*"
@@ -505,6 +507,7 @@ function SafeFolderView() {
               <button
                 type="button"
                 onClick={() => void restoreFromSafe(viewer.file)}
+                data-safe-restore
                 disabled={busy}
                 className="tap grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/10 disabled:opacity-50"
                 aria-label={t("restore")}
@@ -540,6 +543,7 @@ function SafeFolderView() {
               <ViewerVideo src={viewer.url} transform="" onDimensions={() => {}} />
             ) : viewer.file.type.startsWith("image/") ? (
               <img
+                data-safe-decrypted-image
                 src={viewer.url}
                 alt={viewer.file.name}
                 className="max-h-full max-w-full object-contain"
