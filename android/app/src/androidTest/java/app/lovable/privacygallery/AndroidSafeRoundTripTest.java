@@ -94,7 +94,7 @@ public final class AndroidSafeRoundTripTest {
 
     private void enterPin() throws Exception {
         for (int digit = 1; digit <= 4; digit++) {
-            String selector = "[data-safe-pin-key='" + digit + "']";
+            String selector = "[data-safe-pin-key=\"" + digit + "\"]";
             assertTrue("Safe PIN digit unavailable", js(
                     "(function(){var b=document.querySelector('" + selector +
                     "');if(!b)return false;b.click();return true;})()"));
