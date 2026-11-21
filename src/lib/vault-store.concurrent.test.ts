@@ -67,10 +67,14 @@ describe("real Safe operations reject stale crypto results", () => {
     mockCrypto.decrypt.mockImplementation(() => new Promise(resolve => {
       finish = resolve;
     }));
-    const pending = vault.decryptFile({
-      id: "photo", name: "photo.jpg", size: 3, type: "image/jpeg",
-      addedAt: Date.now(), iv: "iv", cipher: "ciphertext",
-    });
+    mockCrypto.encrypt.mockResolvedValue({ iv: "iv", cipher: "ciphertext" });
+    const folder = vault.createFolder("Private");
+    await vault.addFiles(folder, [{
+      name: "photo.jpg", size: 3, type: "image/jpeg",
+      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+    } as File]);
+    const saved = JSON.parse(localStorage.getItem("vault.store.v3") || "{}");
+    const pending = vault.decryptFile(saved.folders[0].files[0]);
     vault.lock();
     finish(new Uint8Array([1, 2, 3]));
     await expect(pending).rejects.toThrow("locked");
@@ -221,6 +225,39 @@ describe("real Safe operations reject stale crypto results", () => {
     await expect(vault.addFiles(id, [media])).rejects.toThrow("cipher error");
     vault.deleteFolder(id);
     expect(JSON.parse(localStorage.getItem("vault.store.v3") || "{}").folders).toEqual([]);
+  });
+
+  it("does not expose plaintext after another view deletes its Safe file", async () => {
+    mockCrypto.encrypt.mockResolvedValue({ iv: "iv", cipher: "ciphertext" });
+    const vault = await unlockedVault();
+    const folder = vault.createFolder("Private");
+    await vault.addFiles(folder, [{
+      name: "secret.jpg", type: "image/jpeg", size: 2,
+      arrayBuffer: async () => new Uint8Array([4,5]).buffer,
+    } as File]);
+    const file = JSON.parse(localStorage.getItem("vault.store.v3") || "{}").folders[0].files[0];
+    let release!: (bytes: Uint8Array) => void;
+    mockCrypto.decrypt.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const preview = vault.decryptFile(file);
+    vault.deleteFile(folder, file.id);
+    release(new Uint8Array([4,5]));
+    await expect(preview).rejects.toThrow("no longer exists");
+    expect(JSON.parse(localStorage.getItem("vault.store.v3") || "{}").folders[0].files).toEqual([]);
+  });
+
+  it("refuses forged and deleted Safe references without decrypting anything", async () => {
+    mockCrypto.encrypt.mockResolvedValue({ iv: "iv", cipher: "ciphertext" });
+    const vault = await unlockedVault();
+    const folder = vault.createFolder("Private");
+    await vault.addFiles(folder, [{
+      name: "private.jpg", type: "image/jpeg", size: 2,
+      arrayBuffer: async () => new Uint8Array([4,5]).buffer,
+    } as File]);
+    const file = JSON.parse(localStorage.getItem("vault.store.v3") || "{}").folders[0].files[0];
+    await expect(vault.decryptFile({ ...file, iv: "forged" })).rejects.toThrow("no longer exists");
+    vault.deleteFile(folder, file.id);
+    await expect(vault.decryptFile(file)).rejects.toThrow("no longer exists");
+    expect(mockCrypto.decrypt).not.toHaveBeenCalled();
   });
 
 });

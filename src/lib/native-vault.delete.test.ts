@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mock = vi.hoisted(() => ({ nativeDelete: vi.fn() }));
+const mock = vi.hoisted(() => ({ nativeDelete: vi.fn(), nativeRestore: vi.fn() }));
 vi.mock("@capacitor/core", () => ({
   Capacitor: { isNativePlatform: () => true },
-  registerPlugin: () => ({ deleteOriginals: mock.nativeDelete }),
+  registerPlugin: () => ({ deleteOriginals: mock.nativeDelete, restoreFile: mock.nativeRestore }),
 }));
 beforeEach(() => { vi.resetModules(); vi.resetAllMocks(); });
 
@@ -61,4 +61,22 @@ describe("one outstanding system delete confirmation", () => {
     });
   });
 
+});
+
+describe("native restore acknowledgement", () => {
+  const request = {base64: "AQID", name: "photo.jpg", mime: "image/jpeg"};
+  it("accepts published scoped URI and legacy absolute paths", async () => {
+    const { restoreToPublic } = await import("./native-vault");
+    mock.nativeRestore.mockResolvedValueOnce({path:"content://media/external/images/media/77"});
+    await expect(restoreToPublic(request)).resolves.toBe("content://media/external/images/media/77");
+    mock.nativeRestore.mockResolvedValueOnce({path:"/storage/emulated/0/DCIM/photo.jpg"});
+    await expect(restoreToPublic(request)).resolves.toBe("/storage/emulated/0/DCIM/photo.jpg");
+  });
+  it("rejects fake and missing receipts so the Safe original is retained", async () => {
+    const { restoreToPublic } = await import("./native-vault");
+    for (const value of [{path:"ok"},{path:""},{},null]) {
+      mock.nativeRestore.mockResolvedValueOnce(value);
+      await expect(restoreToPublic(request)).rejects.toThrow("did not confirm");
+    }
+  });
 });

@@ -359,9 +359,16 @@ export const vault = {
   },
   /** Decrypt an encrypted file into a Blob for viewing. Requires unlock. */
   decryptFile: async (file: EncryptedFile): Promise<Blob> => {
+    requireUnlockedSafe();
     const key = liveFileKey;
     const epoch = keyEpoch;
     if (!key || !state.unlocked) throw new Error("Vault is locked");
+    // Reject stale viewers and fake descriptors before touching ciphertext.
+    const stillIndexed = () => state.folders.some(folder =>
+      folder.files.some(entry => entry.id === file.id && entry.iv === file.iv &&
+        entry.cipher === file.cipher && entry.blobPath === file.blobPath &&
+        entry.type === file.type));
+    if (!stillIndexed()) throw new Error("Safe file no longer exists");
     const cipher = file.blobPath ? await readBlob(file.blobPath) : file.cipher;
     if (!cipher) throw new Error("Encrypted data missing");
     if (!isSafeOperationCurrent(epoch, keyEpoch) || liveFileKey !== key ||
@@ -371,6 +378,7 @@ export const vault = {
     // decrypted media to a screen that is no longer authorized to show it.
     if (!isSafeOperationCurrent(epoch, keyEpoch) || liveFileKey !== key ||
         !state.unlocked) throw new Error("Vault was locked during preview");
+    if (!stillIndexed()) throw new Error("Safe file no longer exists");
     return new Blob([plain], { type: file.type });
   },
 

@@ -185,5 +185,11 @@ export async function restoreToPublic(opts: {
 }): Promise<string> {
   if (!isNative()) return "";
   const res = await SecureVault.restoreFile(opts);
-  return res.path;
+  const path = res?.path;
+  // Android 10+ returns a MediaStore URI, Android 7-9 an absolute path.
+  // A bogus bridge reply must never authorize deleting the encrypted copy.
+  if (typeof path !== "string" ||
+      !(path.startsWith("content://") || path.startsWith("/")))
+    throw new Error("Android did not confirm a published restored file");
+  return path;
 }

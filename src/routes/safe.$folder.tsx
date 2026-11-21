@@ -305,9 +305,13 @@ function SafeFolderView() {
   };
   const doRename = () => {
     const n = renameValue.trim();
-    if (!n) return;
-    vault.renameFolder(folder.id, n);
-    setRenameOpen(false);
+    if (!n || operationPending.current) return;
+    try {
+      vault.renameFolder(folder.id, n);
+      setRenameOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("encryption_failed"));
+    }
   };
 
   return (
