@@ -180,7 +180,7 @@ export async function shareNativeAlbum(uris: string[], title: string): Promise<b
  * original can be discarded. Accept only public MediaStore image/video items
  * or public Android storage destinations returned on Android 7-9. */
 export function isPublishedMediaDestination(path: unknown): path is string {
-  if (typeof path !== "string" || !path || /[\\x00-\\x1f\\x7f]/.test(path)) return false;
+  if (typeof path !== "string" || !path || /[\x00-\x1f\x7f]/.test(path)) return false;
   if (/^content:\/\/media\/[^/?#]+\/(?:images|video)\/media\/[1-9][0-9]*$/.test(path))
     return true;
   if (!/^\/(?:storage|sdcard|mnt\/sdcard)\//.test(path)) return false;
