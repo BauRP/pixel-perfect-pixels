@@ -327,13 +327,26 @@ public class SecureVaultPlugin extends Plugin {
 
         for (String original : paths) {
             if (original == null || original.length() == 0) continue;
-            // The same raw content URI is returned in the result so JS can
-            // remove exactly the file that the system confirmed deleting.
-            Uri uri = original.startsWith("content://")
-                    ? Uri.parse(original) : findMediaUri(normalize(original));
+            // Never send delete requests to arbitrary content providers or
+            // private filesystem locations, even if a WebView passes one.
+            final boolean contentUri = original.startsWith("content://");
+            final String publicPath = contentUri ? null : normalize(original);
+            if (contentUri
+                    ? !PublicMediaDeletionPolicy.isPublicMediaUri(Uri.parse(original))
+                    : !PublicMediaDeletionPolicy.isPublicLegacyFile(publicPath)) {
+                failed.add(original);
+                continue;
+            }
+            // The same raw URI is returned to JS, preventing mismatched
+            // gallery removals after system confirmation.
+            Uri uri = contentUri ? Uri.parse(original) : findMediaUri(publicPath);
+            if (uri != null && !PublicMediaDeletionPolicy.isPublicMediaUri(uri)) {
+                failed.add(original);
+                continue;
+            }
             if (uri == null) {
                 if (Build.VERSION.SDK_INT <= 28) {
-                    File file = new File(normalize(original));
+                    File file = new File(publicPath);
                     if (file.exists() && file.delete()) {
                         deleted.add(original);
                     } else {
