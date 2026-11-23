@@ -20,6 +20,7 @@ import { decodeBase64InBatches } from "./base64-batching";
 import { groupMediaItems, groupMediaItemsInBatches } from "./media-grouping";
 import { createRemovalMatcher } from "./media-removal-match";
 import { normalizeNativeMedia } from "./native-media-normalize";
+import { classifyNativeRows } from "./native-scan-status";
 
 export type ScannedItem = {
   id: string;
@@ -505,9 +506,10 @@ async function runNativeScan(): Promise<ScanResult> {
   if (!response || !Array.isArray(response.items))
     throw new Error("Android returned an invalid media list");
   const entries: { item: ScannedItem; path: string }[] = [];
+  let invalidRows = 0;
   await processInBatches(response.items, (raw) => {
     const media = normalizeNativeMedia(raw);
-    if (!media) return;
+    if (!media) { invalidRows++; return; }
     const kind = inferNativeMediaKind(media.mime, media.name);
     if (!kind) return;
     const folder = media.relativePath.replace(/^\/+|\/+$/g, "") || "Pictures";
@@ -519,8 +521,10 @@ async function runNativeScan(): Promise<ScanResult> {
       mtime: media.mtime, size: media.size, path, nativeUri: media.uri,
     } });
   });
-  return { status: entries.length ? "success" : "empty", albums: await groupMediaItemsInBatches(entries),
-    errors: [], roots: [{ root: "MediaStore", ok: true, items: entries.length }] };
+  const status = classifyNativeRows(response.items.length, invalidRows, entries.length);
+  return { status, albums: status === "unavailable" ? [] : await groupMediaItemsInBatches(entries),
+    errors: status === "unavailable" ? ["Android returned only malformed media rows"] : [],
+    roots: [{ root: "MediaStore", ok: status !== "unavailable", items: entries.length }] };
 }
 
 let lastScanResult: ScanResult | null = null;
