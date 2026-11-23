@@ -39,6 +39,14 @@ describe("materialization cache of native media", () => {
     }
     expect(native.readFile).toHaveBeenCalledTimes(4);
   });
+  it("keeps Android MediaStore MIME when an image has a misleading extension", async () => {
+    const { materializeFile } = await import("./device-scan");
+    const media = { ...item(4), name: "camera.bin", nativeMime: "image/heic" };
+    const photo = await materializeFile(media);
+    expect(photo.type).toBe("image/heic");
+    expect(photo.name).toBe("camera.bin");
+  });
+
   it("preserves supplied web File without native I/O", async () => {
     const { materializeFile } = await import("./device-scan");
     const media = item(4);
