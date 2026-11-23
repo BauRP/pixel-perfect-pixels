@@ -45,6 +45,9 @@ describe("materialization cache of native media", () => {
     const photo = await materializeFile(media);
     expect(photo.type).toBe("image/heic");
     expect(photo.name).toBe("camera.bin");
+    const fallback = { ...item(4), name: "camera.jpg", nativeMime: "application/octet-stream" };
+    const jpg = await materializeFile(fallback);
+    expect(jpg.type).toBe("image/jpeg");
   });
 
   it("preserves supplied web File without native I/O", async () => {
