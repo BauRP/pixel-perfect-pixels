@@ -33,6 +33,8 @@ export type ScannedItem = {
   // Present on native Android scans — points at the raw file:// URI so we
   // can lazily read bytes when the Vault or Share API needs a real File.
   nativeUri?: string;
+  // MediaStore's recorded MIME is more reliable than a file extension.
+  nativeMime?: string;
 };
 export type ScannedAlbum = {
   id: string;
@@ -109,7 +111,7 @@ export async function materializeFile(item: ScannedItem): Promise<File> {
   // string and blocks the WebView JS thread until every byte is copied.
   // Decode in bounded chunks with event-loop turns between them instead.
   const arr = await decodeBase64InBatches(String(res.data));
-  const mime = guessMimeFromName(item.name);
+  const mime = item.nativeMime?.trim() || guessMimeFromName(item.name);
   const file = new File([arr], item.name, { type: mime, lastModified: item.mtime });
   // Unknown-sized and large native media are deliberately NOT cached.
   // This does not remove the current File from its caller; it just releases
@@ -513,7 +515,7 @@ async function runNativeScan(): Promise<ScanResult> {
     entries.push({ path, item: {
       id: media.uri + ":" + media.size + ":" + media.mtime,
       name: media.name, kind, file: null,
-      url: Capacitor.convertFileSrc(media.uri),
+      url: Capacitor.convertFileSrc(media.uri), nativeMime: media.mime,
       mtime: media.mtime, size: media.size, path, nativeUri: media.uri,
     } });
   });
