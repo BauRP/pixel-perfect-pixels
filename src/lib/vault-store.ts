@@ -3,6 +3,7 @@ import { commitStateAfterPersistence, parseVaultMetadata, isSafeVaultId, isSafeV
 import { createSecureId } from "./secure-id";
 import { isSafeOperationCurrent } from "./vault-lifecycle";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
+import { readFileBytes } from "./file-bytes";
 import { isNative, ensurePrivateVaultDir } from "./native-vault";
 import {
   initVaultSecrets,
@@ -276,7 +277,7 @@ export const vault = {
       for (let i = 0; i < files.length; i++) {
         assertCurrent();
         const f = files[i];
-        const buf = await f.arrayBuffer();
+        const buf = await readFileBytes(f);
         assertCurrent();
         const { iv, cipher } = await encryptBytes(buf, importKey);
         assertCurrent();
