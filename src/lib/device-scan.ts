@@ -112,7 +112,9 @@ export async function materializeFile(item: ScannedItem): Promise<File> {
   // string and blocks the WebView JS thread until every byte is copied.
   // Decode in bounded chunks with event-loop turns between them instead.
   const arr = await decodeBase64InBatches(String(res.data));
-  const mime = item.nativeMime?.trim() || guessMimeFromName(item.name);
+  const reportedMime = item.nativeMime?.trim().toLowerCase() ?? "";
+  const mime = reportedMime && reportedMime !== "application/octet-stream"
+    ? reportedMime : guessMimeFromName(item.name);
   const file = new File([arr], item.name, { type: mime, lastModified: item.mtime });
   // Unknown-sized and large native media are deliberately NOT cached.
   // This does not remove the current File from its caller; it just releases
