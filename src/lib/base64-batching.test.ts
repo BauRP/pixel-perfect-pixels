@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { decodeBase64InBatches } from "./base64-batching";
+import { decodeBase64InBatches, encodeBase64InBatches } from "./base64-batching";
 
 afterEach(() => vi.useRealTimers());
 
@@ -35,5 +35,31 @@ describe("responsive native file base64 decoding", () => {
     expect(await decodeBase64InBatches(encoded, 64)).toEqual(
       await decodeBase64InBatches(encoded, 512),
     );
+  });
+});
+
+describe("responsive encrypted Safe base64 encoding", () => {
+  it("matches the existing binary format for boundary lengths and zero bytes", async () => {
+    for (const size of [0, 1, 2, 3, 4, 17, 255, 1025]) {
+      const raw = Uint8Array.from({ length: size }, (_, i) => (i * 73) % 256);
+      const oldBinary = Array.from(raw, v => String.fromCharCode(v)).join("");
+      const encoded = await encodeBase64InBatches(raw, 11);
+      expect(encoded).toBe(btoa(oldBinary));
+    }
+  });
+
+  it("round-trips a large encrypted payload with the original byte order", async () => {
+    const raw = Uint8Array.from({ length: 207_011 }, (_, i) => (i * 41 + 7) % 256);
+    const encoded = await encodeBase64InBatches(raw, 12_287);
+    expect(await decodeBase64InBatches(encoded, 16384)).toEqual(raw);
+    expect(await encodeBase64InBatches(raw.buffer, 192 * 1024)).toBe(encoded);
+  });
+
+  it("yields between chunks instead of blocking old WebView touch events", async () => {
+    vi.useFakeTimers();
+    const task = encodeBase64InBatches(new Uint8Array(72), 12);
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    await vi.runAllTimersAsync();
+    expect(await task).toBe(btoa(String.fromCharCode(...new Uint8Array(72))));
   });
 });

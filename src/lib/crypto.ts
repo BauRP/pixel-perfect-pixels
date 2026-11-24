@@ -4,6 +4,8 @@
 // these calls execute against the platform BoringSSL implementation backing
 // the Chromium WebView, i.e. the same crypto stack the OS Keystore wraps.
 
+import { decodeBase64InBatches, encodeBase64InBatches } from "./base64-batching";
+
 const PBKDF2_ITERATIONS = 210_000; // OWASP 2023 minimum for PBKDF2-SHA-256
 const SALT_BYTES = 16;
 const IV_BYTES = 12;
@@ -181,13 +183,20 @@ export async function encryptBytes(
 ): Promise<{ iv: string; cipher: string }> {
   const iv = random(IV_BYTES);
   const cipher = await crypto.subtle.encrypt({ name: "AES-GCM", iv: bs(iv) }, key, bytes);
-  return { iv: toB64(iv), cipher: toB64(cipher) };
+  return { iv: toB64(iv), cipher: await encodeBase64InBatches(cipher) };
 }
 
 export async function decryptBytes(
   iv: string, cipher: string, key: CryptoKey,
 ): Promise<ArrayBuffer> {
+  // A single atob() on a long video can freeze the WebView while the
+  // decrypted Safe preview is loading. Decode with event-loop yields and
+  // pass the complete ArrayBuffer directly to native SubtleCrypto.
+  const decoded = await decodeBase64InBatches(cipher);
+  const bytes = decoded.buffer instanceof ArrayBuffer &&
+    decoded.byteOffset === 0 && decoded.byteLength === decoded.buffer.byteLength
+    ? decoded.buffer : bs(copyAB(decoded));
   return crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: bs(fromB64(iv)) }, key, bs(fromB64(cipher)),
+    { name: "AES-GCM", iv: bs(fromB64(iv)) }, key, bytes,
   );
 }

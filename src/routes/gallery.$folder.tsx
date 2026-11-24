@@ -28,7 +28,7 @@ import { useBackHandler } from "@/lib/back-handler";
 import {
   isNative, deleteOriginals, setWallpaperSafely, saveEditedImage, shareNative, shareNativeAlbum,
 } from "@/lib/native-vault";
-import { guessMimeFromName } from "@/lib/device-scan";
+import { mediaMime } from "@/lib/device-scan";
 import { ViewOptionsMenu } from "@/components/ViewOptionsMenu";
 import { useViewPrefs, sortRows } from "@/lib/view-prefs";
 import { galleryGridRange, galleryGridScrollTarget, galleryGridViewport, galleryGridTileSize } from "@/lib/gallery-grid-scroll";
@@ -251,7 +251,7 @@ function FolderView() {
         const ok = await shareNative({
           path: item.nativeUri ?? item.path,
           name: item.name,
-          mime: guessMimeFromName(item.name),
+          mime: mediaMime(item),
           title: item.name,
         });
         if (ok) return;

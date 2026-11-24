@@ -48,6 +48,17 @@ describe("native MediaStore responsive album grouping", () => {
     expect(albums[0].items[0].mtime).toBe(599);
   });
 
+  it("preserves stable ordering and every item in a very large single album", async () => {
+    const input = Array.from({ length: 24_500 }, (_, i) =>
+      media("DCIM/Camera/photo-" + i + ".jpg", (i * 73) % 1800));
+    const expected = groupMediaItems(input);
+    const actual = await groupMediaItemsInBatches(input, 512);
+    expect(actual).toEqual(expected);
+    expect(actual[0].items).toHaveLength(24_500);
+    expect(new Set(actual[0].items.map(item => item.id)).size).toBe(24_500);
+    expect(actual[0].items[0]).toBe(expected[0].items[0]);
+  });
+
   it("handles an empty response and nested camera folders without changing user media", async () => {
     expect(await groupMediaItemsInBatches([])).toEqual([]);
     const entries = [media("DCIM/Camera/one.jpg", 1), media("Download/Camera/two.jpg", 2)];

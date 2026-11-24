@@ -50,6 +50,13 @@ describe("materialization cache of native media", () => {
     expect(jpg.type).toBe("image/jpeg");
   });
 
+  it("uses Android MIME for external sharing, with a safe extension fallback", async () => {
+    const { mediaMime } = await import("./device-scan");
+    expect(mediaMime({ name: "wrong.bin", nativeMime: "image/heic" })).toBe("image/heic");
+    expect(mediaMime({ name: "photo.jpg", nativeMime: "application/octet-stream" })).toBe("image/jpeg");
+    expect(mediaMime({ name: "clip.MP4", nativeMime: "" })).toBe("video/mp4");
+  });
+
   it("preserves supplied web File without native I/O", async () => {
     const { materializeFile } = await import("./device-scan");
     const media = item(4);

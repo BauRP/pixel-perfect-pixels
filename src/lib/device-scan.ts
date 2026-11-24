@@ -71,6 +71,14 @@ export function guessMimeFromName(name: string): string {
   };
   return map[ext] ?? "application/octet-stream";
 }
+/** Prefer the real Android MediaStore type when it is meaningful.
+ * The extension remains the fallback for missing or generic MIME. */
+export function mediaMime(item: Pick<ScannedItem, "name" | "nativeMime">): string {
+  const reported = item.nativeMime?.trim().toLowerCase() ?? "";
+  return reported && reported !== "application/octet-stream"
+    ? reported : guessMimeFromName(item.name);
+}
+
 const guessMime = guessMimeFromName;
 
 /** MediaStore providers sometimes omit MIME; keep known photo/video files
@@ -112,9 +120,7 @@ export async function materializeFile(item: ScannedItem): Promise<File> {
   // string and blocks the WebView JS thread until every byte is copied.
   // Decode in bounded chunks with event-loop turns between them instead.
   const arr = await decodeBase64InBatches(String(res.data));
-  const reportedMime = item.nativeMime?.trim().toLowerCase() ?? "";
-  const mime = reportedMime && reportedMime !== "application/octet-stream"
-    ? reportedMime : guessMimeFromName(item.name);
+  const mime = mediaMime(item);
   const file = new File([arr], item.name, { type: mime, lastModified: item.mtime });
   // Unknown-sized and large native media are deliberately NOT cached.
   // This does not remove the current File from its caller; it just releases
