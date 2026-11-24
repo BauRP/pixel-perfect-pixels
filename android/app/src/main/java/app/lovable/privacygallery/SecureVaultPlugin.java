@@ -199,10 +199,14 @@ public class SecureVaultPlugin extends Plugin {
             try (Cursor cursor = getContext().getContentResolver().query(
                     collection, projection, filter, args,
                     MediaStore.MediaColumns.DATE_MODIFIED + " DESC")) {
-                if (cursor != null) while (cursor.moveToNext()) {
+                // A null cursor is a failed provider query, not an empty library.
+                if (cursor == null) throw new IOException("MediaStore cursor unavailable");
+                while (cursor.moveToNext()) {
                     String name = cursor.getString(1);
                     String mime = cursor.getString(2);
-                    if (name == null || mime == null) continue;
+                    // Missing MIME is common on OEM providers; JS falls back to
+                    // the photo/video extension after the native query.
+                    if (name == null || name.trim().isEmpty()) continue;
                     String directory = cursor.getString(5);
                     if (!modern) {
                         File f = directory == null ? null : new File(directory);
@@ -214,7 +218,7 @@ public class SecureVaultPlugin extends Plugin {
                     JSObject obj = new JSObject();
                     obj.put("uri", ContentUris.withAppendedId(collection, cursor.getLong(0)).toString());
                     obj.put("name", name);
-                    obj.put("mime", mime);
+                    obj.put("mime", MediaStoreCursorPolicy.mimeOrEmpty(mime));
                     obj.put("size", Math.max(0L, cursor.getLong(3)));
                     obj.put("mtime", Math.max(0L, cursor.getLong(4)) * 1000L);
                     obj.put("relativePath", directory == null ? "" : directory);
@@ -224,7 +228,8 @@ public class SecureVaultPlugin extends Plugin {
                 result.put("items", items);
                 call.resolve(result);
             } catch (Exception error) {
-                call.reject("MediaStore scan failed: " + error.getMessage());
+                // Avoid exposing any personal filenames from provider exceptions.
+                call.reject("MediaStore scan temporarily unavailable");
             }
         }, "nova-media-scan").start();
     }
@@ -433,7 +438,7 @@ public class SecureVaultPlugin extends Plugin {
     private boolean mediaExists(Uri uri) {
         try (Cursor cursor = getContext().getContentResolver().query(
                 uri, new String[] { MediaStore.MediaColumns._ID }, null, null, null)) {
-            return cursor != null && cursor.moveToFirst();
+            return MediaStoreCursorPolicy.isPresentOrUnknown(cursor);
         } catch (Exception error) {
             // Inaccessible is not proof of deletion: avoid a false success.
             return true;
@@ -721,7 +726,7 @@ public class SecureVaultPlugin extends Plugin {
             }
             Intent send = new Intent(uris.size() == 1
                     ? Intent.ACTION_SEND : Intent.ACTION_SEND_MULTIPLE);
-            send.setType("*/*");
+            send.setType(MediaSharePolicy.chooserMime(call.getString("mime", "*/*")));
             if (uris.size() == 1) send.putExtra(Intent.EXTRA_STREAM, uris.get(0));
             else send.putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris);
             ClipData clip = ClipData.newUri(getContext().getContentResolver(),

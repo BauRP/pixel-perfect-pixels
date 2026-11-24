@@ -29,6 +29,7 @@ import {
   isNative, deleteOriginals, setWallpaperSafely, saveEditedImage, shareNative, shareNativeAlbum,
 } from "@/lib/native-vault";
 import { mediaMime } from "@/lib/device-scan";
+import { albumShareMime, mediaUriForSharing } from "@/lib/media-share-uri";
 import { ViewOptionsMenu } from "@/components/ViewOptionsMenu";
 import { useViewPrefs, sortRows } from "@/lib/view-prefs";
 import { galleryGridRange, galleryGridScrollTarget, galleryGridViewport, galleryGridTileSize } from "@/lib/gallery-grid-scroll";
@@ -228,9 +229,17 @@ function FolderView() {
     // (including videos) into File[], risking out-of-memory crashes.
     if (isNative() && folder.items.length > 0 &&
         folder.items.every((it) => it.nativeUri?.startsWith("content://media/"))) {
+      const urls = folder.items.map(it => mediaUriForSharing(it.nativeUri!, it.kind));
+      const shareable = urls.filter((uri): uri is string => uri !== null);
+      // Never send a shortened subset or expose arbitrary content-provider
+      // URIs to Android's chooser; keep the album unchanged on failure.
+      if (shareable.length !== folder.items.length) {
+        toast.error(t("share_failed"));
+        return;
+      }
       try {
         if (await shareNativeAlbum(
-          folder.items.map((it) => it.nativeUri!), folder.name)) return;
+          shareable, folder.name, albumShareMime(folder.items))) return;
       } catch { /* Native chooser unavailable or Binder limit exceeded. */ }
       toast.error(t("share_failed"));
       return;

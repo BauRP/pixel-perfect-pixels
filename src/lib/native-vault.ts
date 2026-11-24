@@ -33,7 +33,8 @@ export interface SecureVaultPlugin {
   shareFile(options: {
     path?: string; base64?: string; name?: string; mime?: string; title?: string;
   }): Promise<{ success: boolean }>;
-  shareMediaUris(options: { uris: string[]; title: string }): Promise<{ success: boolean }>;
+  shareMediaUris(options: { uris: string[]; title: string;
+    mime?: "image/*" | "video/*" | "*/*" }): Promise<{ success: boolean }>;
   restoreFile(options: {
     base64: string; name?: string; mime?: string; relativePath?: string;
   }): Promise<{ path: string }>;
@@ -170,9 +171,11 @@ export async function shareNative(opts: {
 }
 
 /** Share Android albums via URI grants, not memory-hungry copied File[]. */
-export async function shareNativeAlbum(uris: string[], title: string): Promise<boolean> {
+export async function shareNativeAlbum(
+  uris: string[], title: string, mime: "image/*" | "video/*" | "*/*" = "*/*",
+): Promise<boolean> {
   if (!isNative() || uris.length === 0) return false;
-  const result = await SecureVault.shareMediaUris({ uris, title });
+  const result = await SecureVault.shareMediaUris({ uris, title, mime });
   return !!result.success;
 }
 

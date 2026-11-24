@@ -23,7 +23,19 @@ public class MediaSharePolicyTest {
                 "content://media/external/images/media/../123",
                 "content://media/external/file/123",
                 "https://example.com/photo",
-                "content://media/external/images/media/10/extra"
+                "content://media/external/images/media/10/extra",
+                "content://media/external/images/media/1?foo=bar",
+                "content://media/external/images/media/1#fragment",
+                "content://media/internal/images/media/123",
+                "content://media/external/video/media/0"
         }) assertFalse(value, MediaSharePolicy.isPublicMediaUri(Uri.parse(value)));
     }
+    @Test public void choosesSpecificAndroidMimeForHomogeneousAlbums() {
+        assertEquals("image/*", MediaSharePolicy.chooserMime("image/*"));
+        assertEquals("video/*", MediaSharePolicy.chooserMime("video/*"));
+        assertEquals("*/*", MediaSharePolicy.chooserMime("*/*"));
+        assertEquals("*/*", MediaSharePolicy.chooserMime("text/plain"));
+        assertEquals("*/*", MediaSharePolicy.chooserMime(null));
+    }
 }
+
