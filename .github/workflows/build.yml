@@ -259,3 +259,12 @@ jobs:
           print("Source SHA:", source_sha)
           print("SHA-256:", digest)
           PY
+
+  # The default branch already exposes this workflow to the Actions UI.
+  # A manual run selecting the agreed working branch can call the signed
+  # candidate workflow without copying any code into main.
+  signed-release-candidate:
+    if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/chatgpt/nova-gallery-')
+    needs: build
+    uses: ./.github/workflows/signed-release-candidate.yml
+    secrets: inherit

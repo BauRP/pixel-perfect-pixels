@@ -3,6 +3,7 @@ name: Build signed Nova Gallery release candidate
 # Explicitly manual, never run by a routine debug APK push.
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: write
