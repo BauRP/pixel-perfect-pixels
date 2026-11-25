@@ -1,0 +1,86 @@
+name: Build signed Nova Gallery release candidate
+
+# Explicitly manual, never run by a routine debug APK push.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  signed-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.2'
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '21'
+          cache: gradle
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - name: Require signing secrets (never fall back to debug)
+        env:
+          KEYSTORE_SET: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+          STORE_PASS_SET: ${{ secrets.ANDROID_KEYSTORE_PASSWORD != '' }}
+          ALIAS_SET: ${{ secrets.ANDROID_KEY_ALIAS != '' }}
+          KEY_PASS_SET: ${{ secrets.ANDROID_KEY_PASSWORD != '' }}
+        run: |
+          set -euo pipefail
+          if [[ "$KEYSTORE_SET" != true || "$STORE_PASS_SET" != true ||
+                "$ALIAS_SET" != true || "$KEY_PASS_SET" != true ]]; then
+            echo "::error::Signing unavailable. Configure ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD in GitHub Actions secrets."
+            exit 1
+          fi
+      - name: Test and build offline Android UI
+        run: |
+          set -euo pipefail
+          bun install
+          bunx vitest run
+          bun run build:capacitor
+          python3 scripts/check_legacy_webview.py
+          python3 scripts/check_android_compat.py
+      - name: Build and verify signed production APK and AAB
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/nova-release.jks"
+          chmod 600 "$RUNNER_TEMP/nova-release.jks"
+          export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/nova-release.jks"
+          trap 'rm -f "$ANDROID_KEYSTORE_PATH"' EXIT
+          chmod +x ./gradlew
+          ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
+          test -s app/build/outputs/apk/release/app-release.apk
+          test -s app/build/outputs/bundle/release/app-release.aab
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
+          jarsigner -verify app/build/outputs/bundle/release/app-release.aab
+      - name: Publish signed prerelease (APK and AAB)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          AAB=android/app/build/outputs/bundle/release/app-release.aab
+          sha256sum "$APK" "$AAB" > nova-release-checksums.sha256
+          TAG="nova-gallery-signed-rc-${GITHUB_RUN_NUMBER}-a${GITHUB_RUN_ATTEMPT}"
+          gh release create "$TAG" "$APK" "$AAB" nova-release-checksums.sha256 \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "Nova Gallery signed RC #${GITHUB_RUN_NUMBER}" \
+            --notes "Signed, non-debuggable production-ad candidate. Store approval and Android compatibility are separate. Source commit: ${GITHUB_SHA}"
