@@ -4,7 +4,8 @@ import { createSecureId } from "./secure-id";
 import { isSafeOperationCurrent } from "./vault-lifecycle";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { readFileBytes } from "./file-bytes";
-import { isNative, ensurePrivateVaultDir } from "./native-vault";
+import { isNative, ensurePrivateVaultDir, getNativeStorageFreeBytes } from "./native-vault";
+import { safeImportHasSpace } from "./safe-import-space";
 import {
   initVaultSecrets,
   unlockVault,
@@ -271,6 +272,13 @@ export const vault = {
     };
     try {
       if (isNative()) {
+        // An import is not allowed to consume the last device bytes and
+        // leave a half-written encrypted copy. Unknown capacity retains the
+        // existing robust write/rollback path, never deletes originals.
+        const free = await getNativeStorageFreeBytes();
+        assertCurrent();
+        if (!safeImportHasSpace(free, files.map(f => f.size)))
+          throw new Error("Not enough device storage to safely import into Safe");
         await ensureNativeVaultDir(folderId);
         assertCurrent();
       }

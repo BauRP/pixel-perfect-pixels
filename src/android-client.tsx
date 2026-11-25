@@ -223,6 +223,8 @@ try {
   boot("react-initial-flush-finished");
 } catch (error) {
   boot("react-mount-error");
-  console.error("[NovaBoot] React client bootstrap failed", error);
-  throw error; // The independent inline HTML fallback handles the error.
+  // The exception message can contain a user-supplied URI or private path.
+  // The independent offline fallback handles the error for the user.
+  console.error("[NovaBoot] React client bootstrap failed");
+  throw error;
 }

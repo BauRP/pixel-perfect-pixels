@@ -21,6 +21,7 @@ import { groupMediaItems, groupMediaItemsInBatches } from "./media-grouping";
 import { createRemovalMatcher } from "./media-removal-match";
 import { normalizeNativeMedia } from "./native-media-normalize";
 import { classifyNativeRows } from "./native-scan-status";
+import { mayStartDeferredScan } from "./foreground-scan-policy";
 
 export type ScannedItem = {
   id: string;
@@ -628,6 +629,10 @@ export const deviceScan = {
     if (rescanTimer !== null) clearTimeout(rescanTimer);
     rescanTimer = setTimeout(() => {
       rescanTimer = null;
+      // Android may background the Activity after this timer was armed.
+      // Focus/visibility events request a fresh scan when it returns.
+      if (typeof document !== "undefined" &&
+          !mayStartDeferredScan(document.visibilityState)) return;
       if (state.scanning) {
         pendingAfterScan = true;
         return;

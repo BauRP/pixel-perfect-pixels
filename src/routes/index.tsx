@@ -63,7 +63,9 @@ function GalleryIndex() {
     // captured media are picked up immediately on return.
     // Debounced + coalesced in deviceScan so focus/visibility/pageshow bursts
     // (e.g. closing the permission dialog) produce a single scan.
-    const onVisible = () => deviceScan.requestRescan();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") deviceScan.requestRescan();
+    };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
     window.addEventListener("pageshow", onVisible);
