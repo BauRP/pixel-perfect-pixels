@@ -201,31 +201,43 @@ public class SecureVaultPlugin extends Plugin {
                     MediaStore.MediaColumns.DATE_MODIFIED + " DESC")) {
                 // A null cursor is a failed provider query, not an empty library.
                 if (cursor == null) throw new IOException("MediaStore cursor unavailable");
+                int skippedRows = 0;
                 while (cursor.moveToNext()) {
-                    String name = cursor.getString(1);
-                    String mime = cursor.getString(2);
-                    // Missing MIME is common on OEM providers; JS falls back to
-                    // the photo/video extension after the native query.
-                    if (name == null || name.trim().isEmpty()) continue;
-                    String directory = cursor.getString(5);
-                    if (!modern) {
-                        File f = directory == null ? null : new File(directory);
-                        directory = f == null || f.getParent() == null ? "" : f.getParent();
-                        String root = Environment.getExternalStorageDirectory().getAbsolutePath();
-                        if (directory.startsWith(root + "/"))
-                            directory = directory.substring(root.length() + 1);
+                    try {
+                        final long mediaId = cursor.getLong(0);
+                        String name = cursor.getString(1);
+                        // One malformed OEM media entry must not abort the
+                        // entire library. Report skipped rows to the WebView:
+                        // skipping ALL entries is not proof of an empty gallery.
+                        if (!MediaStoreCursorPolicy.isValidMediaRow(mediaId, name)) {
+                            skippedRows++;
+                            continue;
+                        }
+                        String mime = cursor.getString(2);
+                        String directory = cursor.getString(5);
+                        if (!modern) {
+                            File f = directory == null ? null : new File(directory);
+                            directory = f == null || f.getParent() == null ? "" : f.getParent();
+                            String root = Environment.getExternalStorageDirectory().getAbsolutePath();
+                            if (directory.startsWith(root + "/"))
+                                directory = directory.substring(root.length() + 1);
+                        }
+                        JSObject obj = new JSObject();
+                        obj.put("uri", ContentUris.withAppendedId(collection, mediaId).toString());
+                        obj.put("name", name);
+                        obj.put("mime", MediaStoreCursorPolicy.mimeOrEmpty(mime));
+                        obj.put("size", Math.max(0L, cursor.getLong(3)));
+                        obj.put("mtime", Math.max(0L, cursor.getLong(4)) * 1000L);
+                        obj.put("relativePath", directory == null ? "" : directory);
+                        items.put(obj);
+                    } catch (RuntimeException invalidRow) {
+                        // Never log personal media names, paths, or provider data.
+                        skippedRows++;
                     }
-                    JSObject obj = new JSObject();
-                    obj.put("uri", ContentUris.withAppendedId(collection, cursor.getLong(0)).toString());
-                    obj.put("name", name);
-                    obj.put("mime", MediaStoreCursorPolicy.mimeOrEmpty(mime));
-                    obj.put("size", Math.max(0L, cursor.getLong(3)));
-                    obj.put("mtime", Math.max(0L, cursor.getLong(4)) * 1000L);
-                    obj.put("relativePath", directory == null ? "" : directory);
-                    items.put(obj);
                 }
                 JSObject result = new JSObject();
                 result.put("items", items);
+                result.put("skippedRows", skippedRows);
                 call.resolve(result);
             } catch (Exception error) {
                 // Avoid exposing any personal filenames from provider exceptions.

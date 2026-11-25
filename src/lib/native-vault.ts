@@ -22,7 +22,7 @@ export interface SecureVaultPlugin {
   checkMediaPermission(): Promise<{ state: MediaPermissionState }>;
   requestMediaPermission(options?: { reselect?: boolean }): Promise<{ state: MediaPermissionState }>;
   getMediaItems(): Promise<{ items: { uri: string; name: string; mime: string;
-    size: number; mtime: number; relativePath: string }[] }>;
+    size: number; mtime: number; relativePath: string }[]; skippedRows?: number }>;
   hasAllFilesAccess(): Promise<{ granted: boolean }>;
   requestAllFilesAccess(): Promise<{ granted: boolean }>;
   deleteOriginals(options: { paths: string[] }): Promise<DeleteResult>;

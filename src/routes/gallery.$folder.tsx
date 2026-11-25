@@ -279,7 +279,11 @@ function FolderView() {
           title: item.name,
         });
         if (ok) return;
-      } catch { /* fall through to the web path below */ }
+      } catch { /* Native chooser unavailable; keep large media in Android storage. */ }
+      // Android WebView has no reliable Web Share API fallback. Decoding
+      // a multi-gigabyte video after native failure can freeze or kill it.
+      toast.error(t("share_failed"));
+      return;
     }
     let file: File;
     try { file = await materializeFile(item); }

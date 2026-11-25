@@ -12,6 +12,12 @@ describe("native MediaStore empty-library safety", () => {
   it("does not block valid photographs because one row is damaged", () => {
     expect(classifyNativeRows(3, 1, 2)).toBe("success");
   });
+  it("keeps old albums when the native provider skipped every corrupt cursor row", () => {
+    expect(classifyNativeRows(0, 0, 0, 2)).toBe("unavailable");
+    expect(classifyNativeRows(1, 0, 0, 3)).toBe("unavailable");
+    expect(classifyNativeRows(2, 0, 1, 1)).toBe("success");
+    expect(classifyNativeRows(0, 0, 0, 0)).toBe("empty");
+  });
   it("retains legitimate empty results when only unsupported valid media is returned", () => {
     expect(classifyNativeRows(2, 0, 0)).toBe("empty");
     expect(classifyNativeRows(3, 1, 0)).toBe("empty");

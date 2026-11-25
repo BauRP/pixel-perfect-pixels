@@ -536,7 +536,12 @@ async function runNativeScan(): Promise<ScanResult> {
       mtime: media.mtime, size: media.size, path, nativeUri: media.uri,
     } });
   });
-  const status = classifyNativeRows(response.items.length, invalidRows, entries.length);
+  const nativeSkippedRows = typeof response.skippedRows === "number" &&
+    Number.isSafeInteger(response.skippedRows) && response.skippedRows >= 0
+      ? response.skippedRows : 0;
+  const status = classifyNativeRows(
+    response.items.length, invalidRows, entries.length, nativeSkippedRows,
+  );
   return { status, albums: status === "unavailable" ? [] : await groupMediaItemsInBatches(entries),
     errors: status === "unavailable" ? ["Android returned only malformed media rows"] : [],
     roots: [{ root: "MediaStore", ok: status !== "unavailable", items: entries.length }] };

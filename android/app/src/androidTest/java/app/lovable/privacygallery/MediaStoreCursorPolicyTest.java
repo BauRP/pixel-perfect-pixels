@@ -21,6 +21,14 @@ public class MediaStoreCursorPolicyTest {
             assertTrue(MediaStoreCursorPolicy.isPresentOrUnknown(cursor));
         }
     }
+    @Test public void rejectsOnlyCorruptMediaRows() {
+        assertFalse(MediaStoreCursorPolicy.isValidMediaRow(0L, "photo.jpg"));
+        assertFalse(MediaStoreCursorPolicy.isValidMediaRow(-3L, "photo.jpg"));
+        assertFalse(MediaStoreCursorPolicy.isValidMediaRow(9L, null));
+        assertFalse(MediaStoreCursorPolicy.isValidMediaRow(9L, "  "));
+        assertTrue(MediaStoreCursorPolicy.isValidMediaRow(9L, "photo.jpg"));
+        assertTrue(MediaStoreCursorPolicy.isValidMediaRow(109L, "clip.mp4"));
+    }
     @Test public void missingMimeRetainsValidProviderRow() {
         assertEquals("", MediaStoreCursorPolicy.mimeOrEmpty(null));
         assertEquals("image/heic", MediaStoreCursorPolicy.mimeOrEmpty("image/heic"));
