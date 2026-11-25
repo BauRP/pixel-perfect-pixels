@@ -77,3 +77,30 @@ describe("unavailable browser sharing permission", () => {
     expect(share).not.toHaveBeenCalled();
   });
 });
+
+describe("share only the complete browser selection", () => {
+  it("shares all selected files in one operation without reading media bytes", async () => {
+    const files = [new File(["a"],"a.jpg"),new File(["b"],"b.jpg")];
+    const share=vi.fn(async()=>{});
+    const read=vi.fn();
+    expect(await shareWebAlbum(files.map(f=>item(f.name,f)),{share,canShare:()=>true},"Selected",read,{requireAll:true}))
+      .toBe("shared");
+    expect(share).toHaveBeenCalledWith({files,title:"Selected"});
+    expect(read).not.toHaveBeenCalled();
+  });
+  it("rejects unsupported multi-file sharing instead of silently sharing one", async () => {
+    const files = [new File(["a"],"a.jpg"),new File(["b"],"b.jpg")];
+    const share=vi.fn(async()=>{});
+    expect(await shareWebAlbum(files.map(f=>item(f.name,f)),{
+      share,canShare: data => (data.files?.length ?? 0) === 1,
+    },"Selected",vi.fn(),{requireAll:true})).toBe("unsupported");
+    expect(share).not.toHaveBeenCalled();
+  });
+  it("never decodes missing media to offer an incomplete share", async () => {
+    const read=vi.fn();const share=vi.fn(async()=>{});
+    expect(await shareWebAlbum([item("a.jpg",new File(["a"],"a.jpg")),item("missing.jpg",null)],
+      {share},"Selected",read,{requireAll:true})).toBe("unsupported");
+    expect(read).not.toHaveBeenCalled();
+    expect(share).not.toHaveBeenCalled();
+  });
+});

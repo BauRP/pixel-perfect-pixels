@@ -23,3 +23,19 @@ export function albumShareMime(
   if (items.every(item => item.kind === "video")) return "video/*";
   return "*/*";
 }
+
+/** Never truncate a requested selection, silently or due to Android Binder
+ * limits. No file bytes are read and only public MediaStore URIs are allowed. */
+export function nativeShareUrisForItems(items: readonly {
+  nativeUri?: string; kind: SharedKind;
+}[]): string[] | null {
+  if (items.length === 0 || items.length > 1000) return null;
+  const result: string[] = [];
+  for (const item of items) {
+    if (!item.nativeUri) return null;
+    const uri = mediaUriForSharing(item.nativeUri, item.kind);
+    if (!uri) return null;
+    result.push(uri);
+  }
+  return result;
+}

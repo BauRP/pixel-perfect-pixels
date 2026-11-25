@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { albumShareMime, mediaUriForSharing } from "./media-share-uri";
+import { albumShareMime, mediaUriForSharing, nativeShareUrisForItems } from "./media-share-uri";
 
 describe("native Android album sharing", () => {
   it("converts MediaStore.Files IDs to public image/video content URI", () => {
@@ -33,5 +33,22 @@ describe("native Android album sharing", () => {
     expect(albumShareMime([image, image])).toBe("image/*");
     expect(albumShareMime([video, video])).toBe("video/*");
     expect(albumShareMime([image, video, image])).toBe("*/*");
+  });
+});
+
+describe("exact native selected-files share", () => {
+  const image = {kind:"image" as const,nativeUri:"content://media/external/file/18"};
+  const video = {kind:"video" as const,nativeUri:"content://media/external/file/19"};
+  it("shares every selected image/video in the original order", () => {
+    expect(nativeShareUrisForItems([video,image])).toEqual([
+      "content://media/external/video/media/19",
+      "content://media/external/images/media/18",
+    ]);
+  });
+  it("rejects a partial, private, empty or overlarge selection without leaking any URI", () => {
+    expect(nativeShareUrisForItems([])).toBeNull();
+    expect(nativeShareUrisForItems([image,{kind:"image"}])).toBeNull();
+    expect(nativeShareUrisForItems([image,{kind:"video",nativeUri:"content://private/1"}])).toBeNull();
+    expect(nativeShareUrisForItems(Array.from({length:1001},()=>image))).toBeNull();
   });
 });

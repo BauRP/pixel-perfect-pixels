@@ -24,9 +24,22 @@ export async function shareWebAlbum(
   host: ShareHost,
   title: string,
   read: (item: ScannedItem) => Promise<File>,
+  options: { requireAll?: boolean } = {},
 ): Promise<WebAlbumShareResult> {
   if (!host.share || items.length === 0) return "unsupported";
   const files = items.map(item => item.file);
+  // For selected-file and full-album commands the user requested ALL files.
+  // Do not fall back to sharing one random photo.
+  if (options.requireAll) {
+    if (!files.every((file): file is File => file !== null) ||
+        !canShareFiles(host, files as File[])) return "unsupported";
+    try {
+      await host.share({ files: files as File[], title });
+      return "shared";
+    } catch {
+      return "cancelled";
+    }
+  }
   if (host.canShare && files.every((file): file is File => file !== null)) {
     const allFiles = files as File[];
     if (canShareFiles(host, allFiles)) {

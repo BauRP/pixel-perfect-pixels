@@ -32,7 +32,8 @@ import { mediaMime } from "@/lib/device-scan";
 import { photoFlags, usePhotoFlags } from "@/lib/photo-flags";
 import { persistentPhotoFlagKey } from "@/lib/photo-flag-key";
 import { partitionDeletableMedia } from "@/lib/media-delete-protection";
-import { albumShareMime, mediaUriForSharing } from "@/lib/media-share-uri";
+import { albumShareMime, nativeShareUrisForItems } from "@/lib/media-share-uri";
+import { localDisplayName, validLocalDisplayName } from "@/lib/local-display-name";
 import { ViewOptionsMenu } from "@/components/ViewOptionsMenu";
 import { useViewPrefs, sortRows } from "@/lib/view-prefs";
 import { galleryGridRange, galleryGridScrollTarget, galleryGridViewport, galleryGridTileSize } from "@/lib/gallery-grid-scroll";
@@ -97,6 +98,8 @@ function FolderView() {
   const allSelectedProtected = liveSelected.size > 0 &&
     [...liveSelected].every(id =>
       Object.prototype.hasOwnProperty.call(flags.prot, persistentPhotoFlagKey(id)));
+  const deletableCount = [...liveSelected].filter(id =>
+    !Object.prototype.hasOwnProperty.call(flags.prot, persistentPhotoFlagKey(id))).length;
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [viewer, setViewer] = useState<ScannedItem | null>(null);
   // Android has one system deletion dialog at a time. Keep UI operations
@@ -105,10 +108,15 @@ function FolderView() {
   const [prefs] = useViewPrefs("media");
 
   // Sorted media list — recomputed whenever the folder or the sort changes.
-  const sortedItems: ScannedItem[] = useMemo(
-    () => (folder ? sortRows(folder.items, prefs.field, prefs.dir) : []),
-    [folder, prefs.field, prefs.dir],
-  );
+  const sortedItems: ScannedItem[] = useMemo(() => {
+    if (!folder) return [];
+    if (prefs.field !== "name") return sortRows(folder.items, prefs.field, prefs.dir);
+    // Sort by what the gallery displays, but preserve original media objects.
+    const rows = folder.items.map(item => ({
+      ...item, name: localDisplayName(item, flags.names), source: item,
+    }));
+    return sortRows(rows, prefs.field, prefs.dir).map(row => row.source);
+  }, [folder, prefs.field, prefs.dir, flags.names]);
 
   // Hardware back inside a gallery folder → pop exactly one level to the
   // gallery root (the fullscreen viewer registers its own handler on top).
@@ -252,33 +260,26 @@ function FolderView() {
     }
   };
 
-  const shareAlbum = async () => {
-    // For native MediaStore files, pass existing URI grants directly to the
-    // Android chooser. Previous implementation decoded the ENTIRE album
-    // (including videos) into File[], risking out-of-memory crashes.
-    if (isNative() && folder.items.length > 0 &&
-        folder.items.every((it) => it.nativeUri?.startsWith("content://media/"))) {
-      const urls = folder.items.map(it => mediaUriForSharing(it.nativeUri!, it.kind));
-      const shareable = urls.filter((uri): uri is string => uri !== null);
-      // Never send a shortened subset or expose arbitrary content-provider
-      // URIs to Android's chooser; keep the album unchanged on failure.
-      if (shareable.length !== folder.items.length) {
-        toast.error(t("share_failed"));
-        return;
-      }
+  /** Share an entire album or exactly the chosen files: no partial chooser. */
+  const shareMediaItems = async (items: ScannedItem[], title: string) => {
+    if (items.length === 0) return;
+    if (isNative()) {
+      const uris = nativeShareUrisForItems(items);
+      if (!uris) { toast.error(t("share_failed")); return; }
       try {
-        if (await shareNativeAlbum(
-          shareable, folder.name, albumShareMime(folder.items))) return;
-      } catch { /* Native chooser unavailable or Binder limit exceeded. */ }
+        if (await shareNativeAlbum(uris, title, albumShareMime(items))) return;
+      } catch { /* The user may retry without losing selection. */ }
       toast.error(t("share_failed"));
       return;
     }
-    // Reuse the existing File handles for ordinary web albums. A fallback
-    // never decodes every large video just to discover share support.
     const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
-    const result = await shareWebAlbum(folder.items, nav, folder.name, materializeFile);
+    const result = await shareWebAlbum(items, nav, title, materializeFile, { requireAll: true });
     if (result === "unsupported") toast.info(t("sharing_unsupported"));
   };
+  const shareAlbum = async () => shareMediaItems(folder.items, folder.name);
+  const shareSelection = async () => shareMediaItems(
+    folder.items.filter(item => liveSelected.has(item.id)), folder.name,
+  );
 
   const shareItem = async (item: ScannedItem) => {
     // Native Android: hand the file to the system share sheet (Telegram,
@@ -334,6 +335,14 @@ function FolderView() {
           selectMode ? (
             <div className="flex items-center gap-2">
               <button
+                data-selected-share
+                onClick={() => void shareSelection()}
+                disabled={liveSelected.size === 0}
+                className="tap grid h-10 w-10 place-items-center rounded-full disabled:opacity-50"
+                style={{ background: "var(--color-surface)" }}
+                aria-label={t("share")} title={t("share")}
+              ><Share2 size={18} /></button>
+              <button
                 data-selected-protection
                 onClick={toggleSelectedProtection}
                 disabled={liveSelected.size === 0}
@@ -346,7 +355,7 @@ function FolderView() {
               </button>
               <button
                 onClick={() => setConfirmDelete(true)}
-                disabled={liveSelected.size === 0}
+                disabled={deletableCount === 0}
                 className="tap grid h-10 w-10 place-items-center rounded-full disabled:opacity-50"
                 style={{ background: "var(--color-surface)", color: "hsl(var(--destructive))" }}
                 aria-label={t("delete")}
@@ -378,6 +387,7 @@ function FolderView() {
         columns={prefs.columns}
         selectMode={selectMode}
         selected={liveSelected}
+        displayNames={flags.names}
         onTap={(item) => (selectMode ? toggle(item.id) : setViewer(item))}
         onLongTap={(item) => { if (!selectMode) { enterSelect(); toggle(item.id); } }}
       />
@@ -388,7 +398,7 @@ function FolderView() {
           <AlertDialogHeader>
             <AlertDialogTitle>{t("delete")}?</AlertDialogTitle>
             <AlertDialogDescription>
-              {t("delete_files_confirm", { n: liveSelected.size })}
+              {t("delete_files_confirm", { n: deletableCount })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -445,6 +455,8 @@ function MediaViewer({
   const [flipV, setFlipV] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameText, setRenameText] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
@@ -468,6 +480,7 @@ function MediaViewer({
   useEffect(() => {
     resetAll();
     setEditMode(false); setDetailsOpen(false); setConfirmOpen(false);
+    setRenaming(false); setRenameText("");
     setChromeVisible(true); setDims(null); setBusy(false);
   }, [item, resetAll]);
 
@@ -475,7 +488,9 @@ function MediaViewer({
 
   // ── hardware back: innermost layer first ───────────────────────────────
   useBackHandler(open && confirmOpen, useCallback(() => { setConfirmOpen(false); return true; }, []));
-  useBackHandler(open && detailsOpen, useCallback(() => { setDetailsOpen(false); return true; }, []));
+  useBackHandler(open && detailsOpen && renaming,
+    useCallback(() => { setRenaming(false); return true; }, []));
+  useBackHandler(open && detailsOpen && !renaming, useCallback(() => { setDetailsOpen(false); return true; }, []));
   useBackHandler(open && editMode && tool !== "none" && !detailsOpen && !confirmOpen,
     useCallback(() => { setTool("none"); return true; }, []));
   useBackHandler(open && editMode && tool === "none" && !detailsOpen && !confirmOpen,
@@ -484,6 +499,18 @@ function MediaViewer({
     useCallback(() => { onClose(); return true; }, [onClose]));
 
   if (!item) return null;
+  const shownName = localDisplayName(item, flags.names);
+  const saveDisplayedName = () => {
+    const name = validLocalDisplayName(renameText);
+    if (!name) { toast.error(t("edit_failed")); return; }
+    try {
+      photoFlags.setName(item.id, name);
+      setRenaming(false);
+      toast.success(t("saved"));
+    } catch {
+      toast.error(t("edit_failed"));
+    }
+  };
 
   const ext = (item.name.split(".").pop() ?? "").toUpperCase();
   const transform = [
@@ -622,7 +649,7 @@ function MediaViewer({
             <ArrowLeft size={20} />
           </button>
           <div className="text-sm font-medium truncate max-w-[60%]">
-            {editMode ? t("edit") : item.name}
+            {editMode ? t("edit") : shownName}
           </div>
           <button
             onClick={() => onShare(item)}
@@ -765,7 +792,7 @@ function MediaViewer({
       {detailsOpen && (
         <div
           className="absolute inset-0 z-[70] flex items-end bg-black/70 backdrop-blur-sm"
-          onClick={(e) => { e.stopPropagation(); setDetailsOpen(false); }}
+          onClick={(e) => { e.stopPropagation(); setDetailsOpen(false); setRenaming(false); }}
         >
           <div
             className="w-full rounded-t-3xl p-5 overflow-y-auto"
@@ -782,7 +809,7 @@ function MediaViewer({
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-base font-semibold">{t("details")}</h3>
               <button
-                onClick={() => setDetailsOpen(false)}
+                onClick={() => { setDetailsOpen(false); setRenaming(false); }}
                 className="tap grid h-8 w-8 place-items-center rounded-full"
                 style={{ background: "var(--color-muted)" }}
                 aria-label={t("cancel")}
@@ -792,7 +819,7 @@ function MediaViewer({
             </div>
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
               <dt className="text-muted-foreground">{t("name")}</dt>
-              <dd className="truncate text-right">{item.name}</dd>
+              <dd className="truncate text-right">{shownName}</dd>
               <dt className="text-muted-foreground">{t("file_size")}</dt>
               <dd className="text-right">{fmtBytes(item.size)}</dd>
               <dt className="text-muted-foreground">{t("format")}</dt>
@@ -804,6 +831,34 @@ function MediaViewer({
               <dt className="text-muted-foreground">{t("path")}</dt>
               <dd className="truncate text-right">{item.path}</dd>
             </dl>
+            {renaming ? (
+              <form className="mt-4 space-y-2" onSubmit={e => { e.preventDefault(); saveDisplayedName(); }}>
+                <input data-photo-rename-input type="text" autoFocus
+                  value={renameText} maxLength={120}
+                  onChange={e => setRenameText(e.target.value)}
+                  aria-label={t("name")}
+                  className="min-h-11 w-full rounded-xl border px-3 py-2 text-sm"
+                  style={{ background: "var(--color-background)" }}
+                />
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setRenaming(false)}
+                    className="tap min-h-11 flex-1 rounded-xl px-3 text-sm"
+                    style={{ background: "var(--color-muted)" }}>{t("cancel")}</button>
+                  <button type="submit" className="tap min-h-11 flex-1 rounded-xl px-3 text-sm"
+                    style={{ background: "var(--color-accent)", color: "var(--color-accent-foreground)" }}>
+                    {t("save")}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <button type="button" data-photo-display-rename
+                onClick={() => { setRenameText(shownName); setRenaming(true); }}
+                className="tap mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-3 text-sm"
+                style={{ background: "var(--color-muted)" }}
+              >
+                <Pencil size={18} /> {t("rename")}
+              </button>
+            )}
             <button
               type="button"
               data-photo-protection
@@ -1118,12 +1173,13 @@ function ViewerBtn({
  * viewer.
  */
 function VirtualizedGrid({
-  items, columns, selectMode, selected, onTap, onLongTap,
+  items, columns, selectMode, selected, displayNames, onTap, onLongTap,
 }: {
   items: ScannedItem[];
   columns: number;
   selectMode: boolean;
   selected: Set<string>;
+  displayNames: Record<string, string>;
   onTap: (item: ScannedItem) => void;
   onLongTap: (item: ScannedItem) => void;
 }) {
@@ -1203,7 +1259,7 @@ function VirtualizedGrid({
               onContextMenu={(e) => { e.preventDefault(); onLongTap(item); }}
               className="relative overflow-hidden rounded-md bg-black/40"
               style={{ height: tile }}
-              aria-label={item.name}
+              aria-label={localDisplayName(item, displayNames)}
             >
               <LazyThumb item={item} />
               {item.kind === "video" && (
