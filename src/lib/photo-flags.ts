@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { persistentPhotoFlagKey } from "./photo-flag-key";
 
 // Per-item local flags: protection-from-deletion and rename overrides.
 // Persisted flags have one stable snapshot for React's useSyncExternalStore:
@@ -25,6 +26,14 @@ function readEntries<T extends true | string>(
     const result: Record<string, T> = Object.create(null);
     for (const [id, value] of Object.entries(raw)) {
       if (valid(value)) result[id] = value;
+    }
+    // Old versions keyed flags by the full scanned ID (URI:size:mtime).
+    // Construct stable aliases in memory without silently rewriting storage
+    // or dropping any of the user's previously saved photo settings.
+    for (const id of Object.keys(result)) {
+      const stable = persistentPhotoFlagKey(id);
+      if (stable !== id && !Object.prototype.hasOwnProperty.call(result, stable))
+        result[stable] = result[id];
     }
     return result;
   } catch {
@@ -69,6 +78,18 @@ function subscribe(listener: () => void) {
   };
 }
 
+/** Remove superseded legacy IDs when a flag is explicitly changed.
+ * Otherwise a previous "protected" record could reappear on reload after
+ * the user has removed protection for a rescanned Android photograph. */
+function clearOldPhotoFlagKeys<T>(map: Record<string, T>, id: string): string {
+  const stable = persistentPhotoFlagKey(id);
+  for (const candidate of Object.keys(map)) {
+    if (candidate !== stable && persistentPhotoFlagKey(candidate) === stable)
+      delete map[candidate];
+  }
+  return stable;
+}
+
 function writeProt(v: ProtectedSet) {
   // Do not publish success if localStorage rejects a write.
   localStorage.setItem(PROT_KEY, JSON.stringify(v));
@@ -84,21 +105,25 @@ function writeNames(v: NameMap) {
 
 export const photoFlags = {
   isProtected(id: string): boolean {
-    return Object.prototype.hasOwnProperty.call(getPhotoFlagsSnapshot().prot, id);
+    return Object.prototype.hasOwnProperty.call(getPhotoFlagsSnapshot().prot,
+      persistentPhotoFlagKey(id));
   },
   setProtected(id: string, v: boolean): void {
     const m = { ...getPhotoFlagsSnapshot().prot };
-    if (v) m[id] = true;
-    else delete m[id];
+    const stable = clearOldPhotoFlagKeys(m, id);
+    if (v) m[stable] = true;
+    else delete m[stable];
     writeProt(m);
   },
   getName(id: string): string | null {
     const m = getPhotoFlagsSnapshot().names;
-    return Object.prototype.hasOwnProperty.call(m, id) ? m[id] : null;
+    const stable = persistentPhotoFlagKey(id);
+    return Object.prototype.hasOwnProperty.call(m, stable) ? m[stable] : null;
   },
   setName(id: string, name: string): void {
     const m = { ...getPhotoFlagsSnapshot().names };
-    m[id] = name;
+    const stable = clearOldPhotoFlagKeys(m, id);
+    m[stable] = name;
     writeNames(m);
   },
 };

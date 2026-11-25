@@ -13,6 +13,8 @@
 //                               dialog covering the whole batch.
 
 import { registerPlugin, Capacitor } from "@capacitor/core";
+import { isPublishedMediaDestination } from "./public-restore-policy";
+export { isPublishedMediaDestination } from "./public-restore-policy";
 
 export type MediaPermissionState = "granted" | "partial" | "denied" | "prompt";
 export type DeleteResult = { deleted: string[]; failed: string[] };
@@ -182,15 +184,6 @@ export async function shareNativeAlbum(
 /** A native bridge result is not automatically proof that an encrypted
  * original can be discarded. Accept only public MediaStore image/video items
  * or public Android storage destinations returned on Android 7-9. */
-export function isPublishedMediaDestination(path: unknown): path is string {
-  if (typeof path !== "string" || !path || /[\x00-\x1f\x7f]/.test(path)) return false;
-  if (/^content:\/\/media\/[^/?#]+\/(?:images|video)\/media\/[1-9][0-9]*$/.test(path))
-    return true;
-  if (!/^\/(?:storage|sdcard|mnt\/sdcard)\//.test(path)) return false;
-  if (path.endsWith("/") || path.includes("//") ||
-      path.split("/").some(part => part === "." || part === "..")) return false;
-  return true;
-}
 
 /**
  * Write decrypted bytes back into public storage at their original relative

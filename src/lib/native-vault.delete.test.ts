@@ -83,7 +83,11 @@ describe("native restore acknowledgement", () => {
       {path:"/data/data/app.private/secret.jpg"},
       {path:"/"},
       {path:"/storage/emulated/0/../private.jpg"},
-      {path:"/storage/emulated/0//Pictures/photo.jpg"}]) {
+      {path:"/storage/emulated/0//Pictures/photo.jpg"},
+      {path:"content://media/internal/images/media/7"},
+      {path:"/storage/emulated/0/Android/data/com.private/files/f.jpg"},
+      {path:"/storage/emulated/0/Android/obb/com.private/blob"},
+      {path:"/storage/emulated/0/DCIM\\\\photo.jpg"}]) {
       mock.nativeRestore.mockResolvedValueOnce(value);
       await expect(restoreToPublic(request)).rejects.toThrow("did not confirm");
     }
