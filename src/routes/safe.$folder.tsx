@@ -27,6 +27,8 @@ import { liveSafePickerIds, nextSafePickerPage } from "@/lib/safe-picker-paginat
 import { useBackHandler } from "@/lib/back-handler";
 import { toast } from "sonner";
 import { useDeviceScan, materializeFile, deviceScan, type ScannedItem } from "@/lib/device-scan";
+import { photoFlags } from "@/lib/photo-flags";
+import { partitionDeletableMedia } from "@/lib/media-delete-protection";
 import {
   isNative, deleteOriginals, ensurePrivateVaultDir,
   restoreToPublic, shareNative,
@@ -155,11 +157,20 @@ function SafeFolderView() {
       // Scoped MediaStore owns deletion; no unrestricted all-files access
       // needs to be requested just to move media into the Safe.
 
-      // 1. Read + encrypt each selected item into the app's private,
-      //    .nomedia-guarded internal directory (one file at a time so a
-      //    single unreadable item can't abort the whole batch).
+      // Moving a photo into Safe requires deleting its public original.
+      // A protection flag forbids that deletion in every other gallery
+      // flow; enforce the SAME policy before any encryption/import starts.
+      // Protected selections remain intact in the public library.
+      const { allowed: movable, protectedItems } = partitionDeletableMedia(
+        items, photoFlags.isProtected,
+      );
+      if (protectedItems.length > 0) toast.warning(t("protected_toast"));
+      if (movable.length === 0) return;
+
+      // 1. Read + encrypt each permitted item into the app's private,
+      //    .nomedia-guarded internal directory (one at a time).
       const secured: ScannedItem[] = [];
-      for (const it of items) {
+      for (const it of movable) {
         requireSafeSession(accessToken);
         try {
           const file = await materializeFile(it);

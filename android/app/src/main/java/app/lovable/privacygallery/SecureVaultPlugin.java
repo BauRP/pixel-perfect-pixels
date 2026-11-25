@@ -146,17 +146,17 @@ public class SecureVaultPlugin extends Plugin {
         String st = mediaPermissionState();
         Activity a = getActivity();
         boolean reselect = call.getBoolean("reselect", false);
-        if ("granted".equals(st) || ("partial".equals(st) && !reselect) || a == null) {
+        // Never replace the PluginCall awaiting an existing system dialog.
+        // A simultaneous scan/reselect request receives the current state;
+        // the original call alone receives the eventual permission result.
+        // Otherwise a second scan could mark the first permission prompt
+        // complete prematurely and leave the newer call unresolved.
+        if (!MediaPermissionDialogPolicy.shouldLaunchDialog(
+                st, reselect, pendingMediaCall != null, a != null)) {
             JSObject r = new JSObject();
             r.put("state", st);
             call.resolve(r);
             return;
-        }
-        if (pendingMediaCall != null) {
-            // Coalesce: a dialog is already up; resolve the older call with the current state.
-            JSObject r = new JSObject();
-            r.put("state", st);
-            pendingMediaCall.resolve(r);
         }
         pendingMediaCall = call;
         getContext().getSharedPreferences("nova_perm", 0).edit().putBoolean("media_asked", true).apply();
