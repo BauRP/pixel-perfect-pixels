@@ -18,8 +18,26 @@ describe("Android native album share", () => {
     ];
     expect(await shareNativeAlbum(uris, "Camera")).toBe(true);
     expect(mock.shareMediaUris).toHaveBeenCalledTimes(1);
-    expect(mock.shareMediaUris).toHaveBeenCalledWith({ uris, title: "Camera" });
+    expect(mock.shareMediaUris).toHaveBeenCalledWith({ uris, title: "Camera", mime: "*/*" });
   });
+  it("preserves requested photo/video MIME for compatible recipient apps", async () => {
+    const { shareNativeAlbum } = await import("./native-vault");
+    mock.shareMediaUris.mockResolvedValue({ success: true });
+    const uris = ["content://media/external/images/media/1"];
+    expect(await shareNativeAlbum(uris, "Pictures", "image/*")).toBe(true);
+    expect(mock.shareMediaUris).toHaveBeenCalledWith({
+      uris, title: "Pictures", mime: "image/*",
+    });
+  });
+
+  it("rejects an overlarge album before transferring thousands of URI strings", async () => {
+    const { shareNativeAlbum } = await import("./native-vault");
+    const uris = Array.from({ length: 1001 }, (_, i) =>
+      `content://media/external/images/media/${i+1}`);
+    expect(await shareNativeAlbum(uris, "Huge", "image/*")).toBe(false);
+    expect(mock.shareMediaUris).not.toHaveBeenCalled();
+  });
+
   it("does not open Android share with an empty album", async () => {
     const { shareNativeAlbum } = await import("./native-vault");
     expect(await shareNativeAlbum([], "Empty")).toBe(false);

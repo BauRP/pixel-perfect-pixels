@@ -69,6 +69,42 @@ describe("photo flags: stable React snapshots and durable data", () => {
     expect(reloaded.getName(before)).toBe("New.jpg");
   });
 
+  it("sets or removes protection for selected photos in a single durable write", async () => {
+    const { photoFlags } = await import("./photo-flags");
+    const photos = [
+      "content://media/external/file/4:100:3",
+      "content://media/external/file/5:200:4",
+      "content://media/external/file/5:201:5",
+    ];
+    const saved = localStorage.setItem.bind(localStorage);
+    const writes = vi.spyOn(Storage.prototype, "setItem");
+    photoFlags.setProtectedMany(photos, true);
+    expect(writes).toHaveBeenCalledTimes(1);
+    expect(photoFlags.isProtected("content://media/external/file/4:105:8")).toBe(true);
+    expect(photoFlags.isProtected("content://media/external/file/5:210:9")).toBe(true);
+    photoFlags.setProtectedMany([photos[0]], false);
+    expect(writes).toHaveBeenCalledTimes(2);
+    expect(photoFlags.isProtected(photos[0])).toBe(false);
+    expect(photoFlags.isProtected(photos[1])).toBe(true);
+    writes.mockRestore();
+    saved("unrelated", "1");
+  });
+
+  it("keeps a mixed protected selection unchanged if localStorage rejects the batch", async () => {
+    const { photoFlags } = await import("./photo-flags");
+    photoFlags.setProtected("existing", true);
+    const before = localStorage.getItem("vault.photo.protected.v1");
+    const saved = photoFlags.isProtected("existing");
+    const writes = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota");
+    });
+    expect(() => photoFlags.setProtectedMany(["existing", "new"], false)).toThrow("quota");
+    expect(localStorage.getItem("vault.photo.protected.v1")).toBe(before);
+    expect(photoFlags.isProtected("existing")).toBe(saved);
+    expect(photoFlags.isProtected("new")).toBe(false);
+    writes.mockRestore();
+  });
+
   it("does not claim a write succeeded when localStorage fails", async () => {
     const { photoFlags, getPhotoFlagsSnapshot } = await import("./photo-flags");
     const original = getPhotoFlagsSnapshot();

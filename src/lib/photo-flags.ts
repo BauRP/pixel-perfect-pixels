@@ -115,6 +115,21 @@ export const photoFlags = {
     else delete m[stable];
     writeProt(m);
   },
+  /** Apply protection to a selected album batch in ONE durable write.
+   * A 1000-photo selection must not cause 1000 synchronous localStorage
+   * writes (or 1000 React rerenders) on an older Android WebView. */
+  setProtectedMany(ids: readonly string[], enabled: boolean): void {
+    const stableIds = new Set(ids.map(persistentPhotoFlagKey));
+    if (stableIds.size === 0) return;
+    const next = { ...getPhotoFlagsSnapshot().prot };
+    for (const current of Object.keys(next)) {
+      if (stableIds.has(persistentPhotoFlagKey(current))) delete next[current];
+    }
+    if (enabled) {
+      for (const id of stableIds) next[id] = true;
+    }
+    writeProt(next);
+  },
   getName(id: string): string | null {
     const m = getPhotoFlagsSnapshot().names;
     const stable = persistentPhotoFlagKey(id);

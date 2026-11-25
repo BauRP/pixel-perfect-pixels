@@ -176,7 +176,9 @@ export async function shareNative(opts: {
 export async function shareNativeAlbum(
   uris: string[], title: string, mime: "image/*" | "video/*" | "*/*" = "*/*",
 ): Promise<boolean> {
-  if (!isNative() || uris.length === 0) return false;
+  // Match the Java bridge cap before serializing a huge album into a
+  // Capacitor call. Never silently share only a subset of the user's album.
+  if (!isNative() || uris.length === 0 || uris.length > 1000) return false;
   const result = await SecureVault.shareMediaUris({ uris, title, mime });
   return !!result.success;
 }

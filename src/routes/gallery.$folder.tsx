@@ -5,7 +5,7 @@ import { deviceScan, useDeviceScan, type ScannedItem } from "@/lib/device-scan";
 import {
   ArrowLeft, Play, MoreVertical, Share2, Trash2, Check, X,
   Pencil, RotateCw, RotateCcw, Info, Image as ImgIcon,
-  FlipHorizontal, FlipVertical, Undo2, Loader2, Brush, Wand2,
+  FlipHorizontal, FlipVertical, Undo2, Loader2, Brush, Wand2, ShieldCheck, ShieldOff,
 } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import {
@@ -29,7 +29,8 @@ import {
   isNative, deleteOriginals, setWallpaperSafely, saveEditedImage, shareNative, shareNativeAlbum,
 } from "@/lib/native-vault";
 import { mediaMime } from "@/lib/device-scan";
-import { photoFlags } from "@/lib/photo-flags";
+import { photoFlags, usePhotoFlags } from "@/lib/photo-flags";
+import { persistentPhotoFlagKey } from "@/lib/photo-flag-key";
 import { partitionDeletableMedia } from "@/lib/media-delete-protection";
 import { albumShareMime, mediaUriForSharing } from "@/lib/media-share-uri";
 import { ViewOptionsMenu } from "@/components/ViewOptionsMenu";
@@ -92,6 +93,10 @@ function FolderView() {
     () => new Set([...selected].filter(id => availableIds.has(id))),
     [selected, availableIds],
   );
+  const flags = usePhotoFlags();
+  const allSelectedProtected = liveSelected.size > 0 &&
+    [...liveSelected].every(id =>
+      Object.prototype.hasOwnProperty.call(flags.prot, persistentPhotoFlagKey(id)));
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [viewer, setViewer] = useState<ScannedItem | null>(null);
   // Android has one system deletion dialog at a time. Keep UI operations
@@ -152,6 +157,15 @@ function FolderView() {
 
   const enterSelect = () => { setSelectMode(true); setSelected(new Set()); };
   const cancelSelect = () => { setSelectMode(false); setSelected(new Set()); };
+  const toggleSelectedProtection = () => {
+    if (liveSelected.size === 0) return;
+    try {
+      photoFlags.setProtectedMany([...liveSelected], !allSelectedProtected);
+      toast.success(allSelectedProtected ? t("unprotect") : t("protected_toast"));
+    } catch {
+      toast.error(t("edit_failed"));
+    }
+  };
 
   const doDelete = async () => {
     if (deletePending.current) return;
@@ -318,15 +332,28 @@ function FolderView() {
         }
         right={
           selectMode ? (
-            <button
-              onClick={() => setConfirmDelete(true)}
-              disabled={liveSelected.size === 0}
-              className="tap grid h-10 w-10 place-items-center rounded-full disabled:opacity-50"
-              style={{ background: "var(--color-surface)", color: "hsl(var(--destructive))" }}
-              aria-label={t("delete")}
-            >
-              <Trash2 size={18} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                data-selected-protection
+                onClick={toggleSelectedProtection}
+                disabled={liveSelected.size === 0}
+                className="tap grid h-10 w-10 place-items-center rounded-full disabled:opacity-50"
+                style={{ background: "var(--color-surface)" }}
+                aria-label={allSelectedProtected ? t("unprotect") : t("protect")}
+                title={allSelectedProtected ? t("unprotect") : t("protect")}
+              >
+                {allSelectedProtected ? <ShieldOff size={18} /> : <ShieldCheck size={18} />}
+              </button>
+              <button
+                onClick={() => setConfirmDelete(true)}
+                disabled={liveSelected.size === 0}
+                className="tap grid h-10 w-10 place-items-center rounded-full disabled:opacity-50"
+                style={{ background: "var(--color-surface)", color: "hsl(var(--destructive))" }}
+                aria-label={t("delete")}
+              >
+                <Trash2 size={18} />
+              </button>
+            </div>
           ) : (
             <ViewOptionsMenu
               scope="media"
@@ -409,6 +436,9 @@ function MediaViewer({
   onShare: (item: ScannedItem) => void;
 }) {
   const t = useT();
+  const flags = usePhotoFlags();
+  const protectedPhoto = item !== null &&
+    Object.prototype.hasOwnProperty.call(flags.prot, persistentPhotoFlagKey(item.id));
   const [chromeVisible, setChromeVisible] = useState(true);
   const [rotation, setRotation] = useState(0);
   const [flipH, setFlipH] = useState(false);
@@ -774,6 +804,25 @@ function MediaViewer({
               <dt className="text-muted-foreground">{t("path")}</dt>
               <dd className="truncate text-right">{item.path}</dd>
             </dl>
+            <button
+              type="button"
+              data-photo-protection
+              aria-pressed={protectedPhoto}
+              aria-label={protectedPhoto ? t("unprotect") : t("protect")}
+              onClick={() => {
+                try {
+                  photoFlags.setProtected(item.id, !protectedPhoto);
+                  toast.success(protectedPhoto ? t("unprotect") : t("protected_toast"));
+                } catch {
+                  toast.error(t("edit_failed"));
+                }
+              }}
+              className="tap mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold"
+              style={{ background: "var(--color-muted)" }}
+            >
+              {protectedPhoto ? <ShieldOff size={18} /> : <ShieldCheck size={18} />}
+              {protectedPhoto ? t("unprotect") : t("protect")}
+            </button>
           </div>
         </div>
       )}
