@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentType } from "react";
+import { useEffect, useRef, useState, type ComponentType } from "react";
 import { flushSync } from "react-dom";
 import { useNativeFirstPaint } from "../lib/native-first-paint";
 
@@ -13,13 +13,17 @@ export function NativeFirstPaintRouter({ onRouterLoaded }: { onRouterLoaded: () 
   const ready = useNativeFirstPaint();
   const [Provider, setProvider] = useState<ComponentType | null>(null);
   const [failed, setFailed] = useState(false);
+  // Parent boot-monitor renders change the callback identity. It must not
+  // restart lazy route imports and replay router-created during startup.
+  const reportLoaded = useRef(onRouterLoaded);
+  reportLoaded.current = onRouterLoaded;
 
   useEffect(() => {
     if (!ready) return;
     let active = true;
     void import("../native-router-provider").then(({ NativeRouterProvider }) => {
       if (!active) return;
-      onRouterLoaded();
+      reportLoaded.current();
       // First router mount must not depend on a deferred React scheduler
       // turn after the offline startup surface had its paint opportunity.
       flushSync(() => setProvider(() => NativeRouterProvider));
@@ -27,7 +31,7 @@ export function NativeFirstPaintRouter({ onRouterLoaded }: { onRouterLoaded: () 
       if (active) setFailed(true);
     });
     return () => { active = false; };
-  }, [ready, onRouterLoaded]);
+  }, [ready]);
 
   // The outer error boundary renders an accessible Retry action. Never
   // silently swallow a failed local module/chunk load into a black screen.

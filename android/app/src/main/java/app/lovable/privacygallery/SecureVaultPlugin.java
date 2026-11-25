@@ -268,6 +268,16 @@ public class SecureVaultPlugin extends Plugin {
         call.resolve(ret);
     }
 
+    /** FilesDir is the partition containing private encrypted Safe blobs.
+     * getUsableSpace() does not read or disclose any user media paths. */
+    @PluginMethod
+    public void getStorageSpace(PluginCall call) {
+        File home = getContext().getFilesDir();
+        JSObject ret = new JSObject();
+        ret.put("availableBytes", home.getUsableSpace());
+        call.resolve(ret);
+    }
+
     // ── all-files access (needed to hard-delete originals silently) ──────
     @PluginMethod
     public void hasAllFilesAccess(PluginCall call) {

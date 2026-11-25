@@ -16,6 +16,19 @@ vi.mock("../native-router-provider", () => {
 import { NativeFirstPaintRouter } from "./NativeFirstPaintRouter";
 
 describe("Android first-frame route isolation", () => {
+  it("never restarts route import when the parent updates its startup callback", async () => {
+    state.ready = true;
+    const initial = vi.fn();
+    const updated = vi.fn();
+    const { rerender, unmount } = render(<NativeFirstPaintRouter onRouterLoaded={initial} />);
+    await waitFor(() => expect(screen.getByTestId("real-routes")).toBeInTheDocument());
+    expect(initial).toHaveBeenCalledTimes(1);
+    rerender(<NativeFirstPaintRouter onRouterLoaded={updated} />);
+    rerender(<NativeFirstPaintRouter onRouterLoaded={() => {}} />);
+    expect(updated).not.toHaveBeenCalled();
+    expect(initial).toHaveBeenCalledTimes(1);
+    unmount();
+  });
   it("renders an offline startup surface before loading any gallery routes", async () => {
     state.ready = false;
     const reported = vi.fn();

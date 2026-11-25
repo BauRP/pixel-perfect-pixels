@@ -14,7 +14,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Fingerprint, HardDrive, KeyRound, Languages, Palette, FileText, ShieldCheck } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { getNativeStorageFreeBytes } from "@/lib/native-vault";
+import { safeStorageUsage } from "@/lib/safe-storage-capacity";
 import { safePin, useSafePin } from "@/lib/pin-store";
 
 export const Route = createFileRoute("/settings")({
@@ -31,8 +33,6 @@ export const Route = createFileRoute("/settings")({
   component: SettingsScreen,
 });
 
-const CAPACITY = 5 * 1024 ** 3;
-
 function SettingsScreen() {
   const t = useT();
   const [lang, setLang] = useLang();
@@ -41,7 +41,15 @@ function SettingsScreen() {
   // Never offer an unlock toggle that the OS cannot enforce.
   const folders = useVault((s) => s.folders);
   const used = totalBytes(folders);
-  const pct = Math.min(100, (used / CAPACITY) * 100);
+  const [availableBytes, setAvailableBytes] = useState<number | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    void getNativeStorageFreeBytes().then(value => {
+      if (mounted) setAvailableBytes(value);
+    });
+    return () => { mounted = false; };
+  }, [used]);
+  const storage = safeStorageUsage(used, availableBytes);
 
   return (
     <AppShell>
@@ -112,14 +120,16 @@ function SettingsScreen() {
               <div className="flex-1">
                 <div className="text-sm font-medium">{t("storage")}</div>
                 <div className="text-[10px] text-muted-foreground">
-                  {fmtBytes(used)} {t("used")} {fmtBytes(CAPACITY)}
+                  {fmtBytes(used)} {t("used")}{storage ? ` / ${fmtBytes(storage.capacityBytes)}` : ""}
                 </div>
               </div>
-              <div className="text-xs font-semibold tabular-nums" style={{ color: "var(--color-accent)" }}>
-                {pct.toFixed(1)}%
-              </div>
+              {storage && (
+                <div className="text-xs font-semibold tabular-nums" style={{ color: "var(--color-accent)" }}>
+                  {storage.percent.toFixed(1)}%
+                </div>
+              )}
             </div>
-            <Progress value={pct} className="mt-2 h-1.5" />
+            {storage && <Progress value={storage.percent} className="mt-2 h-1.5" />}
           </div>
           <Divider />
           <PrivacyPolicyRow />

@@ -21,6 +21,7 @@ export type DeleteResult = { deleted: string[]; failed: string[] };
 
 export interface SecureVaultPlugin {
   ensurePrivateDir(): Promise<{ path: string; nomedia: boolean }>;
+  getStorageSpace(): Promise<{ availableBytes: number }>;
   checkMediaPermission(): Promise<{ state: MediaPermissionState }>;
   requestMediaPermission(options?: { reselect?: boolean }): Promise<{ state: MediaPermissionState }>;
   getMediaItems(): Promise<{ items: { uri: string; name: string; mime: string;
@@ -44,6 +45,7 @@ export interface SecureVaultPlugin {
 
 const noop: SecureVaultPlugin = {
   async ensurePrivateDir() { return { path: "", nomedia: false }; },
+  async getStorageSpace() { return { availableBytes: 0 }; },
   async checkMediaPermission() { return { state: "granted" as const }; },
   async requestMediaPermission() { return { state: "granted" as const }; },
   async getMediaItems() { return { items: [] }; },
@@ -62,6 +64,17 @@ export const SecureVault: SecureVaultPlugin = Capacitor.isNativePlatform()
   : noop;
 
 export const isNative = () => Capacitor.isNativePlatform();
+
+/** Available bytes on the same private app storage partition as Nova Safe.
+ * Report unknown on a missing bridge instead of inventing a 5 GB quota. */
+export async function getNativeStorageFreeBytes(): Promise<number | null> {
+  if (!isNative()) return null;
+  try {
+    const result = await SecureVault.getStorageSpace();
+    const bytes = result?.availableBytes;
+    return Number.isSafeInteger(bytes) && bytes >= 0 ? bytes : null;
+  } catch { return null; }
+}
 
 /** Make sure the private (non-indexable) vault directory exists. */
 export async function ensurePrivateVaultDir(): Promise<void> {
