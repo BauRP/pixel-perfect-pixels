@@ -57,6 +57,25 @@ describe("materialization cache of native media", () => {
     expect(mediaMime({ name: "clip.MP4", nativeMime: "" })).toBe("video/mp4");
   });
 
+  it("accepts a binary Blob from Capacitor without corrupting its contents", async () => {
+    native.readFile.mockResolvedValueOnce({ data: new Blob([new Uint8Array([7, 0, 255, 3])]) });
+    const { materializeFile } = await import("./device-scan");
+    const media = item(4);
+    const file = await materializeFile(media);
+    expect([...new Uint8Array(await file.arrayBuffer())]).toEqual([7, 0, 255, 3]);
+    expect(file.type).toBe("video/mp4");
+  });
+
+  it("rejects malformed native results and can recover on a retry", async () => {
+    native.readFile.mockResolvedValueOnce({ data: { invalid: true } });
+    const { materializeFile } = await import("./device-scan");
+    const media = item(4);
+    await expect(materializeFile(media)).rejects.toThrow("Invalid Android media data");
+    const file = await materializeFile(media);
+    expect(file.size).toBe(4);
+    expect(native.readFile).toHaveBeenCalledTimes(2);
+  });
+
   it("preserves supplied web File without native I/O", async () => {
     const { materializeFile } = await import("./device-scan");
     const media = item(4);

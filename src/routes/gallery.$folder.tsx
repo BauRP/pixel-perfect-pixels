@@ -29,6 +29,8 @@ import {
   isNative, deleteOriginals, setWallpaperSafely, saveEditedImage, shareNative, shareNativeAlbum,
 } from "@/lib/native-vault";
 import { mediaMime } from "@/lib/device-scan";
+import { photoFlags } from "@/lib/photo-flags";
+import { partitionDeletableMedia } from "@/lib/media-delete-protection";
 import { albumShareMime, mediaUriForSharing } from "@/lib/media-share-uri";
 import { ViewOptionsMenu } from "@/components/ViewOptionsMenu";
 import { useViewPrefs, sortRows } from "@/lib/view-prefs";
@@ -157,7 +159,10 @@ function FolderView() {
     deletePending.current = true;
     try {
       const targets = folder.items.filter((i) => liveSelected.has(i.id));
-      const deleted = await purgeFromDevice(targets);
+      const { allowed, protectedItems } = partitionDeletableMedia(
+        targets, photoFlags.isProtected,
+      );
+      const deleted = await purgeFromDevice(allowed);
       const confirmed = new Set(targets.filter((it) =>
         deleted.has(it.nativeUri ?? it.path)).map((it) => it.id));
       if (confirmed.size > 0) {
@@ -171,7 +176,10 @@ function FolderView() {
         // cancelling Android's system permission dialog. Never treat a
         // cancelled deletion as a successful batch removal.
         setSelected(new Set(targets.filter((it) => !confirmed.has(it.id)).map((it) => it.id)));
-        toast.error("Android could not confirm deletion. Files remain in the gallery.");
+        if (protectedItems.length > 0)
+          toast.warning("Protected photos were kept. Remove protection before deleting them.");
+        else
+          toast.error("Android could not confirm deletion. Files remain in the gallery.");
       } else {
         cancelSelect();
       }
@@ -186,7 +194,10 @@ function FolderView() {
    * On web there is no filesystem to touch — the store update is enough.
    */
   const purgeFromDevice = async (targets: ScannedItem[]): Promise<Set<string>> => {
-    const paths = targets.map((i) => i.nativeUri ?? i.path).filter(Boolean);
+    // Defense in depth: even a future caller must not send protected items
+    // to the Android public-file deletion bridge.
+    const { allowed } = partitionDeletableMedia(targets, photoFlags.isProtected);
+    const paths = allowed.map((i) => i.nativeUri ?? i.path).filter(Boolean);
     if (!isNative()) return new Set(paths);
     try {
       const result = await deleteOriginals(paths);
@@ -203,6 +214,10 @@ function FolderView() {
    */
   const deleteFromViewer = async (item: ScannedItem) => {
     if (deletePending.current) return;
+    if (photoFlags.isProtected(item.id)) {
+      toast.warning("This photo is protected from deletion.");
+      return;
+    }
     deletePending.current = true;
     try {
       const last = rawFolder ? rawFolder.items.length <= 1 : true;

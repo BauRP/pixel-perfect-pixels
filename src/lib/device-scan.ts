@@ -119,9 +119,16 @@ export async function materializeFile(item: ScannedItem): Promise<File> {
   // A single atob() of a large video creates a second, full-size binary
   // string and blocks the WebView JS thread until every byte is copied.
   // Decode in bounded chunks with event-loop turns between them instead.
-  const arr = await decodeBase64InBatches(String(res.data));
+  // Capacitor may return either a base64 string or a Blob. Converting a
+  // Blob to String creates "[object Blob]" and corrupts the media silently.
+  // Preserve real binary bytes and refuse unexpected bridge payloads.
+  const payload: unknown = res.data;
+  if (typeof payload !== "string" && !(payload instanceof Blob))
+    throw new Error("Invalid Android media data");
+  const bytes = typeof payload === "string"
+    ? await decodeBase64InBatches(payload) : payload;
   const mime = mediaMime(item);
-  const file = new File([arr], item.name, { type: mime, lastModified: item.mtime });
+  const file = new File([bytes], item.name, { type: mime, lastModified: item.mtime });
   // Unknown-sized and large native media are deliberately NOT cached.
   // This does not remove the current File from its caller; it just releases
   // the gallery's long-lived reference once the operation finishes.
